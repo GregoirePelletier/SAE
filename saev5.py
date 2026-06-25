@@ -142,21 +142,20 @@ from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
     ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
     prepare_domain_dataset, split_into_phrases,
-    batch_topk_encode, _make_lr_schedule,
-    load_or_train, compute_metrics, compute_rho_sae,
+    compute_metrics, compute_rho_sae,
     downstream_classification,
-    get_top_activating_examples,
-    highlight_activations_as_string, highlight_doc_for_feature,
-    build_highlighted_examples, build_negative_examples,
     diff_features, compute_npmi,
     steer_activations, steer_and_decode,
     load_and_clean_emails,
-    save_activations_sharded, load_activations_mmap,
     FrozenCoreResidualSAE, ExtendedSAE,
     PhraseLevelSAE, extract_f2llm_embeddings,
     encode_documents_with_phrase_sae, load_or_train_sae,
     compute_sae_metrics,
+    pool_embeddings_by_document
 )
+
+# 2. Importe la fonction Top-K depuis src/sae/batch.py
+from src.sae.batch import batch_topk_encode
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
