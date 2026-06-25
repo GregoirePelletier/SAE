@@ -1,3 +1,6 @@
 [submodule "external/sae-lens"]
 	path = external/sae-lens
 	url = https://github.com/jbloomAus/SAELens
+[submodule "external/interp_embed"]
+	path = external/interp_embed
+	url = https://github.com/nickjiang2378/interp_embed.git
