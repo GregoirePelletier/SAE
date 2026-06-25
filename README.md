@@ -4,6 +4,10 @@
 
 This project implements a two-pipeline architecture for interpreting neural network representations through Sparse Autoencoders. The system decomposes model activations into interpretable features at different levels of granularity:
 
+- Uses the local `SAELens` submodule under `external/sae-lens` for SAE loading and BatchTopK support.
+- GemmaScope-inspired SAEs are loaded from pretrained weights, but the upstream `GemmaScope` repository is not included as a git submodule.
+- The `interp_embed` reference is documented for design comparison, but no local `interp_embed` repo is checked in.
+
 - **Pipeline 1**: Token-level SAE on Gemma-3 hidden states → max-pooled document-level features
 - **Pipeline 2**: Phrase-level SAE on F2LLM embeddings → max-pooled document-level features
 

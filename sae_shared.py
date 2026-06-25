@@ -37,6 +37,7 @@ from src.analysis.metrics import (
     downstream_classification,
 )
 from src.storage.shards import save_activations_sharded, load_activations_mmap
+from src.sae.batch import batch_topk_encode
 from src.sae.frozen_core import ExtendedSAE, FrozenCoreResidualSAE
 from src.sae.phrase_sae import (
     PhraseLevelSAE,
@@ -309,18 +310,7 @@ def score_feature_label(
 # BATCH TOPK
 # ══════════════════════════════════════════════════════════════════════════════
 
-def batch_topk_encode(pre_acts: torch.Tensor, k: int, training: bool) -> torch.Tensor:
-    if training:
-        flat = pre_acts.reshape(-1)
-        total_k = k * pre_acts.shape[0]
-        if total_k >= flat.numel():
-            return pre_acts
-        threshold = flat.kthvalue(flat.numel() - total_k + 1).values
-        return pre_acts * (pre_acts >= threshold).to(pre_acts.dtype)
-    else:
-        k_clamp = min(k, pre_acts.shape[-1])
-        topk_vals, topk_idx = pre_acts.topk(k_clamp, dim=-1)
-        return torch.zeros_like(pre_acts).scatter_(-1, topk_idx, topk_vals)
+# Re-exported BatchTopK helper imported from src.sae.batch
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -430,67 +420,7 @@ def load_or_train(
 # MÉTRIQUES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compute_metrics(
-    model: nn.Module,
-    acts: torch.Tensor,
-    batch_size: int = 4096,
-    is_saelens: bool = False,
-    var_sample: int = 65536,
-    device: str = "cuda",
-) -> Dict[str, float]:
-    """
-    FVE = 1 - MSE(x, x_hat) / Var(x)
-    NMSE = MSE(x, x_hat) / Var(x)   [= 1 - FVE, exposé séparément]
-    """
-    if isinstance(model, nn.Module):
-        model.eval()
-
-    model_dtype = None
-    if isinstance(model, nn.Module):
-        for p in model.parameters():
-            model_dtype = p.dtype
-            break
-    if model_dtype is None:
-        model_dtype = torch.float32
-
-    mse_acc, l0_acc, n_tok = 0.0, 0.0, 0
-    with torch.no_grad():
-        for i in range(0, acts.shape[0], batch_size):
-            b = acts[i: i + batch_size].to(device).to(model_dtype)
-            if is_saelens:
-                feat = model.encode(b)
-                recon = model.decode(feat)
-            else:
-                model_d_sae = getattr(model, "d_sae", None)
-                if model_d_sae is None and hasattr(model, "cfg"):
-                    model_d_sae = getattr(model.cfg, "d_sae", None)
-                if model_d_sae is None and hasattr(model, "core_sae"):
-                    model_d_sae = model.core_sae.cfg.d_sae + getattr(model, "d_extra", 0)
-
-                if (model_d_sae is not None and b.shape[-1] == model_d_sae and hasattr(model, "decode")
-                        and hasattr(model, "encode")):
-                    feat = b
-                    x_hat = model.decode(b)
-                    recon = model.encode(x_hat)
-                else:
-                    out = model(b)
-                    recon = out["sae_out"]
-                    feat = out["feature_acts"]
-            mse_acc += (b - recon).pow(2).sum(dim=-1).sum().item()
-            l0_acc += (feat.abs() > 1e-6).float().sum(dim=-1).sum().item()
-            n_tok += b.shape[0]
-
-    mse = mse_acc / n_tok
-    l0 = l0_acc / n_tok
-    n_var = min(var_sample, acts.shape[0])
-    idx_v = torch.linspace(0, acts.shape[0] - 1, n_var).long()
-    var_total = acts[idx_v].float().var(dim=0).sum().item()
-    fve = 1.0 - (mse / (var_total + 1e-8))
-    nmse = mse / (var_total + 1e-8)
-
-    if isinstance(model, nn.Module):
-        model.train()
-    return {"MSE": mse, "NMSE": nmse, "FVE": fve, "L0": l0}
+# Metrics helpers are provided by `src.analysis.metrics` and imported above.
 
 
 def compute_extra_feature_stats(
@@ -640,66 +570,4 @@ def pool_embeddings_by_document(
 # DOWNSTREAM CLASSIFICATION — sonde linéaire (perspective slide 19)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def downstream_classification(
-    acts_by_label: Dict[str, torch.Tensor],
-    raw_emb_by_label: Dict[str, torch.Tensor] = None,
-    cv: int = 5,
-    seed: int = 42,
-) -> Dict[str, float]:
-    """
-    Sonde logistique 5-fold sur activations SAE vs embeddings bruts.
-    Retourne acc_sae et (si fourni) acc_raw pour comparaison.
-
-    Cela permet de mesurer si la représentation SAE est au least aussi
-    discriminante que l'embedding original (critère d'auditabilité).
-    
-    IMPORTANT: acts_by_label et raw_emb_by_label doivent avoir le même nombre
-    d'échantillons par label pour éviter les erreurs de validation sklearn.
-    Utiliser pool_embeddings_by_document() si nécessaire pour aligner les dimensions.
-    """
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import cross_val_score
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.pipeline import make_pipeline
-
-    labels_list = sorted(acts_by_label.keys())
-    
-    # Validation des tailles
-    sae_sizes = {l: len(acts_by_label[l]) for l in labels_list}
-    if raw_emb_by_label is not None:
-        raw_sizes = {l: len(raw_emb_by_label[l]) for l in labels_list}
-        for label in labels_list:
-            if sae_sizes[label] != raw_sizes[label]:
-                raise ValueError(
-                    f"[downstream_classification] Mismatch for label '{label}': "
-                    f"acts_by_label['{label}'] has {sae_sizes[label]} samples, "
-                    f"raw_emb_by_label['{label}'] has {raw_sizes[label]} samples. "
-                    f"Use pool_embeddings_by_document() to align phrase-level embeddings to document-level."
-                )
-    
-    X_sae = torch.cat([acts_by_label[l] for l in labels_list]).float().detach().cpu().numpy()
-    y = np.concatenate([
-        np.full(len(acts_by_label[l]), i, dtype=int)
-        for i, l in enumerate(labels_list)
-    ])
-
-    clf = make_pipeline(
-        StandardScaler(with_mean=False, copy=True),
-        LogisticRegression(max_iter=1500, C=1.0, random_state=seed, solver="saga")
-    )
-    acc_sae = float(cross_val_score(clf, X_sae, y, cv=cv, scoring="accuracy").mean())
-    results = {"labels": labels_list, "acc_sae": acc_sae}
-
-    if raw_emb_by_label is not None:
-        X_raw = torch.cat([raw_emb_by_label[l] for l in labels_list]).float().detach().cpu().numpy()
-        clf_raw = make_pipeline(
-            StandardScaler(copy=True),
-            LogisticRegression(max_iter=1500, C=1.0, random_state=seed, solver="saga")
-        )
-        acc_raw = float(cross_val_score(clf_raw, X_raw, y, cv=cv, scoring="accuracy").mean())
-        results["acc_raw"] = acc_raw
-        results["delta_acc"] = acc_sae - acc_raw
-
-    print(f"  [Downstream] acc_SAE={acc_sae:.4f}" +
-          (f" | acc_raw={results.get('acc_raw', float('nan')):.4f}" if raw_emb_by_label else ""))
-    return results
+# Re-exported downstream classification helper from src.analysis.metrics

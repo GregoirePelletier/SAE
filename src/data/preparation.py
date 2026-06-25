@@ -28,7 +28,6 @@ def url_match(url: str, patterns: List[str]) -> bool:
 def is_expressive_or_support(text: str, url: str = "") -> bool:
     text_lower = text.lower()
     url_lower = url.lower() if url else ""
-    from sae_shared import SUPPORT_URL_PATTERNS, SUPPORT_KEYWORDS
     source_match = any(domain in url_lower for domain in SUPPORT_URL_PATTERNS)
     keyword_count = sum(1 for kw in SUPPORT_KEYWORDS if kw.lower() in text_lower)
     return source_match or (keyword_count >= 2)

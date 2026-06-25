@@ -100,6 +100,12 @@ cache
 
 sauvegarde des activations
 
+### Sous-modules externes
+
+- `SAELens` est téléchargé localement sous `external/sae-lens` et utilisé par le code.
+- `GemmaScope` n'est pas cloné comme sous-module dans ce dépôt ; le projet utilise des poids SAE préentraînés locaux / Hugging Face.
+- `interp_embed` n'est pas téléchargé localement, il est référencé comme source d'inspiration mais pas comme dépendance installée.
+
 ---
 
 # Problèmes connus
