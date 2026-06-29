@@ -27,6 +27,7 @@ import os
 import urllib3
 import requests
 from requests.sessions import Session
+import glob
 
 # ======================================================================
 # CONFIGURATION ET PATCHS SÉCURITÉ RESEAU (CLUSTER & FRONT DGX)
@@ -210,7 +211,13 @@ N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
 N_FEATURES_TO_LABEL = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
 
 # Modèle Gemma-3 (Pipeline 1)
-MODEL_SIZE = os.environ.get("MODEL_SIZE", "4b")
+MODEL_SIZE = os.environ.get("MODEL_SIZE", "12b")
+
+if MODEL_SIZE == "12b":
+    MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-12b-it")
+    RELEASE_ID = "gemma-scope-2-12b-it-res"
+    LAYER      = 24
+    SAE_ID     = "layer_24_width_16k_l0_medium"
 if MODEL_SIZE == "4b":
     MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-4b-it")
     RELEASE_ID = "gemma-scope-2-4b-it-res"
@@ -265,47 +272,81 @@ def load_pretrained_sae() -> SAE:
 # LLM JUDGE — ANNOTATION LOCALE (CAUSAL STREAM)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def extract_causal_context(token_strings: list, target_idx: int,
-                           left_window: int = 40, right_window: int = 15) -> str:
-    context_tokens = []
-    for idx in range(max(0, target_idx - left_window),
-                     min(len(token_strings), target_idx + right_window + 1)):
-        token = token_strings[idx].replace("Ġ", " ").replace("▁", " ").strip()
-        context_tokens.append(f"<<{token}>>" if idx == target_idx else token)
-    return " ".join(t for t in context_tokens if t)
+def extract_causal_context(token_strings: list, target_idx: int, left_window: int = 50) -> str:
+    """
+    Reconstruit le contexte de manière strictement causale (uniquement à gauche).
+    Fusionne proprement les tokens SentencePiece de Gemma pour éviter les espaces intempestifs.
+    """
+    start_idx = max(0, target_idx - left_window)
+    # On isole les tokens de la fenêtre causale gauche jusqu'au token cible inclus
+    tokens_window = token_strings[start_idx:target_idx + 1]
+    
+    context_str = ""
+    for idx, tok in enumerate(tokens_window):
+        # Repérage du token cible (qui correspond au dernier élément de notre sous-liste)
+        is_target = (idx == len(tokens_window) - 1)
+        
+        # Gestion propre des marqueurs SentencePiece de Gemma
+        clean_tok = tok.replace("Ġ", " ").replace(" ", " ")
+        
+        if is_target:
+            context_str += f" <<{clean_tok.strip()}>>"
+        else:
+            if clean_tok.startswith(" ") or tok.startswith("Ġ"):
+                context_str += " " + clean_tok.strip()
+            else:
+                context_str += clean_tok
+                
+    # Nettoyage des espaces doubles éventuels
+    return re.sub(r'\s+', ' ', context_str).strip()
 
 
-def build_causal_highlighted_examples(f_idx: int, per_doc_token_data: list,
+def build_causal_highlighted_examples(f_idx: int, token_fragments_dir: str, offset: int,
                                        acts: torch.Tensor, top_k: int = 6) -> list:
     f_acts = acts[:, f_idx].detach().float().numpy()
-    top_doc_indices = np.argsort(f_acts)[::-1][:top_k * 2]
+    top_doc_indices = np.argsort(f_acts)[::-1][:top_k * 4] # Sur-échantillonnage pour filtrer les faux argmax
     examples = []
     for d_idx in top_doc_indices:
-        if f_acts[d_idx] <= 1e-6 or d_idx >= len(per_doc_token_data):
+        if f_acts[d_idx] <= 1e-6:
             continue
-        doc_data = per_doc_token_data[d_idx]
-        token_acts = np.asarray(doc_data["token_sae_acts"][:, f_idx].todense()).flatten()
-        if token_acts.max() <= 1e-6:
+        
+        global_doc_idx = int(d_idx + offset)
+        fragment_path = os.path.join(token_fragments_dir, f"doc_{global_doc_idx:05d}.pkl")
+        if not os.path.exists(fragment_path):
             continue
-        examples.append(extract_causal_context(doc_data["token_strings"], int(token_acts.argmax())))
+            
+        with open(fragment_path, "rb") as f:
+            doc_data = pickle.load(f)
+            
+        token_acts = doc_data["token_sae_acts"][:, f_idx].numpy()
+        max_act = token_acts.max()
+        if max_act <= 1e-6:
+            continue
+            
+        # Trouver le vrai token d'activation (et éviter l'indice 0 si bruit de fond identique)
+        target_token_idx = int(token_acts.argmax())
+        if target_token_idx == 0 and max_act == token_acts.min():
+            continue # Évite le faux positif lié à une feature inactive localement
+            
+        examples.append(extract_causal_context(doc_data["token_strings"], target_token_idx))
         if len(examples) >= top_k:
             break
     return examples
-
 
 def local_gemma_judge(
     model, tokenizer,
     feature_indices: list,
     acts: torch.Tensor,
-    per_doc_token_data: list = None,
+    token_fragments_dir: str = None,
+    offset: int = 0,
     texts: list = None,
     top_k_examples: int = 6,
 ) -> dict:
     results = {}
     model.eval()
     for f_idx in tqdm(feature_indices, desc="LLM Judge"):
-        if per_doc_token_data:
-            pos_examples = build_causal_highlighted_examples(f_idx, per_doc_token_data, acts, top_k=top_k_examples)
+        if token_fragments_dir:
+            pos_examples = build_causal_highlighted_examples(f_idx, token_fragments_dir, offset, acts, top_k=top_k_examples)
         elif texts:
             raw = get_top_activating_examples(f_idx, acts.float(), texts, top_k=top_k_examples)
             pos_examples = [ex[:300] for ex, _ in raw]
@@ -329,7 +370,6 @@ def local_gemma_judge(
             "- 'score' : entier 1–5\n\n"
             '{"label": "...", "brief_description": "...", "score": 5}'
         )
-        # FIX 2 : apply_chat_template retourne un tenseur, pas un dict
         inputs = tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}],
             add_generation_prompt=True, return_tensors="pt"
@@ -348,7 +388,6 @@ def local_gemma_judge(
             results[f_idx] = {"label": f"Feature_{f_idx}", "brief_description": "Échec JSON.",
                                "score": -1, "saved_context_examples": saved}
     return results
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHRASE-LEVEL SAE (Pipeline 2)
@@ -523,7 +562,8 @@ def analyze_with_umap(
     labels: list,
     filename: str,
     title: str,
-    per_doc_token_data: list = None,
+    token_fragments_dir: str = None,
+    offset: int = 0,
     activating_tokens_map: dict = None,
     feature_labels: dict = None,
 ) -> dict:
@@ -541,9 +581,11 @@ def analyze_with_umap(
     print(f"  Features actives (UMAP) : {n_active} / {sae_acts.shape[1]}")
 
     reducer = umap.UMAP(
-        n_components=2, metric="cosine",
+        n_components=2, 
+        metric="cosine",
         n_neighbors=min(30, max(2, N_DOCS - 1)),
-        min_dist=0.1, random_state=SEED,
+        min_dist=0.1, 
+        random_state=SEED,
     )
     coords = reducer.fit_transform(sae_active)
 
@@ -585,32 +627,46 @@ def analyze_with_umap(
         top_vals, top_ids = r_acts.topk(min(3, r_acts.shape[0]))
         feats_html = []
         best_feat = top_ids[0].item() if top_vals[0] > 1e-6 else -1
+        
+        # Chargement à la volée du fragment s'il existe (Pas d'accumulation globale en RAM)
+        td = None
+        if token_fragments_dir:
+            fragment_path = os.path.join(token_fragments_dir, f"doc_{int(i + offset):05d}.pkl")
+            if os.path.exists(fragment_path):
+                with open(fragment_path, "rb") as f:
+                    td = pickle.load(f)
+
         for j in range(len(top_ids)):
             v = top_vals[j].item()
-            if v <= 1e-6: break
+            if v <= 1e-6: 
+                break
             f_idx = top_ids[j].item()
             f_label = feature_labels.get(f_idx, f"F{f_idx}") if feature_labels else f"F{f_idx}"
             tok_str = ""
-            if per_doc_token_data and i < len(per_doc_token_data):
-                td = per_doc_token_data[i]
-                acts_arr = np.asarray(td["token_sae_acts"][:, f_idx].todense()).flatten()
+            
+            if td:
+                # REECRITURE : td["token_sae_acts"] est maintenant un tenseur dense PyTorch CPU [T, d_sae]
+                acts_arr = td["token_sae_acts"][:, f_idx].numpy()
                 high = np.where(acts_arr > acts_arr.max() * 0.65)[0]
                 detected = list(dict.fromkeys([
                     td["token_strings"][t].replace("Ġ", " ").replace("▁", " ").strip()
                     for t in high if len(td["token_strings"][t].strip()) > 1
                 ]))[:3]
-                if detected: tok_str = f" <i>«{', '.join(detected)}»</i>"
+                if detected: 
+                    tok_str = f" <i>«{', '.join(detected)}»</i>"
             elif activating_tokens_map and i in activating_tokens_map:
                 toks = activating_tokens_map[i].get(f_idx, [])
-                if toks: tok_str = f" <i>«{toks[0][0].strip()}»</i>"
+                if toks: 
+                    tok_str = f" <i>«{toks[0][0].strip()}»</i>"
+                    
             intensity = min(5, max(1, int((v / 15.0) * 5)))
             bar = f"<span style='color:#00cc96;'>{'█'*intensity}{'▒'*(5-intensity)}</span>"
             feats_html.append(f"<b>{f_label}</b> ({v:.1f}) {bar}{tok_str}")
+            
         top_feats_html.append("<br>".join(feats_html) or "<i>Aucune feature active</i>")
 
-        if best_feat != -1 and per_doc_token_data and i < len(per_doc_token_data):
-            td = per_doc_token_data[i]
-            acts_arr = np.asarray(td["token_sae_acts"][:, best_feat].todense()).flatten()
+        if best_feat != -1 and td:
+            acts_arr = td["token_sae_acts"][:, best_feat].numpy()
             raw_text = extract_causal_context(td["token_strings"], int(acts_arr.argmax()))
         else:
             raw_text = texts[i][:400]
@@ -659,7 +715,6 @@ def analyze_with_umap(
         "n_active": n_active, "active_indices": active_indices, "df": df,
     }
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PIPELINE 1 — GEMMA-3 + FROZEN CORE SAE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -690,30 +745,26 @@ def run_llm_max_pool_pipeline(
     d_total_expected = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
 
     cache_acts_path      = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
-    cache_token_path     = os.path.join(CACHE_DIR, "p1_per_doc_token_data.pkl")
     cache_residuals_path = os.path.join(CACHE_DIR, "p1_raw_residuals.pt")
-
-    if os.path.exists(cache_acts_path) and os.path.exists(cache_token_path):
-        print("  [P1] Restauration cache...")
-        all_doc_sae_acts = torch.load(cache_acts_path, map_location="cpu", weights_only=True)
-        with open(cache_token_path, "rb") as f:
-            per_doc_token_data = pickle.load(f)
-        
-        # Validation de la dimension des matrices creuses restaurées du cache
-        if len(per_doc_token_data) > 0:
-            current_sparse_dim = per_doc_token_data[0]["token_sae_acts"].shape[1]
-            if current_sparse_dim != d_total_expected:
-                print(f"  [P1] Incohérence de dimension détectée dans le cache ({current_sparse_dim} vs {d_total_expected}). Re-extraction forcée.")
-                _need_residuals = True
-            else:
-                _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_path)
+    token_fragments_dir  = os.path.join(CACHE_DIR, "p1_token_fragments")
+    
+    _need_extraction = True
+    if os.path.exists(cache_acts_path) and os.path.exists(token_fragments_dir):
+        # Vérification si le dossier de fragments contient des fichiers
+        fragments = sorted(glob.glob(os.path.join(token_fragments_dir, "doc_*.pkl")))
+        if len(fragments) == len(all_texts):
+            print("  [P1] Restauration du cache (activations documents et fragments disques)...")
+            all_doc_sae_acts = torch.load(cache_acts_path, map_location="cpu", weights_only=True)
+            _need_extraction = False
+            _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_path)
         else:
-            _need_residuals = True
-    else:
-        _need_residuals = True
+            print("  [P1] Fragments disques incomplets. Re-extraction forcée.")
+            _need_extraction = True
 
-    if _need_residuals or not (os.path.exists(cache_acts_path) and os.path.exists(cache_token_path)):
+    if _need_extraction:
         print(f"  [P1] Extraction activations Gemma-3 ({MODEL_ID}, layer {LAYER})...")
+        os.makedirs(token_fragments_dir, exist_ok=True)
+        
         tokenizer = AutoTokenizer.from_pretrained(
             MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         )
@@ -726,7 +777,6 @@ def run_llm_max_pool_pipeline(
         ).eval()
 
         all_doc_sae_acts = []
-        per_doc_token_data = []
         raw_residuals_list = []   # pour l'entraînement FrozenCore
         n_residuals_collected = 0
 
@@ -740,14 +790,13 @@ def run_llm_max_pool_pipeline(
                 outputs = llm(**inputs, output_hidden_states=True)
                 acts_raw = outputs.hidden_states[LAYER].detach().to(torch.bfloat16)
 
-                # Gemma Scope s'attend à des activations non-scalées ou normalisées via RMSNorm
-                # On applique la RMSNorm locale pour s'aligner sur la distribution de Gemma Scope
                 epsilon = 1e-6
                 rms = torch.rsqrt(acts_raw.pow(2).mean(dim=-1, keepdim=True) + epsilon)
                 acts = acts_raw * rms
                 mask = inputs["attention_mask"].bool()
 
                 for b in range(acts.shape[0]):
+                    doc_global_idx = i + b
                     valid_ids = inputs["input_ids"][b, mask[b]]
                     valid_toks = acts[b, mask[b]]
                     special_mask = torch.isin(
@@ -762,37 +811,37 @@ def run_llm_max_pool_pipeline(
                     # SAE encode per token → [T, d_core]
                     token_sae_acts = pretrained_sae.encode(filtered)
                     
-                    # Alignement de la dimension de la matrice pour le stockage par token
                     if USE_FROZEN_CORE:
-                        # Si le Frozen Core est actif, on pré-alloue l'espace des 1024 features supplémentaires (FR)
-                        # remplies de zéros, pour éviter les futurs crashs d'indexation SciPy lors du Judge.
                         T = token_sae_acts.shape[0]
                         extra_zeros = torch.zeros((T, D_EXTRA), dtype=token_sae_acts.dtype, device=token_sae_acts.device)
                         token_sae_acts_padded = torch.cat([token_sae_acts, extra_zeros], dim=-1)
                         doc_sae_vec = token_sae_acts_padded.max(dim=0).values
                         
-                        per_doc_token_data.append({
+                        # Remplacement de SciPy CSR par stockage PyTorch natif léger sur disque par document
+                        fragment_payload = {
                             "token_strings": tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                            "token_sae_acts": sp_csr(token_sae_acts_padded.float().cpu().numpy(), shape=(T, d_total_expected)),
-                        })
+                            "token_sae_acts": token_sae_acts_padded.float().cpu() # Tenseur dense CPU, pas d'overhead SciPy
+                        }
                     else:
                         doc_sae_vec = token_sae_acts.max(dim=0).values
-                        per_doc_token_data.append({
+                        fragment_payload = {
                             "token_strings": tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                            "token_sae_acts": sp_csr(token_sae_acts.float().cpu().numpy(), shape=(token_sae_acts.shape[0], d_core)),
-                        })
+                            "token_sae_acts": token_sae_acts.float().cpu()
+                        }
+
+                    # Écriture immédiate du fragment de jetons sur disque
+                    fragment_path = os.path.join(token_fragments_dir, f"doc_{doc_global_idx:05d}.pkl")
+                    with open(fragment_path, "wb") as f:
+                        pickle.dump(fragment_payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
                     all_doc_sae_acts.append(doc_sae_vec.cpu())
 
-                    # Collecte résidus pour FrozenCore (seulement docs train)
-                    if USE_FROZEN_CORE and n_residuals_collected < N_TOKENS_EXTRA_TRAIN:
+                    if USE_FROZEN_CORE and n_residuals_collected < N_TOKENS_EXTRA_TRAIN and doc_global_idx < len(train_texts):
                         raw_residuals_list.append(filtered.cpu())
                         n_residuals_collected += filtered.shape[0]
 
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
         torch.save(all_doc_sae_acts, cache_acts_path)
-        with open(cache_token_path, "wb") as f:
-            pickle.dump(per_doc_token_data, f)
 
         if USE_FROZEN_CORE and raw_residuals_list:
             raw_residuals = torch.cat(raw_residuals_list, dim=0)[:N_TOKENS_EXTRA_TRAIN]
@@ -802,9 +851,9 @@ def run_llm_max_pool_pipeline(
         del llm, tokenizer
         gc.collect(); torch.cuda.empty_cache()
 
-    # ─── FrozenCore / ExtendedSAE (slide 8 : cœur gelé + 1024 features FR) ──
-    d_total = d_core   # par défaut : SAE prétrained seul
-    active_sae = pretrained_sae   # SAE utilisé pour l'inférence
+    # ─── FrozenCore / ExtendedSAE ─────────────────────────────────────────────
+    d_total = d_core
+    active_sae = pretrained_sae
 
     if USE_FROZEN_CORE:
         frozen_core_path = os.path.join(SAVE_DIR, f"p1_frozen_core_d{D_EXTRA}_k{K_EXTRA}.pt")
@@ -822,7 +871,6 @@ def run_llm_max_pool_pipeline(
 
             if raw_residuals is not None:
                 print(f"  [P1] Entraînement ExtendedSAE sur {len(raw_residuals)} tokens résidus...")
-                # Calcule résidus e = x - core_out pour initialisation PCA
                 with torch.no_grad():
                     sample = raw_residuals[:min(8192, len(raw_residuals))].to(DEVICE).to(torch.bfloat16)
                     core_acts = pretrained_sae.encode(sample)
@@ -836,7 +884,6 @@ def run_llm_max_pool_pipeline(
                     domain_residuals=domain_residuals_cpu
                 ).to(DEVICE).to(torch.bfloat16)
 
-                # Entraînement uniquement sur les poids extra
                 ext_sae, history_ext = load_or_train(
                     model=ext_sae, model_name="p1_extended_sae",
                     acts_train=raw_residuals,
@@ -853,109 +900,206 @@ def run_llm_max_pool_pipeline(
                 ext_sae = None
 
         if ext_sae is not None:
-            print("  [P1] Re-encodage et mise à jour dynamique des activations d'ExtendedSAE...")
             cache_acts_ext = os.path.join(CACHE_DIR, f"p1_all_doc_acts_ext_d{D_EXTRA}.pt")
-            
             if os.path.exists(cache_acts_ext):
                 all_doc_sae_acts = torch.load(cache_acts_ext, map_location="cpu", weights_only=True)
-                # Recalculer ou re-charger per_doc_token_data n'est pas requis si déjà injecté,
-                # mais on s'assure ici que la matrice creuse contient les vraies valeurs entraînées.
             else:
+                print("  [P1] Re-encodage et mise à jour des fragments d'ExtendedSAE...")
                 ext_sae.eval()
                 new_acts = []
                 with torch.no_grad():
-                    for i in tqdm(range(len(per_doc_token_data)), desc="Calcul des activations ExtendedSAE"):
-                        # Extraction des features de base document-level
-                        core_vec = all_doc_sae_acts[i].unsqueeze(0).to(DEVICE).to(torch.bfloat16)
+                    for i in tqdm(range(len(all_texts)), desc="Mise à jour ExtendedSAE fragments disques"):
+                        # FIX: Extraction stricte des features du cœur seul [:d_core] avant décodage
+                        core_vec = all_doc_sae_acts[i][:d_core].unsqueeze(0).to(DEVICE).to(torch.bfloat16)
                         x_approx = pretrained_sae.decode(core_vec)
                         
-                        # Calcul des activations pour l'extension (FR)
                         extra_acts = ext_sae._encode_extra_acts(x_approx)
                         full_vec = torch.cat([core_vec, extra_acts], dim=-1).cpu().squeeze(0)
                         new_acts.append(full_vec)
                         
-                        # Ré-injection chirurgicale des activations d'extension au niveau token (matrice creuse)
-                        # pour que le LLM Judge puisse inspecter les features 16384+ sans IndexError
-                        td = per_doc_token_data[i]
-                        dense_token_acts = torch.from_numpy(td["token_sae_acts"].todense()).to(DEVICE).to(torch.bfloat16)
+                        # Mise à jour chirurgicale du fragment sur le disque
+                        fragment_path = os.path.join(token_fragments_dir, f"doc_{i:05d}.pkl")
+                        with open(fragment_path, "rb") as f:
+                            frag = pickle.load(f)
                         
+                        dense_token_acts = frag["token_sae_acts"].to(DEVICE).to(torch.bfloat16)
                         core_out_tokens = pretrained_sae.decode(dense_token_acts[:, :d_core])
-                        # À ce stade, dense_token_acts contient l'extraction originale complète (core)
-                        # Si vous n'avez plus l'activation brute 'acts' dans le scope du cache, le vrai résiduel
-                        # par token ne peut pas être reconstruit à partir de core_out seul. 
-                        # Le moyen le plus propre est de calculer le résiduel d'après l'approximation du document :
                         residual_tokens = x_approx - core_out_tokens
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
                         
-                        # Concaténation et reconstruction de la structure SciPy
-                        full_token_acts = torch.cat([dense_token_acts[:, :d_core], token_extra_acts], dim=-1)
-                        td["token_sae_acts"] = sp_csr(full_token_acts.float().cpu().numpy(), shape=(full_token_acts.shape[0], d_total_expected))
+                        frag["token_sae_acts"] = torch.cat([dense_token_acts[:, :d_core], token_extra_acts], dim=-1).float().cpu()
+                        
+                        with open(fragment_path, "wb") as f:
+                            pickle.dump(frag, f, protocol=pickle.HIGHEST_PROTOCOL)
 
                 all_doc_sae_acts = torch.stack(new_acts)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
-                
-                # Mise à jour du cache token avec les valeurs d'extensions réelles
-                with open(cache_token_path, "wb") as f:
-                    pickle.dump(per_doc_token_data, f)
                     
             d_total = d_core + D_EXTRA
             active_sae = ext_sae
             print(f"  [P1] Dimension SAE étendue : {d_core} core + {D_EXTRA} extra = {d_total}")
 
-    # ─── Splits train / test / email ─────────────────────────────────────────
+    # Splits train / test / email
     n_train = len(train_texts)
     n_test  = len(test_texts)
     train_doc_acts = all_doc_sae_acts[:n_train]
     test_doc_acts  = all_doc_sae_acts[n_train: n_train + n_test]
     email_doc_acts = all_doc_sae_acts[n_train + n_test:]
-    train_token_data = per_doc_token_data[:n_train]
-    test_token_data  = per_doc_token_data[n_train: n_train + n_test]
-    email_token_data = per_doc_token_data[n_train + n_test:]
 
-    # ─── LLM Judge ────────────────────────────────────────────────────────────
-    top_feat_indices = train_doc_acts.float().mean(dim=0).topk(N_FEATURES_TO_LABEL).indices.tolist()
-    judge_cache = os.path.join(CACHE_DIR, "p1_feature_labels.json")
+    # ─── LLM Judge (depuis les fragments disques) ────────────
+    # ─── Sélection ciblée sur les features robustes du cœur gelé GemmaScope ───
+    # Au lieu de prendre l'ensemble des dimensions (qui inclurait l'extension FR), 
+    # on applique le top-k uniquement sur la plage de dimension [0:d_core]
+    mean_core_acts = train_doc_acts[:, :d_core].float().mean(dim=0)
+    top_feat_indices = mean_core_acts.topk(N_FEATURES_TO_LABEL).indices.tolist()
+
+    judge_cache = os.path.join(CACHE_DIR, "p1_dual_judge_feature_labels.json")
     if os.path.exists(judge_cache):
         with open(judge_cache, "r", encoding="utf-8") as f:
             label_map_data = json.load(f)
     else:
-        j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
-        j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+        print("  [Judge] Initialisation du Double Pipeline de Labellisation (Séquentiel)...")
+        
+        # ──────────────────────────────────────────────────────────────────────
+        # ÉTAPE 1 : GÉNÉRATION DES LABELS PAR LE 12B EXPERT
+        # ──────────────────────────────────────────────────────────────────────
+        print("  [Judge] Chargement de Gemma-3-12B-IT (Expert)...")
+        expert_tokenizer = AutoTokenizer.from_pretrained(
+            "/home/h21486/SAE/models/gemma-3-12b-it", token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+        )
+        expert_model = AutoModelForCausalLM.from_pretrained(
+            "/home/h21486/SAE/models/gemma-3-12b-it", torch_dtype=torch.bfloat16, device_map="auto",
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
-        
-        with torch.no_grad():
-            label_map_data = local_gemma_judge(
-                model=j_llm, tokenizer=j_tok, feature_indices=top_feat_indices,
-                acts=train_doc_acts, per_doc_token_data=train_token_data
+
+        temp_expert_results = {}
+        for f_idx in tqdm(top_feat_indices, desc="Gemma-3-12B Expert Annotation"):
+            pos_examples = build_causal_highlighted_examples(
+                f_idx, token_fragments_dir, offset=0, acts=train_doc_acts, top_k=6
+            )
+            if not pos_examples:
+                temp_expert_results[f_idx] = {"label": "dead_feature", "brief_description": "Aucune activation.", "pos_examples": []}
+                continue
+
+            formatted_examples = "".join([f"Exemple {i+1}: {ex}\n" for i, ex in enumerate(pos_examples)])
+            
+            prompt_expert = (
+                "Tu es un chercheur expert en interprétabilité mécaniste pour EDF R&D (SEQUOIA).\n"
+                "Analyse les activations de cette feature latente au sein du flux résiduel.\n"
+                "Les jetons déclencheurs sont entourés de << >>. L'analyse doit être strictement causale (contexte à gauche).\n\n"
+                f"<exemples_flux_causal>\n{formatted_examples}</exemples_flux_causal>\n\n"
+                "Génère un objet JSON valide contenant un label court en français (3 mots max) et une description succincte :\n"
+                '{"label": "...", "brief_description": "..."}'
             )
             
+            inputs_exp = expert_tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt_expert}], add_generation_prompt=True, return_tensors="pt"
+            ).to(expert_model.device)
+            
+            with torch.no_grad():
+                outputs_exp = expert_model.generate(input_ids=inputs_exp, max_new_tokens=128, do_sample=False)
+                resp_expert = expert_tokenizer.decode(outputs_exp[0][inputs_exp.shape[-1]:], skip_special_tokens=True)
+            
+            try:
+                json_expert = json.loads(re.search(r"\{.*\}", resp_expert, re.DOTALL).group())
+            except Exception:
+                json_expert = {"label": f"Feature_{f_idx}", "brief_description": "Échec extraction expert JSON."}
+            
+            json_expert["pos_examples"] = pos_examples
+            temp_expert_results[f_idx] = json_expert
+
+        # NETTOYAGE RADICAL DU 12B DE LA VRAM avant de charger le 4B
+        print("  [Judge] Libération de la VRAM de l'Expert 12B...")
+        del expert_model, expert_tokenizer
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # ──────────────────────────────────────────────────────────────────────
+        # ÉTAPE 2 : AUDIT ET CRITIQUE PAR LE 4B CRITIQUE
+        # ──────────────────────────────────────────────────────────────────────
+        print("  [Judge] Chargement de Gemma-3-4B-IT (Critique)...")
+        critic_tokenizer = AutoTokenizer.from_pretrained(
+            "/home/h21486/SAE/models/gemma-3-4b-it", token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+        )
+        critic_model = AutoModelForCausalLM.from_pretrained(
+            "/home/h21486/SAE/models/gemma-3-4b-it", torch_dtype=torch.bfloat16, device_map="auto",
+            token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+        ).eval()
+
+        label_map_data = {}
+        for f_idx, expert_data in tqdm(temp_expert_results.items(), desc="Gemma-3-4B Critic Evaluation"):
+            pos_examples = expert_data.pop("pos_examples", [])
+            if not pos_examples:
+                label_map_data[f_idx] = expert_data
+                label_map_data[f_idx]["score"] = 0
+                continue
+
+            formatted_examples = "".join([f"Exemple {i+1}: {ex}\n" for i, ex in enumerate(pos_examples)])
+            
+            prompt_critic = (
+                "Tu es un auditeur scientifique chargé de valider la pertinence d'une labellisation de feature SAE.\n"
+                "Voici les exemples d'activation textuels observés (jetons critiques sous << >>) :\n"
+                f"{formatted_examples}\n\n"
+                "Un premier modèle expert a proposé le label suivant :\n"
+                f"Label proposé : {expert_data.get('label')}\n"
+                f"Description proposée : {expert_data.get('brief_description')}\n\n"
+                "Évalue de manière critique si ce label décrit fidèlement et rigoureusement le point commun exclusif des jetons activés.\n"
+                "Réponds uniquement sous la forme d'un objet JSON valide contenant ta note de crédibilité scientifique (entier de 1 à 5) :\n"
+                '{"score": 5}'
+            )
+            
+            inputs_crit = critic_tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt_critic}], add_generation_prompt=True, return_tensors="pt"
+            ).to(critic_model.device)
+            
+            with torch.no_grad():
+                outputs_crit = critic_model.generate(input_ids=inputs_crit, max_new_tokens=64, do_sample=False)
+                resp_critic = critic_tokenizer.decode(outputs_crit[0][inputs_crit.shape[-1]:], skip_special_tokens=True)
+                
+            try:
+                json_critic = json.loads(re.search(r"\{.*\}", resp_critic, re.DOTALL).group())
+                score_final = json_critic.get("score", 3)
+            except Exception:
+                score_final = 3
+
+            label_map_data[f_idx] = {
+                "label": expert_data.get("label"),
+                "brief_description": expert_data.get("brief_description"),
+                "score": score_final,
+                "saved_context_examples": [ex[:150] for ex in pos_examples]
+            }
+
+        # Nettoyage final du modèle 4B
+        del critic_model, critic_tokenizer
+        gc.collect()
+        torch.cuda.empty_cache()
+
         with open(judge_cache, "w", encoding="utf-8") as f:
             json.dump(label_map_data, f, indent=2, ensure_ascii=False)
-        del j_llm, j_tok; gc.collect(); torch.cuda.empty_cache()
 
+    # Reconstruction de la table d'association globale des étiquettes du modèle cible
     label_map_p1 = {int(idx): entry.get("label", f"F{idx}") for idx, entry in label_map_data.items()}
 
-    # ─── UMAP FineWeb-2 ───────────────────────────────────────────────────────
+    # ─── Visualisations UMAP (Adaptées pour passer le répertoire de fragments) ───
     umap_res_test = analyze_with_umap(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
         filename="umap_pipeline1_llm_per_token.html",
         title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (FineWeb-2)",
-        per_doc_token_data=test_token_data, feature_labels=label_map_p1,
+        token_fragments_dir=token_fragments_dir, offset=n_train, feature_labels=label_map_p1,
     )
     if email_texts:
         analyze_with_umap(
             texts=email_texts, sae_acts=email_doc_acts, labels=email_labels,
             filename="umap_pipeline1_emails.html",
             title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (EDF Mails)",
-            per_doc_token_data=email_token_data, feature_labels=label_map_p1,
+            token_fragments_dir=token_fragments_dir, offset=n_train + n_test, feature_labels=label_map_p1,
         )
 
-    # ─── Tâche 1 : Diffing + hypothèse LLM ───────────────────────────────────
+    # ─── Tâche 1 : Dataset Diffing + Hypothèse Sémantique LLM ────────────────
     energy_mask = np.array([l == "energy" for l in train_labels])
     sports_mask  = np.array([l == "sports"  for l in train_labels])
     diff_hypothesis = "Aucun écart mesurable."
+    
     if energy_mask.sum() > 0 and sports_mask.sum() > 0:
         diff_df = diff_features(
             train_doc_acts[torch.from_numpy(energy_mask)].float(),
@@ -963,9 +1107,11 @@ def run_llm_max_pool_pipeline(
             feature_labels=label_map_p1,
         )
         diff_df.to_csv(os.path.join(SAVE_DIR, "p1_diff_energy_sports.csv"), index=False)
+        
+        # Isolation temporaire d'un LLM 4B pour générer l'hypothèse globale du diffing
         j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
         j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+            MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto",
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
         with torch.no_grad():
@@ -973,40 +1119,60 @@ def run_llm_max_pool_pipeline(
         print(f"  [Task 1] Hypothèse LLM :\n  {diff_hypothesis}\n")
         del j_llm, j_tok; gc.collect(); torch.cuda.empty_cache()
 
-    # ─── Tâche 2 : NPMI ───────────────────────────────────────────────────────
+    # ─── Tâche 2 : Corrélation Locale & NPMI Co-occurrence ───────────────────
     npmi_mat = compute_npmi(test_doc_acts)
     torch.save(npmi_mat, os.path.join(CACHE_DIR, "p1_npmi.pt"))
 
-    # ─── Tâche 3 : Targeted Clustering ───────────────────────────────────────
+    # ─── Tâche 3 : Targeted Clustering (Axe Énergie Spécifique EDF) ──────────
     targeted_clustering_by_axis(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
         feature_labels=label_map_p1, axis_query="énergie électrique"
     )
 
-    # ─── Tâche 4 : Property-Based Retrieval ──────────────────────────────────
+    # ─── Tâche 4 : Property-Based Retrieval ( Boltzmann Rank-Weighted) ───────
     results_retrieval = property_based_retrieval(
         "électrique nucléaire réseau", test_doc_acts, test_texts, label_map_p1
     )
     for rank, (doc, score) in enumerate(results_retrieval):
         print(f"    Rang {rank+1} (Boltzmann={score:.4f}) : {doc[:100]}...")
 
-    # ─── Métriques ────────────────────────────────────────────────────────────
+    # ─── Calcul des Métriques Scientifiques Globales ──────────────────────────
     silhouette = compute_silhouette(test_doc_acts, test_labels)
     l0_mean    = (test_doc_acts > 1e-6).float().sum(dim=-1).mean().item()
     dead_pct   = (test_doc_acts.sum(dim=0) == 0).float().mean().item() * 100
     
-    with torch.no_grad():
-        rho_sae = compute_rho_sae(active_sae, test_doc_acts,
-                                  n_sample=500, is_saelens=not USE_FROZEN_CORE, device=DEVICE)
+    print("  [Metrics] Échantillonnage de tokens denses pour le calcul de ρ_SAE...")
+    raw_tokens_sample = []
+    fragments_test = sorted(glob.glob(os.path.join(token_fragments_dir, "doc_*.pkl")))[n_train:n_train+n_test]
+    
+    for f_path in fragments_test:
+        with open(f_path, "rb") as f:
+            frag_data = pickle.load(f)
+        # On récupère les activations denses d'origine (on doit inverser la projection ou utiliser le cache de résidus bruts)
+        # Pour être mathématiquement exact sans overhead, on utilise le décodeur du cœur sur les features du cœur gelé
+        token_acts_core = frag_data["token_sae_acts"][:, :d_core].to(DEVICE).to(torch.bfloat16)
+        with torch.no_grad():
+            x_raw_tokens = pretrained_sae.decode(token_acts_core).cpu()
+        raw_tokens_sample.append(x_raw_tokens)
+        if sum(t.shape[0] for t in raw_tokens_sample) >= 1000:
+            break
 
-    # ─── Comparaison FR/EN (perspective slide 19) ────────────────────────────
+    if raw_tokens_sample:
+        raw_tokens_tensor = torch.cat(raw_tokens_sample, dim=0)[:1000].to(DEVICE).to(torch.bfloat16)
+        with torch.no_grad():
+            rho_sae = compute_rho_sae(active_sae, raw_tokens_tensor,
+                                      n_sample=500, is_saelens=not USE_FROZEN_CORE, device=DEVICE)
+    else:
+        rho_sae = float("nan")
+
+    # ─── Évaluation de l'Adaptation de Domaine ( slide 19 ) ──────────────────
     print("\n  [FR/EN] Comparaison FVE baseline sur sous-ensemble train...")
     with torch.no_grad():
         metrics_pretrained = compute_metrics(
-        pretrained_sae, all_doc_sae_acts[:n_train, :d_core].float(),
-        is_saelens=True, device=DEVICE
-    )
-    print(f"  FVE (prétrained, train FR) = {metrics_pretrained['FVE']:.4f} | "
+            pretrained_sae, all_doc_sae_acts[:n_train, :d_core].float(),
+            is_saelens=True, device=DEVICE
+        )
+    print(f"  FVE (pretrained, train FR) = {metrics_pretrained['FVE']:.4f} | "
           f"NMSE = {metrics_pretrained['NMSE']:.4f}")
           
     if USE_FROZEN_CORE and active_sae is not pretrained_sae:
@@ -1017,7 +1183,7 @@ def run_llm_max_pool_pipeline(
               f"NMSE = {metrics_ext['NMSE']:.4f} | "
               f"ΔFVE = {metrics_ext['FVE'] - metrics_pretrained['FVE']:+.4f}")
 
-    # ─── Downstream classification ────────────────────────────────────────────
+    # ─── Classification Aval (Sonde Logistique Downstream) ───────────────────
     print("\n  [Downstream P1] Sonde logistique sur SAE activations...")
     en_mask = torch.from_numpy(energy_mask)
     sp_mask = torch.from_numpy(sports_mask)
@@ -1033,7 +1199,7 @@ def run_llm_max_pool_pipeline(
             print(f"  [Downstream P1] WARN: Classification failed: {e}")
             clf_results = {}
     else:
-        print(f"  [Downstream P1] Insufficient samples: energy={en_mask.sum()}, sports={sp_mask.sum()}")
+        print(f"  [Downstream P1] Échantillons insuffisants pour entraîner la sonde logistique.")
         clf_results = {}
 
     return {
@@ -1045,7 +1211,6 @@ def run_llm_max_pool_pipeline(
         "clf_acc_sae": clf_results.get("acc_sae", float("nan")),
         "fve_pretrained": metrics_pretrained["FVE"],
         "_test_doc_acts": test_doc_acts,
-        "_test_token_data": test_token_data,
         "_label_map": label_map_p1,
         "_active_sae": active_sae,
     }
