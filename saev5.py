@@ -64,8 +64,6 @@ huggingface_hub.file_download.get_session = patched_get_session
 # 4. Suppression des alertes de sécurité redondantes (InsecureRequestWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-import os
-import json
 from pathlib import Path
 
 # 1. Forcer le mode offline pour les composants standards
@@ -111,9 +109,6 @@ def mocked_get_safetensors_tensor_shapes(url, headers=None, timeout=10):
         "W_dec": [d_sae, d_model],
         "B_dec": [d_model],
     }
-                
-    # Failsafe si le chemin dynamique ne correspond pas exactement
-    return {"W_enc": [2304, 16384], "b_enc": [16384], "W_dec": [16384, 2304], "b_dec": [2304]}
 
 # Injection du mock dans la librairie
 sae_loaders.get_safetensors_tensor_shapes = mocked_get_safetensors_tensor_shapes
@@ -148,8 +143,8 @@ from sae_shared import (
     steer_activations, steer_and_decode,
     load_and_clean_emails,
     FrozenCoreResidualSAE, ExtendedSAE,
-    PhraseLevelSAE, extract_f2llm_embeddings,
-    encode_documents_with_phrase_sae, load_or_train_sae,
+    PhraseLevelSAE, extract_f2llm_embeddings, get_top_activating_examples,
+    encode_documents_with_phrase_sae, load_or_train_sae, load_or_train,
     compute_sae_metrics,
     pool_embeddings_by_document
 )
@@ -980,8 +975,7 @@ def run_llm_max_pool_pipeline(
 
     # ─── Tâche 2 : NPMI ───────────────────────────────────────────────────────
     npmi_mat = compute_npmi(test_doc_acts)
-    from scipy.sparse import save_npz
-    save_npz(os.path.join(CACHE_DIR, "p1_npmi.npz"), npmi_mat)
+    torch.save(npmi_mat, os.path.join(CACHE_DIR, "p1_npmi.pt"))
 
     # ─── Tâche 3 : Targeted Clustering ───────────────────────────────────────
     targeted_clustering_by_axis(
@@ -1010,7 +1004,7 @@ def run_llm_max_pool_pipeline(
     with torch.no_grad():
         metrics_pretrained = compute_metrics(
         pretrained_sae, all_doc_sae_acts[:n_train, :d_core].float(),
-        is_saelens=False, device=DEVICE
+        is_saelens=True, device=DEVICE
     )
     print(f"  FVE (prétrained, train FR) = {metrics_pretrained['FVE']:.4f} | "
           f"NMSE = {metrics_pretrained['NMSE']:.4f}")
@@ -1048,7 +1042,7 @@ def run_llm_max_pool_pipeline(
         "n_clusters": umap_res_test["n_clusters"],
         "active_features": umap_res_test["n_active"],
         "diff_hypothesis": diff_hypothesis,
-        "clf_acc_sae": clf_results["acc_sae"],
+        "clf_acc_sae": clf_results.get("acc_sae", float("nan")),
         "fve_pretrained": metrics_pretrained["FVE"],
         "_test_doc_acts": test_doc_acts,
         "_test_token_data": test_token_data,
@@ -1082,8 +1076,9 @@ def run_f2llm_pipeline(
     print(f"  Train : {len(train_texts)} docs → {len(train_phrases)} phrases")
 
     train_phrase_emb, d_in = extract_f2llm_embeddings(
-        train_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}"),
+    train_phrases, emb_model=EMB_MODEL, matryoshka_dim=MATRYOSHKA_DIM,
+    max_length=128,
+    cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}"),
     )
 
     idx = torch.randperm(len(train_phrase_emb), generator=torch.Generator().manual_seed(SEED))
@@ -1092,8 +1087,11 @@ def run_f2llm_pipeline(
     emb_eval_split  = train_phrase_emb[idx[split:]]
 
     sae_path = os.path.join(SAVE_DIR, f"p2_sae_dim{d_in}_d{D_SAE}_k{K_SPARSE}.pt")
-    sae, history = load_or_train_sae(d_in=d_in, d_sae=D_SAE, k=K_SPARSE,
-                                      embeddings=emb_train_split, save_path=sae_path)
+    sae, history = load_or_train_sae(
+        d_in=d_in, d_sae=D_SAE, k=K_SPARSE,
+        embeddings=emb_train_split, save_path=sae_path,
+        epochs=EPOCHS, lr=LR,
+    )
     m_eval = compute_sae_metrics(sae, emb_eval_split)
     rho_sae_p2 = compute_rho_sae(sae, emb_eval_split, n_sample=500, device=DEVICE)
     del emb_train_split, emb_eval_split; gc.collect(); torch.cuda.empty_cache()
@@ -1101,9 +1099,11 @@ def run_f2llm_pipeline(
     # Test : split en phrases → encode → max-pool par doc
     test_phrases, test_p2d_list = split_into_phrases(test_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
     print(f"  Test  : {len(test_texts)} docs → {len(test_phrases)} phrases")
+    
     test_phrase_emb, _ = extract_f2llm_embeddings(
-        test_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}"),
+    test_phrases, emb_model=EMB_MODEL, matryoshka_dim=MATRYOSHKA_DIM,
+    max_length=128,
+    cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}"),
     )
     test_p2d_arr = np.array(test_p2d_list)
     doc_acts = encode_documents_with_phrase_sae(
@@ -1116,8 +1116,9 @@ def run_f2llm_pipeline(
     if email_texts:
         email_phrases, email_p2d_list = split_into_phrases(email_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
         email_phrase_emb, _ = extract_f2llm_embeddings(
-            email_phrases, max_length=128,
-            cache_path=os.path.join(CACHE_DIR, f"email_phrase_emb_dim{MATRYOSHKA_DIM}"),
+        email_phrases, emb_model=EMB_MODEL, matryoshka_dim=MATRYOSHKA_DIM,
+        max_length=128,
+        cache_path=os.path.join(CACHE_DIR, f"email_phrase_emb_dim{MATRYOSHKA_DIM}"),
         )
         email_p2d_arr = np.array(email_p2d_list)
         email_doc_acts = encode_documents_with_phrase_sae(

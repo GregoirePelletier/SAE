@@ -53,6 +53,101 @@ from src.data.keywords import (
     SUPPORT_URL_PATTERNS,
 )
 
+import json
+from typing import Tuple, List, Dict
+
+def _train_extended_sae(
+    model: nn.Module,
+    acts_train: torch.Tensor,
+    epochs: int,
+    lr: float,
+    model_name: str,
+    device: str = "cuda",
+) -> Tuple[nn.Module, Dict]:
+    N = acts_train.shape[0]
+    batch_size = int(os.environ.get("BATCH_TRAIN", "256"))
+    steps_per_ep = max(1, N // batch_size)
+    total_steps = steps_per_ep * epochs
+    warmup_steps = min(500, total_steps // 10)
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr, betas=(0.0, 0.999), eps=1e-8,
+    )
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lambda s: s / max(warmup_steps, 1) if s < warmup_steps
+        else 0.5 * (1.0 + math.cos(math.pi * (s - warmup_steps) / max(total_steps - warmup_steps, 1)))
+    )
+    history = {"nmse": [], "l0": [], "dead_frac": [], "step": []}
+    step = 0
+    model.train()
+    for epoch in range(epochs):
+        perm = torch.randperm(N)
+        for start in range(0, N - batch_size + 1, batch_size):
+            b = acts_train[perm[start: start + batch_size]].to(device).to(torch.bfloat16)
+            out = model(b)
+            optimizer.zero_grad(set_to_none=True)
+            out["normalized_mse"].backward()
+            torch.nn.utils.clip_grad_norm_(
+                [p for p in model.parameters() if p.requires_grad], 1.0
+            )
+            optimizer.step()
+            scheduler.step()
+            if hasattr(model, "normalize_decoder"):
+                model.normalize_decoder()
+            if step % 50 == 0:
+                history["nmse"].append(out["normalized_mse"].item())
+                history["l0"].append(out["l0_extra"].item())
+                history["dead_frac"].append(out["dead_frac"].item())
+                history["step"].append(step)
+            step += 1
+        print(f"  [{model_name}] Epoch {epoch+1}/{epochs} | "
+              f"NMSE={out['normalized_mse'].item():.4f} | "
+              f"L0={out['l0_extra'].item():.1f} | dead={out['dead_frac'].item():.3f}")
+    return model, history
+
+
+def load_or_train(
+    model: nn.Module,
+    model_name: str,
+    acts_train: torch.Tensor,
+    epochs: int,
+    lr: float,
+    save_dir: str = "./results/",
+    device: str = "cuda",
+) -> Tuple[nn.Module, Dict]:
+    pt_path = os.path.join(save_dir, f"{model_name.lower()}_state.pt")
+    hist_path = os.path.join(save_dir, f"{model_name.lower()}_hist.json")
+    if os.path.exists(pt_path) and os.path.exists(hist_path):
+        print(f"  [sae_shared] Restauration checkpoint : {pt_path}")
+        model.load_state_dict(torch.load(pt_path, map_location=device, weights_only=True))
+        with open(hist_path) as f:
+            history = json.load(f)
+    else:
+        model, history = _train_extended_sae(
+            model, acts_train, epochs=epochs, lr=lr,
+            model_name=model_name, device=device,
+        )
+        torch.save({k: v.cpu() for k, v in model.state_dict().items()}, pt_path)
+        with open(hist_path, "w") as f:
+            json.dump(history, f)
+        print(f"  [sae_shared] Checkpoint sauvegardé : {pt_path}")
+    return model, history
+
+def get_top_activating_examples(
+    feature_idx: int,
+    acts: torch.Tensor,
+    texts: List[str],
+    top_k: int = 10,
+) -> List[Tuple[str, float]]:
+    feat_acts = acts[:, feature_idx].float()
+    k = min(top_k, len(texts))
+    top_vals, top_idx = feat_acts.topk(k)
+    return [
+        (texts[i], top_vals[j].item())
+        for j, i in enumerate(top_idx.tolist())
+        if top_vals[j] > 1e-6
+    ]
 
 # ─── DIFFING DE RÉFÉRENCE (ALIGNÉ SUR INTERP_EMBED) ───
 
