@@ -123,6 +123,12 @@ from sae_shared import (
     load_or_train_extended_sae  # Import de la fonction d'apprentissage corrigée
 )
 
+from src.sae.judge import (
+    extract_causal_context, build_feature_examples_with_control,
+    feature_selection_by_magnitude, odd_one_out_judge, _apply_chat_and_extract,
+    local_gemma_judge,
+)
+
 from src.sae.batch import batch_topk_encode
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -141,7 +147,7 @@ if DEVICE == "cuda":
     torch.cuda.manual_seed_all(SEED)
 
 HF_TOKEN           = os.environ.get("HF_TOKEN")
-SAVE_DIR           = os.environ.get("SAVE_DIR", "./results_v7/")
+SAVE_DIR           = os.environ.get("SAVE_DIR", "./results/")
 LOCAL_DATASET_PATH = os.environ.get(
     "LOCAL_DATASET_PATH",
     "/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
@@ -233,122 +239,6 @@ def load_pretrained_sae() -> SAE:
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LLM JUDGE — ANNOTATION LOCALE CAUSALE
-# ══════════════════════════════════════════════════════════════════════════════
-
-def extract_causal_context(token_strings: list, target_idx: int, left_window: int = 50) -> str:
-    """Reconstruit le contexte de manière strictement causale (gauche)."""
-    start_idx = max(0, target_idx - left_window)
-    tokens_window = token_strings[start_idx:target_idx + 1]
-    
-    context_str = ""
-    for idx, tok in enumerate(tokens_window):
-        is_target = (idx == len(tokens_window) - 1)
-        clean_tok = tok.replace("Ġ", " ").replace(" ", " ")
-        
-        if is_target:
-            context_str += f" <<{clean_tok.strip()}>>"
-        else:
-            if clean_tok.startswith(" ") or tok.startswith("Ġ"):
-                context_str += " " + clean_tok.strip()
-            else:
-                context_str += clean_tok
-                
-    return re.sub(r'\s+', ' ', context_str).strip()
-
-
-def build_causal_highlighted_examples(f_idx: int, token_fragments_dir: str, offset: int,
-                                       acts: torch.Tensor, top_k: int = 6) -> list:
-    f_acts = acts[:, f_idx].detach().float().numpy()
-    top_doc_indices = np.argsort(f_acts)[::-1][:top_k * 4]
-    examples = []
-    for d_idx in top_doc_indices:
-        if f_acts[d_idx] <= 1e-6:
-            continue
-        
-        global_doc_idx = int(d_idx + offset)
-        fragment_path = os.path.join(token_fragments_dir, f"doc_{global_doc_idx:05d}.pkl")
-        if not os.path.exists(fragment_path):
-            continue
-            
-        with open(fragment_path, "rb") as f:
-            doc_data = pickle.load(f)
-            
-        token_acts = doc_data["token_sae_acts"][:, f_idx].numpy()
-        max_act = token_acts.max()
-        if max_act <= 1e-6:
-            continue
-            
-        target_token_idx = int(token_acts.argmax())
-        if target_token_idx == 0 and max_act == token_acts.min():
-            continue
-            
-        examples.append(extract_causal_context(doc_data["token_strings"], target_token_idx))
-        if len(examples) >= top_k:
-            break
-    return examples
-
-
-def local_gemma_judge(
-    model,
-    tokenizer,
-    feature_indices: list,
-    acts: torch.Tensor,
-    texts: list,
-    top_k: int = 5,
-) -> dict:
-    """
-    Labellise de manière causale et robuste les concepts du Phrase-Level SAE
-    pour éviter les plantages (NameError).
-    """
-    print("  [Judge P2] Labellisation locale avec Gemma...")
-    model.eval()
-    results = {}
-    acts_np = acts.detach().cpu().numpy()
-    
-    for f_idx in feature_indices:
-        f_acts = acts_np[:, f_idx]
-        top_doc_ids = np.argsort(f_acts)[::-1][:top_k * 2]
-        pos_examples = []
-        
-        for d_id in top_doc_ids:
-            if f_acts[d_id] <= 1e-6:
-                continue
-            pos_examples.append(texts[d_id][:300])
-            if len(pos_examples) >= top_k:
-                break
-                
-        if not pos_examples:
-            results[f_idx] = {"label": f"Concept_{f_idx}", "brief_description": "Non activé."}
-            continue
-            
-        formatted_examples = "".join([f"Exemple {i+1}: {ex}\n" for i, ex in enumerate(pos_examples)])
-        prompt = (
-            "Tu es un chercheur expert en interprétabilité mécaniste pour EDF R&D.\n"
-            "Analyse le concept sémantique commun à ces exemples textuels :\n\n"
-            f"<exemples>\n{formatted_examples}</exemples>\n\n"
-            "Génère un objet JSON valide contenant un label court en français (3 mots max) et une description succincte :\n"
-            '{"label": "...", "brief_description": "..."}'
-        )
-        
-        inputs = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}], add_generation_prompt=True, return_tensors="pt"
-        ).to(model.device)
-        
-        with torch.no_grad():
-            outputs = model.generate(input_ids=inputs, max_new_tokens=128, do_sample=False)
-            response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
-            
-        try:
-            json_data = json.loads(re.search(r"\{.*\}", response, re.DOTALL).group())
-        except Exception:
-            json_data = {"label": f"Concept_{f_idx}", "brief_description": "Échec d'extraction JSON."}
-            
-        results[f_idx] = json_data
-        
-    return results
-
-# ══════════════════════════════════════════════════════════════════════════════
 # PHRASE-LEVEL SAE HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -414,10 +304,13 @@ def generate_llm_diff_hypothesis(
         f"Features SAE les plus discriminantes :\n{chr(10).join(features_desc)}\n\n"
         "Hypothèse globale scientifique (français, 2–3 phrases) sur la divergence sémantique."
     )
-    inputs = tokenizer.apply_chat_template(
-        [{"role": "user", "content": prompt}],
-        add_generation_prompt=True, return_tensors="pt"
-    ).to(model.device)
+    inputs = _apply_chat_and_extract(
+    tokenizer, 
+    [{"role": "user", "content": prompt}], 
+    device=model.device, 
+    add_generation_prompt=True, 
+    return_tensors="pt"
+    )
     with torch.no_grad():
         outputs = model.generate(input_ids=inputs, max_new_tokens=256, do_sample=False)
         response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
@@ -558,6 +451,10 @@ def analyze_with_umap(
         )
         cluster_signatures[c] = sig or "Aucune signature"
 
+    # Une couleur par rang de feature (top-1, top-2, top-3, ...) pour distinguer
+    # visuellement plusieurs mots-déclencheurs différents dans le même hover.
+    FEATURE_COLORS = ["#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e"]
+
     custom_hover, top_feats_html, sig_col = [], [], []
     for _, row in df.iterrows():
         i = int(row["doc_idx"])
@@ -567,8 +464,7 @@ def analyze_with_umap(
         r_acts = sae_acts[i]
         top_vals, top_ids = r_acts.topk(min(3, r_acts.shape[0]))
         feats_html = []
-        best_feat = top_ids[0].item() if top_vals[0] > 1e-6 else -1
-        
+
         td = None
         if token_fragments_dir:
             fragment_path = os.path.join(token_fragments_dir, f"doc_{int(i + offset):05d}.pkl")
@@ -604,14 +500,42 @@ def analyze_with_umap(
             
         top_feats_html.append("<br>".join(feats_html) or "<i>Aucune feature active</i>")
 
-        if best_feat != -1 and td:
-            acts_arr = td["token_sae_acts"][:, best_feat].numpy()
-            raw_text = extract_causal_context(td["token_strings"], int(acts_arr.argmax()))
-        else:
-            raw_text = texts[i][:400]
+        # Contexte : un mot différent par feature top-3, chacun surligné dans sa
+        # propre couleur, et dédupliqué sur le mot cible (évite de toujours
+        # retomber sur le même mot — ex. la salutation en tête de mail — quand
+        # plusieurs features partagent leur token le plus activant).
+        context_lines = []
+        if td:
+            seen_words = set()
+            for j in range(len(top_ids)):
+                v = top_vals[j].item()
+                if v <= 1e-6:
+                    break
+                f_idx = top_ids[j].item()
+                acts_arr = td["token_sae_acts"][:, f_idx].numpy()
+                tgt_idx = int(acts_arr.argmax())
+                if acts_arr[tgt_idx] <= 1e-6:
+                    continue
+                ctx = extract_causal_context(td["token_strings"], tgt_idx)
+                m = re.search(r"<<(.+?)>>", ctx)
+                word_key = m.group(1).strip().lower() if m else ctx.strip().lower()
+                if word_key in seen_words:
+                    continue
+                seen_words.add(word_key)
 
-        wrapped = "<br>".join(textwrap.wrap(raw_text, width=80))
-        final_html = wrapped.replace("<<", "<b style='color:#d62728;background:#ffcccc'>").replace(">>", "</b>")
+                color = FEATURE_COLORS[j % len(FEATURE_COLORS)]
+                f_label = feature_labels.get(f_idx, f"F{f_idx}") if feature_labels else f"F{f_idx}"
+                colored = ctx.replace("<<", f"<b style='color:{color};background:#ffeeba'>").replace(">>", "</b>")
+                wrapped = "<br>".join(textwrap.wrap(colored, width=80))
+                context_lines.append(
+                    f"<span style='font-size:11px;color:{color}'>[{f_label}]</span> {wrapped}"
+                )
+
+        if context_lines:
+            final_html = "<br><br>".join(context_lines)
+        else:
+            wrapped = "<br>".join(textwrap.wrap(texts[i][:400], width=80))
+            final_html = wrapped.replace("<<", "<b style='color:#d62728;background:#ffcccc'>").replace(">>", "</b>")
         custom_hover.append(final_html)
 
     df["text_preview"] = custom_hover
@@ -624,8 +548,19 @@ def analyze_with_umap(
     except Exception:
         df.to_csv(out_html.replace(".html", "_coords.csv"), index=False)
 
-    fig = px.scatter(df, x="x", y="y", color="cluster_id",
-                     category_orders={"cluster_id": sorted(df["cluster_id"].unique())})
+    # IMPORTANT : custom_data doit être passé ICI, dans px.scatter, et non via
+    # fig.update_traces(customdata=...) après coup. px.scatter découpe déjà x/y
+    # par cluster en plusieurs traces distinctes (une par couleur) ; si on
+    # rattache le customdata *après*, via update_traces sans sélecteur de
+    # trace, Plotly rediffuse le même array complet (toutes lignes de df) sur
+    # CHAQUE trace, alors que chaque trace n'a qu'un sous-ensemble de points.
+    # Le hover affichait alors le texte/label/signature d'un document au
+    # hasard (mauvais index) et non celui du point réellement survolé.
+    fig = px.scatter(
+        df, x="x", y="y", color="cluster_id",
+        category_orders={"cluster_id": sorted(df["cluster_id"].unique())},
+        custom_data=["text_preview", "top_features", "cluster_id", "label", "cluster_signature"],
+    )
     fig.update_traces(
         marker=dict(size=7, opacity=0.8),
         hovertemplate=(
@@ -634,11 +569,6 @@ def analyze_with_umap(
             "<b>Top Features :</b><br>%{customdata[1]}<br><br>"
             "<b>Contexte :</b><br>%{customdata[0]}<extra></extra>"
         ),
-        customdata=np.stack((
-            df["text_preview"].values, df["top_features"].values,
-            df["cluster_id"].values, df["label"].values,
-            df["cluster_signature"].values,
-        ), axis=-1),
     )
     fig.update_layout(
         title=f"{title}<br><sub>{N_DOCS} docs | {n_active} features actives</sub>",
@@ -901,134 +831,47 @@ def run_llm_max_pool_pipeline(
     test_doc_acts  = all_doc_sae_acts[n_train: n_train + n_test]
     email_doc_acts = all_doc_sae_acts[n_train + n_test:]
 
-    freq_core_acts = (train_doc_acts[:, :d_core] > 1e-6).float().mean(dim=0)
-    top_feat_indices = freq_core_acts.topk(N_FEATURES_TO_LABEL).indices.tolist()
-
-    judge_cache = os.path.join(CACHE_DIR, "p1_dual_judge_feature_labels.json")
+    # ─── LLM JUDGE P1 (PROTOCOL ODD-ONE-OUT & RHO_INTERP) ─────────────────
+    judge_cache = os.path.join(CACHE_DIR, "p1_saebench_judge_labels.json")
+    
     if os.path.exists(judge_cache):
+        print(f"  [P1 Judge] Restauration des labels depuis le cache : {judge_cache}")
         with open(judge_cache, "r", encoding="utf-8") as f:
             label_map_data = json.load(f)
     else:
-        print("  [Judge] Initialisation du Double Pipeline de Labellisation (Séquentiel)...")
+        print("  [P1 Judge] Sélection des features par magnitude token-level...")
+        top_feat_indices = feature_selection_by_magnitude(
+            token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL
+        )
         
-        # ÉTAPE 1 : GÉNÉRATION DES LABELS PAR LE 12B EXPERT
-        print("  [Judge] Chargement de Gemma-3-12B-IT (Expert)...")
+        print(f"  [P1 Judge] Chargement temporaire de Gemma-3 pour labellisation ({N_FEATURES_TO_LABEL} fts)...")
         expert_tokenizer = AutoTokenizer.from_pretrained(
-            "/home/h21486/SAE/models/gemma-3-12b-it", token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+            MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         )
         expert_model = AutoModelForCausalLM.from_pretrained(
-            "/home/h21486/SAE/models/gemma-3-12b-it", torch_dtype=torch.bfloat16, device_map="auto",
+            MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto",
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
-
-        temp_expert_results = {}
-        for f_idx in tqdm(top_feat_indices, desc="Gemma-3-12B Expert Annotation"):
-            pos_examples = build_causal_highlighted_examples(
-                f_idx, token_fragments_dir, offset=0, acts=train_doc_acts, top_k=6
-            )
-            if not pos_examples:
-                temp_expert_results[f_idx] = {"label": "dead_feature", "brief_description": "Aucune activation.", "pos_examples": []}
-                continue
-
-            formatted_examples = "".join([f"Exemple {i+1}: {ex}\n" for i, ex in enumerate(pos_examples)])
-            
-            prompt_expert = (
-                "Tu es un chercheur expert en interprétabilité mécaniste pour EDF R&D (SEQUOIA).\n"
-                "Analyse les activations de cette feature latente au sein du flux résiduel.\n"
-                "Les jetons déclencheurs sont entourés de << >>. L'analyse doit être strictement causale (contexte à gauche).\n\n"
-                f"<exemples_flux_causal>\n{formatted_examples}</exemples_flux_causal>\n\n"
-                "Génère un objet JSON valide contenant un label court en français (3 mots max) et une description succincte :\n"
-                '{"label": "...", "brief_description": "..."}'
-            )
-            
-            inputs_exp = expert_tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt_expert}], add_generation_prompt=True, return_tensors="pt"
-            )
-            if hasattr(inputs_exp, "input_ids"):
-                inputs_exp = inputs_exp.input_ids
-            inputs_exp = inputs_exp.to(expert_model.device)
-
-            with torch.no_grad():
-                outputs_exp = expert_model.generate(input_ids=inputs_exp, max_new_tokens=128, do_sample=False)
-                resp_expert = expert_tokenizer.decode(outputs_exp[0][inputs_exp.shape[-1]:], skip_special_tokens=True)
-            
-            try:
-                json_expert = json.loads(re.search(r"\{.*\}", resp_expert, re.DOTALL).group())
-            except Exception:
-                json_expert = {"label": f"Feature_{f_idx}", "brief_description": "Échec extraction expert JSON."}
-            
-            json_expert["pos_examples"] = pos_examples
-            temp_expert_results[f_idx] = json_expert
-
-        print("  [Judge] Libération de la VRAM de l'Expert 12B...")
+        
+        # Exécution du protocole complet (Feature detection + Labeling + Évaluation continue)
+        label_map_data = odd_one_out_judge(
+            model=expert_model, tokenizer=expert_tokenizer,
+            feature_indices=top_feat_indices,
+            token_fragments_dir=token_fragments_dir,
+            acts=train_doc_acts, offset=0,
+        )
+        
+        # Nettoyage strict de la VRAM immédiatement après utilisation
+        print("  [P1 Judge] Libération de la VRAM du LLM Judge...")
         del expert_model, expert_tokenizer
         gc.collect()
         torch.cuda.empty_cache()
-
-        # ÉTAPE 2 : AUDIT ET CRITIQUE PAR LE 4B CRITIQUE
-        print("  [Judge] Chargement de Gemma-3-4B-IT (Critique)...")
-        critic_tokenizer = AutoTokenizer.from_pretrained(
-            "/home/h21486/SAE/models/gemma-3-4b-it", token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-        )
-        critic_model = AutoModelForCausalLM.from_pretrained(
-            "/home/h21486/SAE/models/gemma-3-4b-it", torch_dtype=torch.bfloat16, device_map="auto",
-            token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-        ).eval()
-
-        label_map_data = {}
-        for f_idx, expert_data in tqdm(temp_expert_results.items(), desc="Gemma-3-4B Critic Evaluation"):
-            pos_examples = expert_data.pop("pos_examples", [])
-            if not pos_examples:
-                label_map_data[f_idx] = expert_data
-                label_map_data[f_idx]["score"] = 0
-                continue
-
-            formatted_examples = "".join([f"Exemple {i+1}: {ex}\n" for i, ex in enumerate(pos_examples)])
-            
-            prompt_critic = (
-                "Tu es un auditeur scientifique chargé de valider la pertinence d'une labellisation de feature SAE.\n"
-                "Voici les exemples d'activation textuels observés (jetons critiques sous << >>) :\n"
-                f"{formatted_examples}\n\n"
-                "Un premier modèle expert a proposé le label suivant :\n"
-                f"Label proposé : {expert_data.get('label')}\n"
-                f"Description proposée : {expert_data.get('brief_description')}\n\n"
-                "Évalue de manière critique si ce label décrit fidèlement et rigoureusement le point commun exclusif des jetons activés.\n"
-                "Réponds uniquement sous la forme d'un objet JSON valide contenant ta note de crédibilité scientifique (entier de 1 à 5) :\n"
-                '{"score": 5}'
-            )
-            
-            inputs_crit = critic_tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt_critic}], add_generation_prompt=True, return_tensors="pt"
-            )
-            if hasattr(inputs_crit, "input_ids"):
-                inputs_crit = inputs_crit.input_ids
-            inputs_crit = inputs_crit.to(critic_model.device)
-
-            with torch.no_grad():
-                outputs_crit = critic_model.generate(input_ids=inputs_crit, max_new_tokens=64, do_sample=False)
-                resp_critic = critic_tokenizer.decode(outputs_crit[0][inputs_crit.shape[-1]:], skip_special_tokens=True)   
-            
-            try:
-                json_critic = json.loads(re.search(r"\{.*\}", resp_critic, re.DOTALL).group())
-                score_final = json_critic.get("score", 3)
-            except Exception:
-                score_final = 3
-
-            label_map_data[f_idx] = {
-                "label": expert_data.get("label"),
-                "brief_description": expert_data.get("brief_description"),
-                "score": score_final,
-                "saved_context_examples": [ex[:150] for ex in pos_examples]
-            }
-
-        del critic_model, critic_tokenizer
-        gc.collect()
-        torch.cuda.empty_cache()
-
+        
         with open(judge_cache, "w", encoding="utf-8") as f:
             json.dump(label_map_data, f, indent=2, ensure_ascii=False)
 
-    label_map_p1 = {int(idx): entry.get("label", f"F{idx}") for idx, entry in label_map_data.items()}
+    # Reconstruction du dictionnaire de mapping pour l'UMAP et les visualisations
+    label_map_p1 = {int(k): v.get("label", f"F{k}") for k, v in label_map_data.items()}
 
     umap_res_test = analyze_with_umap(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
@@ -1243,10 +1086,16 @@ def run_f2llm_pipeline(
         j_llm = AutoModelForCausalLM.from_pretrained(
             MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE, local_files_only=True
         ).eval()
-        # FIX : Résolution de l'erreur NameError grâce à la définition globale
+        # FIX 9 : local_gemma_judge attend les activations et textes au niveau PHRASE
+        # (pas au niveau document max-poolé) — ce sont les phrases individuelles
+        # (test_phrases / test_phrase_emb) qui servent d'exemples au juge LLM.
+        sae.eval()
+        with torch.no_grad():
+            test_phrase_acts = sae.encode(test_phrase_emb.to(DEVICE)).cpu()
         feature_labels_p2 = local_gemma_judge(
             model=j_llm, tokenizer=j_tok, feature_indices=top_feat_indices,
-            acts=doc_acts, texts=test_texts,
+            phrase_texts=test_phrases, phrase_acts=test_phrase_acts,
+            phrase_to_doc=test_p2d_arr,
         )
         del j_llm, j_tok; gc.collect(); torch.cuda.empty_cache()
         with open(judge_cache, "w", encoding="utf-8") as f:
@@ -1448,7 +1297,7 @@ if __name__ == "__main__":
     ]
     print(pd.DataFrame(rows).to_string(index=False))
 
-    with open(os.path.join(SAVE_DIR, "results_v7.json"), "w") as f:
+    with open(os.path.join(SAVE_DIR, "results.json"), "w") as f:
         json.dump(
             {
                 "P1_Gemma3_SAE":    {k: v for k, v in results_p1.items() if not k.startswith("_")},

@@ -1,4 +1,5 @@
 import glob
+import hashlib
 import json
 import os
 import re
@@ -33,6 +34,10 @@ def is_expressive_or_support(text: str, url: str = "") -> bool:
     return source_match or (keyword_count >= 2)
 
 
+def _chunk_hash(chunk: str) -> str:
+    return hashlib.md5(chunk.strip().lower().encode("utf-8")).hexdigest()
+
+
 def prepare_domain_dataset(
     keywords: List[str],
     domain_name: str,
@@ -49,6 +54,14 @@ def prepare_domain_dataset(
     texts = []
     print(f"  [sae_shared] Recherche '{domain_name}' (cible={n_target} chunks)...")
 
+    # Déduplication : un même document (même URL, ou même contenu réapparaissant
+    # sous une autre URL) peut exister plusieurs fois dans un dump FineWeb-2 /
+    # Wikipedia (crawls répétés). Sans ce filtre, ses chunks sont ré-ajoutés à
+    # l'identique à chaque occurrence, ce qui pollue ensuite les exemples
+    # positifs présentés au juge LLM (le même passage y apparaît x2/x3).
+    seen_urls = set()
+    seen_chunk_hashes = set()
+
     is_support_domain = domain_name.lower() == "support"
     if use_fineweb2 and local_dataset_path and os.path.exists(local_dataset_path):
         try:
@@ -62,14 +75,28 @@ def prepare_domain_dataset(
                 text = ex.get("text", "")
                 if not text:
                     continue
-                candidate = keyword_match(text, keywords) or (url_patterns and url_match(ex.get("url", ""), url_patterns))
+                url = ex.get("url", "") or ""
+                if url and url in seen_urls:
+                    continue
+                candidate = keyword_match(text, keywords) or (url_patterns and url_match(url, url_patterns))
                 if is_support_domain and not candidate:
-                    candidate = is_expressive_or_support(text, ex.get("url", ""))
+                    candidate = is_expressive_or_support(text, url)
                 if not candidate:
                     continue
                 txt = text.replace("\n", " ").strip()
                 chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
-                texts.extend(c for c in chunks if len(c) > 100)
+                added_any = False
+                for c in chunks:
+                    if len(c) <= 100:
+                        continue
+                    h = _chunk_hash(c)
+                    if h in seen_chunk_hashes:
+                        continue
+                    seen_chunk_hashes.add(h)
+                    texts.append(c)
+                    added_any = True
+                if url and added_any:
+                    seen_urls.add(url)
                 if len(texts) >= n_target:
                     break
             print(f"    -> FineWeb-2 local : {len(texts)} chunks")
@@ -91,14 +118,28 @@ def prepare_domain_dataset(
             text = ex.get("text", "")
             if not text:
                 continue
-            candidate = keyword_match(text, keywords) or (url_patterns and url_match(ex.get("url", ""), url_patterns))
+            url = ex.get("url", "") or ""
+            if url and url in seen_urls:
+                continue
+            candidate = keyword_match(text, keywords) or (url_patterns and url_match(url, url_patterns))
             if is_support_domain and not candidate:
-                candidate = is_expressive_or_support(text, ex.get("url", ""))
+                candidate = is_expressive_or_support(text, url)
             if not candidate:
                 continue
             txt = text.replace("\n", " ").strip()
             chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
-            texts.extend(c for c in chunks if len(c) > 100)
+            added_any = False
+            for c in chunks:
+                if len(c) <= 100:
+                    continue
+                h = _chunk_hash(c)
+                if h in seen_chunk_hashes:
+                    continue
+                seen_chunk_hashes.add(h)
+                texts.append(c)
+                added_any = True
+            if url and added_any:
+                seen_urls.add(url)
             if len(texts) >= n_target:
                 break
 
