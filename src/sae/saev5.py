@@ -130,6 +130,16 @@ from src.sae.judge import (
 )
 
 from src.sae.batch import batch_topk_encode
+try:
+    from src.storage.fragment_store import (
+        save_fragment, load_fragment, fragment_exists, list_fragment_ids,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+    )
+except ImportError:
+    from fragment_store import (
+        save_fragment, load_fragment, fragment_exists, list_fragment_ids,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -467,10 +477,8 @@ def analyze_with_umap(
 
         td = None
         if token_fragments_dir:
-            fragment_path = os.path.join(token_fragments_dir, f"doc_{int(i + offset):05d}.pkl")
-            if os.path.exists(fragment_path):
-                with open(fragment_path, "rb") as f:
-                    td = pickle.load(f)
+            if fragment_exists(token_fragments_dir, int(i + offset)):
+                td = load_fragment(token_fragments_dir, int(i + offset))
 
         for j in range(len(top_ids)):
             v = top_vals[j].item()
@@ -481,7 +489,7 @@ def analyze_with_umap(
             tok_str = ""
             
             if td:
-                acts_arr = td["token_sae_acts"][:, f_idx].numpy()
+                acts_arr = feature_column(td, f_idx)
                 high = np.where(acts_arr > acts_arr.max() * 0.65)[0]
                 detected = list(dict.fromkeys([
                     td["token_strings"][t].replace("Ġ", " ").replace("▁", " ").strip()
@@ -512,7 +520,7 @@ def analyze_with_umap(
                 if v <= 1e-6:
                     break
                 f_idx = top_ids[j].item()
-                acts_arr = td["token_sae_acts"][:, f_idx].numpy()
+                acts_arr = feature_column(td, f_idx)
                 tgt_idx = int(acts_arr.argmax())
                 if acts_arr[tgt_idx] <= 1e-6:
                     continue
@@ -622,8 +630,8 @@ def run_llm_max_pool_pipeline(
     _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_path)
     
     if os.path.exists(cache_acts_path) and os.path.exists(token_fragments_dir):
-        fragments = sorted(glob.glob(os.path.join(token_fragments_dir, "doc_*.pkl")))
-        if len(fragments) == len(all_texts):
+        fragment_ids = list_fragment_ids(token_fragments_dir)
+        if len(fragment_ids) == len(all_texts):
             print("  [P1] Restauration du cache (activations documents et fragments disques)...")
             all_doc_sae_acts = torch.load(cache_acts_path, map_location="cpu", weights_only=True)
             _need_extraction = False
@@ -632,9 +640,8 @@ def run_llm_max_pool_pipeline(
                 print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
                 raw_residuals_list = []
                 n_collected = 0
-                for f_path in fragments[:n_train]:
-                    with open(f_path, "rb") as f:
-                        frag = pickle.load(f)
+                for _fid in fragment_ids[:n_train]:
+                    frag = load_fragment(token_fragments_dir, _fid)
                     if "raw_acts" in frag:
                         raw_residuals_list.append(frag["raw_acts"])
                         n_collected += frag["raw_acts"].shape[0]
@@ -697,28 +704,23 @@ def run_llm_max_pool_pipeline(
 
                     token_sae_acts = pretrained_sae.encode(filtered)
                     
+                    # Stockage SPARSE (CSR) : ~250 Ko/doc au lieu de ~400 Mo dense a width 262k.
+                    d_total_frag = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
                     if USE_FROZEN_CORE:
-                        T = token_sae_acts.shape[0]
-                        extra_zeros = torch.zeros((T, D_EXTRA), dtype=token_sae_acts.dtype, device=token_sae_acts.device)
-                        token_sae_acts_padded = torch.cat([token_sae_acts, extra_zeros], dim=-1)
-                        doc_sae_vec = token_sae_acts_padded.max(dim=0).values
-                        
-                        fragment_payload = {
-                            "token_strings": tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                            "token_sae_acts": token_sae_acts_padded.float().cpu(),
-                            "raw_acts": filtered.bfloat16().cpu()
-                        }
+                        doc_sae_vec = torch.cat([
+                            token_sae_acts.max(dim=0).values,
+                            torch.zeros(D_EXTRA, dtype=token_sae_acts.dtype, device=token_sae_acts.device),
+                        ])
                     else:
                         doc_sae_vec = token_sae_acts.max(dim=0).values
-                        fragment_payload = {
-                            "token_strings": tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                            "token_sae_acts": token_sae_acts.float().cpu(),
-                            "raw_acts": filtered.bfloat16().cpu()
-                        }
 
-                    fragment_path = os.path.join(token_fragments_dir, f"doc_{doc_global_idx:05d}.pkl")
-                    with open(fragment_path, "wb") as f:
-                        pickle.dump(fragment_payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    save_fragment(
+                        token_fragments_dir, doc_global_idx,
+                        token_strings=tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
+                        acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_total_frag
+                        d_total=d_total_frag,
+                        raw_acts=filtered,
+                    )
 
                     all_doc_sae_acts.append(doc_sae_vec.cpu())
 
@@ -793,32 +795,24 @@ def run_llm_max_pool_pipeline(
             if os.path.exists(cache_acts_ext):
                 all_doc_sae_acts = torch.load(cache_acts_ext, map_location="cpu", weights_only=True)
             else:
-                print("  [P1] Re-encodage et mise à jour des fragments d'ExtendedSAE (Calcul Exact)...")
+                print("  [P1] Re-encodage ExtendedSAE (fragments sparse, O(nnz))...")
                 ext_sae.eval()
                 new_acts = []
                 with torch.no_grad():
-                    for i in tqdm(range(len(all_texts)), desc="Mise à jour ExtendedSAE fragments disques"):
-                        fragment_path = os.path.join(token_fragments_dir, f"doc_{i:05d}.pkl")
-                        with open(fragment_path, "rb") as f:
-                            frag = pickle.load(f)
-                        
+                    for i in tqdm(range(len(all_texts)), desc="Re-encodage ExtendedSAE (sparse)"):
+                        frag = load_fragment(token_fragments_dir, i)
                         raw_acts = frag["raw_acts"].to(DEVICE).to(torch.bfloat16)
-                        dense_token_acts = frag["token_sae_acts"].to(DEVICE).to(torch.bfloat16)
-                        
-                        core_out_tokens = pretrained_sae.decode(dense_token_acts[:, :d_core])
+                        # x_core reconstruit sans densifier [T, d_core] :
+                        core_out_tokens = decode_core_sparse(frag, pretrained_sae, d_core, device=DEVICE)
                         residual_tokens = raw_acts - core_out_tokens
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
-                        
-                        frag["token_sae_acts"] = torch.cat([dense_token_acts[:, :d_core], token_extra_acts], dim=-1).float().cpu()
-                        
-                        if "raw_acts" in frag:
-                            del frag["raw_acts"]
-                            
-                        with open(fragment_path, "wb") as f:
-                            pickle.dump(frag, f, protocol=pickle.HIGHEST_PROTOCOL)
-                            
-                        doc_sae_vec = frag["token_sae_acts"].max(dim=0).values
-                        new_acts.append(doc_sae_vec)
+
+                        csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
+                        save_fragment(token_fragments_dir, i,
+                                      token_strings=frag["token_strings"],
+                                      csr=csr, d_total=d_core + D_EXTRA)  # raw_acts non repassé -> purgé
+                        new_acts.append(doc_maxpool({"rowptr": csr[0], "cols": csr[1],
+                                                     "vals": csr[2], "shape": csr[3]}))
 
                 all_doc_sae_acts = torch.stack(new_acts)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
@@ -928,14 +922,12 @@ def run_llm_max_pool_pipeline(
     
     print("  [Metrics] Échantillonnage de tokens denses pour le calcul de ρ_SAE...")
     raw_tokens_sample = []
-    fragments_test = sorted(glob.glob(os.path.join(token_fragments_dir, "doc_*.pkl")))[n_train:n_train+n_test]
-    
-    for f_path in fragments_test:
-        with open(f_path, "rb") as f:
-            frag_data = pickle.load(f)
-        token_acts_core = frag_data["token_sae_acts"][:, :d_core].to(DEVICE).to(torch.bfloat16)
+    fragment_ids_test = list_fragment_ids(token_fragments_dir)[n_train:n_train+n_test]
+
+    for _fid in fragment_ids_test:
+        frag_data = load_fragment(token_fragments_dir, _fid)
         with torch.no_grad():
-            x_raw_tokens = pretrained_sae.decode(token_acts_core).cpu()
+            x_raw_tokens = decode_core_sparse(frag_data, pretrained_sae, d_core, device=DEVICE).cpu()
         raw_tokens_sample.append(x_raw_tokens)
         if sum(t.shape[0] for t in raw_tokens_sample) >= 1000:
             break
@@ -950,12 +942,10 @@ def run_llm_max_pool_pipeline(
 
     print("\n  [FR/EN] Comparaison FVE baseline sur un échantillon de tokens...")
     token_sample_list = []
-    for f_path in fragments_test[:20]:
-        with open(f_path, "rb") as f:
-            frag_data = pickle.load(f)
-        token_acts_core = frag_data["token_sae_acts"][:, :d_core].to(DEVICE).to(torch.bfloat16)
+    for _fid in fragment_ids_test[:20]:
+        frag_data = load_fragment(token_fragments_dir, _fid)
         with torch.no_grad():
-            x_raw = pretrained_sae.decode(token_acts_core).cpu()
+            x_raw = decode_core_sparse(frag_data, pretrained_sae, d_core, device=DEVICE).cpu()
         token_sample_list.append(x_raw)
     
     if token_sample_list:

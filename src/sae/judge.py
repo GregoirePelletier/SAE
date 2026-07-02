@@ -19,6 +19,14 @@ import re
 import os
 import json
 import pickle
+try:
+    from src.storage.fragment_store import (
+        load_fragment, fragment_exists, feature_column, sum_columns,
+    )
+except ImportError:
+    from fragment_store import (
+        load_fragment, fragment_exists, feature_column, sum_columns,
+    )
 import random
 import numpy as np
 import torch
@@ -111,12 +119,10 @@ def build_feature_examples_with_control(
     for d_idx in sorted_desc:
         if f_acts[d_idx] <= threshold_pos:
             break
-        frag_path = os.path.join(token_fragments_dir, f"doc_{int(d_idx + offset):05d}.pkl")
-        if not os.path.exists(frag_path):
+        if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
-        with open(frag_path, "rb") as fh:
-            doc_data = pickle.load(fh)
-        token_acts = doc_data["token_sae_acts"][:, f_idx].numpy()
+        doc_data = load_fragment(token_fragments_dir, int(d_idx + offset))
+        token_acts = feature_column(doc_data, f_idx)
         max_act = token_acts.max()
         if max_act <= threshold_pos:
             continue
@@ -136,11 +142,9 @@ def build_feature_examples_with_control(
     random.shuffle(neg_pool)
     neg_example = None
     for d_idx in neg_pool[:20]:
-        frag_path = os.path.join(token_fragments_dir, f"doc_{int(d_idx + offset):05d}.pkl")
-        if not os.path.exists(frag_path):
+        if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
-        with open(frag_path, "rb") as fh:
-            doc_data = pickle.load(fh)
+        doc_data = load_fragment(token_fragments_dir, int(d_idx + offset))
         toks = doc_data["token_strings"]
         mid = len(toks) // 2
         neg_example = extract_causal_context(toks, mid)
@@ -170,14 +174,11 @@ def feature_selection_by_magnitude(
     acc = np.zeros(d_sae, dtype=np.float64)
     n_tokens = 0
     for d_idx in sampled:
-        frag_path = os.path.join(token_fragments_dir, f"doc_{d_idx:05d}.pkl")
-        if not os.path.exists(frag_path):
+        if not fragment_exists(token_fragments_dir, d_idx):
             continue
-        with open(frag_path, "rb") as fh:
-            frag = pickle.load(fh)
-        tok_acts = frag["token_sae_acts"].float().numpy()  # (T, d_sae)
-        acc += tok_acts.sum(axis=0)
-        n_tokens += tok_acts.shape[0]
+        frag = load_fragment(token_fragments_dir, d_idx)
+        acc += sum_columns(frag)[:d_sae]
+        n_tokens += frag["shape"][0]
     if n_tokens == 0:
         return list(range(n_features))
     mean_mag = acc / n_tokens

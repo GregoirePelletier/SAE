@@ -123,7 +123,7 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
         return emb, emb.shape[1]
 
     print(f"  [Phrase] Extraction embeddings avec F2LLM-v2-80M ({len(texts)} phrases)...")
-    from saev5 import EMB_MODEL, MATRYOSHKA_DIM
+    from SAE.src.saev5 import EMB_MODEL, MATRYOSHKA_DIM
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
     model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEFAULT_DEVICE).eval()
 
