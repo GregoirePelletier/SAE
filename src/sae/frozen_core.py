@@ -1,6 +1,10 @@
 """
-frozen_core.py — Architecture FrozenCoreResidualSAE et ExtendedSAE.
-Gestion rigoureuse de la précision : training/inférence en bf16, export final en float32.
+frozen_core.py — v9. FrozenCoreResidualSAE / ExtendedSAE avec BatchTopKEncoder
+(seuil θ persistant) et AuxK sur la branche extra.
+
+Invariants préservés : clés de sortie du forward, encode/decode concaténés
+[core | extra], core gelé, normalize_decoder, export fp32, init PCA.
+Ajouts : "aux_loss" dans les sorties ; steps_since_active_extra (buffer).
 """
 
 import torch
@@ -9,38 +13,37 @@ import torch.nn.functional as F
 from sae_lens import SAE
 
 try:
-    from src.sae.batch import batch_topk_encode
+    from src.sae.batch import BatchTopKEncoder
 except ImportError:
-    try:
-        from batch import batch_topk_encode
-    except ImportError:
-        # Fallback local minimal si l'import échoue
-        def batch_topk_encode(pre_acts, k, training):
-            if training:
-                from sae_lens.saes.batchtopk_sae import BatchTopK
-                return BatchTopK(k=float(k))(pre_acts)
-            k_clamp = min(k, pre_acts.shape[-1])
-            topk_vals, topk_idx = pre_acts.topk(k_clamp, dim=-1)
-            return torch.zeros_like(pre_acts).scatter_(-1, topk_idx, topk_vals)
+    from batch import BatchTopKEncoder
+
+AUX_ALPHA = 1.0 / 32.0
 
 
 class FrozenCoreResidualSAE(nn.Module):
-    def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32):
+    def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32,
+                 dead_steps_threshold: int = 200):
         super().__init__()
         self.core_sae = core_sae
         self.core_sae.requires_grad_(False)
         self.d_in = core_sae.cfg.d_in
         self.d_extra = d_extra
         self.k_extra = k_extra
+        self.k_aux = min(2 * k_extra, d_extra // 2)
+        self.dead_steps_threshold = dead_steps_threshold
 
         W_dec = F.normalize(torch.randn(d_extra, self.d_in), dim=1)
         self.W_dec_extra = nn.Parameter(W_dec)
         self.W_enc_extra = nn.Parameter(W_dec.T.clone())
         self.b_enc_extra = nn.Parameter(torch.zeros(d_extra))
+        self.topk_extra = BatchTopKEncoder(k_extra)
+        self.register_buffer("steps_since_active_extra", torch.zeros(d_extra))
+
+    def _pre_extra(self, x: torch.Tensor) -> torch.Tensor:
+        return x @ self.W_enc_extra + self.b_enc_extra
 
     def _encode_extra_acts(self, x: torch.Tensor) -> torch.Tensor:
-        pre = x @ self.W_enc_extra + self.b_enc_extra
-        return batch_topk_encode(pre, self.k_extra, self.training)
+        return self.topk_extra(self._pre_extra(x))
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
@@ -56,6 +59,18 @@ class FrozenCoreResidualSAE(nn.Module):
             core_out = self.core_sae.decode(core_acts)
         return core_out + extra_acts @ self.W_dec_extra
 
+    def _aux_loss(self, pre: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
+        dead = self.steps_since_active_extra > self.dead_steps_threshold
+        n_dead = int(dead.sum())
+        if n_dead == 0:
+            return torch.zeros((), device=pre.device, dtype=pre.dtype)
+        k_aux = min(self.k_aux, n_dead)
+        pre_dead = pre.masked_fill(~dead.unsqueeze(0), float("-inf"))
+        vals, idx = pre_dead.topk(k_aux, dim=-1)
+        f_aux = torch.zeros_like(pre).scatter_(-1, idx, vals.clamp(min=0.0))
+        e_hat = f_aux @ self.W_dec_extra
+        return F.mse_loss(e_hat, err) / (err.pow(2).mean() + 1e-8)
+
     def forward(self, x: torch.Tensor) -> dict:
         x_bf16 = x.to(torch.bfloat16)
         with torch.no_grad():
@@ -63,13 +78,21 @@ class FrozenCoreResidualSAE(nn.Module):
             core_out = self.core_sae.decode(core_acts)
 
         residual = x_bf16 - core_out
-        extra_acts = self._encode_extra_acts(residual)
+        pre = self._pre_extra(residual)
+        extra_acts = self.topk_extra(pre)
         extra_out = extra_acts @ self.W_dec_extra
 
         mse_loss = F.mse_loss(extra_out, residual)
-
         var_residual = (residual - residual.mean(dim=0)).pow(2).mean()
         nmse = mse_loss / (var_residual + 1e-8)
+
+        aux = torch.zeros((), device=x.device, dtype=x_bf16.dtype)
+        if self.training:
+            with torch.no_grad():
+                active = (extra_acts > 1e-6).any(dim=0)
+                self.steps_since_active_extra[active] = 0
+                self.steps_since_active_extra[~active] += 1
+            aux = self._aux_loss(pre, (residual - extra_out).detach())
 
         return {
             "sae_out": core_out + extra_out,
@@ -77,19 +100,24 @@ class FrozenCoreResidualSAE(nn.Module):
             "core_acts": core_acts,
             "extra_acts": extra_acts,
             "normalized_mse": nmse,
-            "loss": nmse,  # Crucial pour la cohérence de l'optimiseur
+            "aux_loss": aux,
+            "loss": nmse + AUX_ALPHA * aux,
             "l0_extra": (extra_acts.abs() > 1e-6).float().sum(dim=-1).mean(),
-            "dead_frac": ((extra_acts.abs() > 1e-6).float().sum(0) == 0).float().mean(),
+            "dead_frac": (self.steps_since_active_extra > self.dead_steps_threshold).float().mean(),
         }
 
     @torch.no_grad()
     def normalize_decoder(self):
+        """Projection du gradient parallèle (si présent) puis renormalisation."""
+        if self.W_dec_extra.grad is not None:
+            parallel = (self.W_dec_extra.grad * self.W_dec_extra.data).sum(-1, keepdim=True) \
+                       * self.W_dec_extra.data
+            self.W_dec_extra.grad -= parallel
         self.W_dec_extra.data = F.normalize(self.W_dec_extra.data, dim=1)
 
     def export_to_fp32(self, save_path: str):
         print(f"  [Export] Export de l'adaptation sémantique française en float32 -> {save_path}")
-        state_dict_fp32 = {k: v.cpu().float() for k, v in self.state_dict().items()}
-        torch.save(state_dict_fp32, save_path)
+        torch.save({k: v.cpu().float() for k, v in self.state_dict().items()}, save_path)
 
 
 class ExtendedSAE(FrozenCoreResidualSAE):
@@ -99,7 +127,6 @@ class ExtendedSAE(FrozenCoreResidualSAE):
             self._init_from_residual_pca(domain_residuals)
 
     def _init_from_residual_pca(self, residuals: torch.Tensor) -> None:
-        """SVD/PCA sur les résidus pour aligner l'initialisation sur la distribution locale."""
         print("  [ExtendedSAE] Initialisation PCA sur la distribution d'erreurs locale...")
         sample = residuals[:min(8192, len(residuals))].float()
         centered = sample - sample.mean(dim=0)
@@ -114,8 +141,7 @@ class ExtendedSAE(FrozenCoreResidualSAE):
             self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
             mean_residual = centered.mean(dim=0)
             self.b_enc_extra.data.copy_(
-                (mean_residual @ self.W_enc_extra.data).to(self.b_enc_extra.dtype)
-            )
-            print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA principales injectées.")
+                (mean_residual @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
+            print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
         except Exception as e:
             print(f"  [ExtendedSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")
