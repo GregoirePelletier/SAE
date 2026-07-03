@@ -54,7 +54,7 @@ def _dense_to_csr(acts: torch.Tensor, eps: float = 1e-6):
     rowptr = torch.zeros(acts.shape[0] + 1, dtype=torch.int64)
     rowptr[1:] = counts.cumsum(0)
     rows, cols = mask.nonzero(as_tuple=True)
-    vals = acts[rows, cols].to(torch.float16)
+    vals = acts[rows, cols].to(torch.float32)
     return rowptr, cols.to(torch.int32), vals, tuple(acts.shape)
 
 

@@ -17,6 +17,8 @@ from typing import Optional, List, Dict, Tuple, Any
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT_DIR, "external/interp_embed"))
 sys.path.insert(0, os.path.join(ROOT_DIR, "external/sae-lens"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "..", "data"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "..", "analysis"))
 
 try:
     from interp_embed.sae.utils import get_reconstruction_error

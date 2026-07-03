@@ -37,6 +37,7 @@ export K_SPARSE=16
 export EPOCHS=15
 
 export N_FEATURES_TO_LABEL=8
+export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
 
 cd /home/h21486/SAE/
 uv run python src/sae/saev5.py

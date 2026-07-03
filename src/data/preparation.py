@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 from datasets import load_dataset
 
-from src.data.keywords import SUPPORT_KEYWORDS, SUPPORT_URL_PATTERNS
+try:
+    from src.data.keywords import SUPPORT_KEYWORDS, SUPPORT_URL_PATTERNS
+except ImportError:
+    from keywords import SUPPORT_KEYWORDS, SUPPORT_URL_PATTERNS
 
 
 def keyword_match(text: str, keywords: List[str]) -> bool:
