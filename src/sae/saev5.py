@@ -836,7 +836,12 @@ def run_llm_max_pool_pipeline(
             if all_doc_sae_acts is None:
                 print("  [P1] Re-encodage ExtendedSAE (fragments sparse, O(nnz))...")
                 ext_sae.eval()
-                new_acts = []
+                pretrained_sae._W_dec_fp32 = pretrained_sae.W_dec.to(torch.float32)
+                pretrained_sae._b_dec_fp32 = pretrained_sae.b_dec.to(torch.float32)
+                all_doc_sae_acts = torch.empty(
+                    (len(all_texts), d_core + D_EXTRA),
+                    dtype=torch.float32,
+                )
                 _eval_raw, _EVAL_CAP = [], 4096   # capture x_t brut du split test avant purge (fix B1)
                 with torch.no_grad():
                     for i in tqdm(range(len(all_texts)), desc="Re-encodage ExtendedSAE (sparse)"):
@@ -846,19 +851,26 @@ def run_llm_max_pool_pipeline(
                         core_out_tokens = decode_core_sparse(frag, pretrained_sae, d_core, device=DEVICE)
                         residual_tokens = raw_acts - core_out_tokens
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
-
+                        del core_out_tokens
+                        del residual_tokens
                         if n_train <= i < n_train + n_test and \
                            sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
                             _eval_raw.append(raw_acts.float().cpu())
 
                         csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
+                        del token_extra_acts
                         save_fragment(token_fragments_dir, i,
                                       token_strings=frag["token_strings"],
                                       csr=csr, d_total=d_core + D_EXTRA)  # raw_acts non repassé -> purgé
-                        new_acts.append(doc_maxpool({"rowptr": csr[0], "cols": csr[1],
-                                                     "vals": csr[2], "shape": csr[3]}))
+                        all_doc_sae_acts[i].copy_(
+                            doc_maxpool({
+                                "rowptr": csr[0],
+                                "cols": csr[1],
+                                "vals": csr[2],
+                                "shape": csr[3],
+                            })
+                        )
 
-                all_doc_sae_acts = torch.stack(new_acts)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
                 if _eval_raw:
                     torch.save(torch.cat(_eval_raw)[:_EVAL_CAP],
@@ -1007,8 +1019,10 @@ def run_llm_max_pool_pipeline(
         else:
             print("  [Task 1] RUN_DIFF_HYPOTHESIS=0 — hypothèse LLM sautée (3e chargement 12B évité).")
 
-    npmi_mat = compute_npmi(test_doc_acts)
-    torch.save(npmi_mat, os.path.join(CACHE_DIR, "p1_npmi.pt"))
+    freq = (test_doc_acts > 1e-6).float().mean(0)
+    keep_npmi = ((freq >= 0.01) & (freq <= 0.5)).nonzero(as_tuple=True)[0][:4000]
+    npmi_mat = compute_npmi(test_doc_acts[:, keep_npmi])
+    torch.save({"npmi": npmi_mat, "feature_ids": keep_npmi}, os.path.join(CACHE_DIR, "p1_npmi.pt"))
 
     targeted_clustering_by_axis(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
@@ -1363,15 +1377,20 @@ if __name__ == "__main__":
         ]
         email_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
 
-    results_p1 = run_llm_max_pool_pipeline(
-        train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
-    )
-    run_steering_demo(results_p1)
+    RUN = set(os.environ.get("PIPELINES", "p1,p2").split(","))
+    results_p1 = {}
+    if "p1" in RUN:
+        results_p1 = run_llm_max_pool_pipeline(
+            train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
+        )
+        run_steering_demo(results_p1)
     # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).
     results_p1.pop("_test_doc_acts", None)
     _trim_host_memory()
 
-    results_p2 = run_f2llm_pipeline(
+    results_p2 = {}
+    if "p2" in RUN:
+        results_p2 = run_f2llm_pipeline(
         train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
     )
 

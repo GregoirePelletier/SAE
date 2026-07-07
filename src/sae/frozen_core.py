@@ -139,9 +139,9 @@ class ExtendedSAE(FrozenCoreResidualSAE):
                 W_init = torch.cat([W_init, pad], dim=0)
             self.W_dec_extra.data.copy_(W_init.to(self.W_dec_extra.dtype))
             self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
-            mean_residual = centered.mean(dim=0)
+            mean_residual = sample.mean(dim=0)
             self.b_enc_extra.data.copy_(
-                (mean_residual @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
+                (-mean_residual @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
             print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
         except Exception as e:
             print(f"  [ExtendedSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")

@@ -156,15 +156,14 @@ def decode_core_sparse(frag: dict, sae, d_core: int, device: str = "cuda") -> to
     T = frag["shape"][0]
     keep = frag["cols"] < d_core
     cols = frag["cols"][keep].long().to(device)
-    vals = frag["vals"][keep].to(device).to(torch.bfloat16)
+    vals = frag["vals"][keep].to(device).to(torch.float32)
     rows = _row_index(frag)[keep].to(device)
 
-    W_dec = sae.W_dec.to(device).to(torch.bfloat16)      # [d_sae, d_in]
-    b_dec = sae.b_dec.to(device).to(torch.bfloat16)
-    out = torch.zeros(T, W_dec.shape[1], device=device, dtype=torch.bfloat16)
+    W_dec = sae._W_dec_fp32
+    b_dec = sae._b_dec_fp32
+    out = torch.zeros(T, W_dec.shape[1], device=device, dtype=torch.float32)
     out.index_add_(0, rows, vals.unsqueeze(1) * W_dec[cols])
-    return out + b_dec
-
+    return (out + b_dec).to(torch.bfloat16)   # sortie bf16 inchangée côté appelants
 
 def merge_extra(frag: dict, extra_dense: torch.Tensor, d_core: int) -> tuple:
     """
