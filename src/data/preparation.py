@@ -169,14 +169,21 @@ def split_into_phrases(
 
 
 def load_and_clean_emails(tsv_path: str) -> Tuple[List[str], List[str]]:
+    """Retourne (texts, labels). Le parsing TSV délègue à dataset.load_mails_tsv
+    (implémentation unique, quoting-aware, dédupliquée) ; ne subsiste ici que
+    l'extraction de l'Objet comme label faible."""
     texts, categories = [], []
     if not os.path.exists(tsv_path):
         print(f"  [sae_shared] Fichier d'emails introuvable : {tsv_path}")
         return [], []
     try:
         try:
-            df = pd.read_csv(tsv_path, sep='\t')
-            if 'document' not in df.columns or len(df) == 0:
+            from src.data.dataset import load_mails_tsv
+        except ImportError:
+            from dataset import load_mails_tsv
+        try:
+            df = load_mails_tsv(tsv_path).rename(columns={"text": "document"})
+            if len(df) == 0:
                 raise ValueError()
         except Exception:
             df = pd.read_csv(tsv_path, sep=',')

@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=16G
+#SBATCH --mem=200G
 #SBATCH --time=4:00:00
 #SBATCH --output=sae_v9_test_%j.log
 
@@ -41,13 +41,12 @@ export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
 
 cd /home/h21486/SAE/
 uv run python src/sae/saev5.py
-
-# ── Critères de validation à vérifier dans le log AVANT de lancer le run complet ──
 # 1. Lignes d'epoch ExtendedSAE contiennent "aux=" (AuxK actif, code v9 déployé)
 #    et dead_frac chute nettement plus vite que 0.465->0.186 du run v8.
 # 2. Étape "Re-encodage ExtendedSAE (sparse)" : it/s >> 1 (attendu: >5 it/s,
 #    vs 0.18 it/s en v8). Si ~0.2 it/s persiste -> le store sparse n'est pas actif.
 # 3. ls -lh $SAVE_DIR/cache/p1_token_fragments/ : fichiers doc_*.pt de ~0.1-1 Mo
 #    (pas de .pkl de centaines de Mo).
+# ── Critères de validation à vérifier dans le log AVANT de lancer le run com
 # 4. Phrase-SAE (P2) : logs "θ=" non nuls et croissants-stables ; L0 eval raisonnable.
 # 5. FVE/ρ_SAE calculés sans erreur (chemins decode_core_sparse).

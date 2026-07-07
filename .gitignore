@@ -1,28 +1,9 @@
 # ============================================================
-# Python
+# Virtual environments & IDE
 # ============================================================
-
-__pycache__/
-*.pyc
-*.py[cod]
-*.so
-.Python
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# ============================================================
-# Virtual environments
-# ============================================================
-
 .venv/
 venv/
 ENV/
-
-# ============================================================
-# IDE
-# ============================================================
-
 .vscode/
 .idea/
 *.swp
@@ -31,29 +12,15 @@ ENV/
 .DS_Store
 
 # ============================================================
-# Logs
+# Environment & Build artifacts
 # ============================================================
-
-*.log
-*.out
-*.err
-
-# ============================================================
-# Build artifacts
-# ============================================================
-
+.env
+.env.*
+!.env.example
 build/
 dist/
 wheels/
 *.egg-info/
-
-# ============================================================
-# Environment files
-# ============================================================
-
-.env
-.env.*
-!.env.example
 
 # ============================================================
 # Large generated data
@@ -61,26 +28,18 @@ wheels/
 Mails.tsv
 models/
 datasets/
-results_v7/
 saes/
 
 # Future-proofing
-results/
 outputs/
 checkpoints/
 embeddings/
 cache/
-
-# ============================================================
-# Temporary archives
-# ============================================================
-
 archive/
 
 # ============================================================
-# Downloaded artifacts
+# Downloaded artifacts (Weights, Tensors)
 # ============================================================
-
 *.pt
 *.pth
 *.ckpt
@@ -93,22 +52,13 @@ archive/
 *.pkl
 
 # ============================================================
-# SLURM
-# ============================================================
-
-slurm-*.out
-slurm-*.err
-
-# ============================================================
 # Lock files
 # ============================================================
-
 uv.lock
 
 # ============================================================
 # KEEP THESE FILES
 # ============================================================
-
 !.gitmodules
 !.python-version
 !.gitignore
@@ -120,28 +70,35 @@ uv.lock
 # ============================================================
 # KEEP SOURCE TREE
 # ============================================================
-
 !src/
 !src/**
 
 # ============================================================
 # KEEP MAIN SCRIPTS
 # ============================================================
-
 !main.py
 !saev5.py
 !sae_shared.py
 !download_sae.py
-pyproject.toml
-src/__pycache__/__init__.cpython-312.pyc
-src/analysis/__pycache__/__init__.cpython-312.pyc
-src/analysis/__pycache__/metrics.cpython-312.pyc
-src/data/__pycache__/__init__.cpython-312.pyc
-src/data/__pycache__/keywords.cpython-312.pyc
-src/data/__pycache__/preparation.cpython-312.pyc
-src/sae/__pycache__/__init__.cpython-312.pyc
-src/sae/__pycache__/batch.cpython-312.pyc
-src/sae/__pycache__/frozen_core.cpython-312.pyc
-src/sae/__pycache__/gemma_scope_loader.cpython-312.pyc
-src/sae/__pycache__/judge.cpython-312.pyc
-src/sae/__pycache__/phrase_sae.cpython-312.pyc
+!baseline_gemmascope.py
+!test_chargement_sae.py
+
+# ============================================================
+# CRITICAL OVERRIDES (Must be at the very bottom)
+# ============================================================
+# Force l'exclusion du cache Python partout, même dans src/
+**/__pycache__/
+*.pyc
+*.py[cod]
+*.so
+
+# Force l'exclusion des logs et SLURM partout
+*.log
+*.out
+*.err
+slurm-*.out
+slurm-*.err
+
+# Force l'exclusion de tous les dossiers de résultats
+results/
+results_*/

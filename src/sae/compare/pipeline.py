@@ -12,9 +12,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .dataset import load_mails_tsv, build_bilingual_corpus
-from .activations import extract_residual_acts, maxpool_sae_docs
-from .cooccurrence import cooccurrence_graph, corpus_diff_stats, cluster_in_feature_space
+from ...data.dataset import load_mails_tsv, build_bilingual_corpus
+from ...analysis.activations import extract_residual_acts, maxpool_sae_docs
+from ...analysis.cooccurrence import cooccurrence_graph, corpus_diff_stats, cluster_in_feature_space
 from .model_compare import compare_embedding_models
 from .crosslingual import crosslingual_alignment, downstream_report, ce_loss_increase
 from . import visualization as viz
@@ -34,9 +34,12 @@ def embed_corpus(texts: list[str], model_name: str, device="cuda", batch=32) -> 
                       truncation=True, max_length=512)
             ids = enc["input_ids"].to(device)
             attn = enc["attention_mask"].to(device)
-            h = mdl(input_ids=ids, attention_mask=attn).last_hidden_state
-            m = attn.unsqueeze(-1).to(h.dtype)
-            embs.append(((h * m).sum(1) / m.sum(1).clamp(min=1e-6)).float().cpu())
+            out = mdl(input_ids=ids, attention_mask=attn)
+            try:
+                from src.sae.phrase_sae import _mean_pool   # implémentation unique du mean-pooling masqué
+            except ImportError:
+                from phrase_sae import _mean_pool
+            embs.append(_mean_pool(out, attn).float().cpu())
     return torch.cat(embs)
 
 

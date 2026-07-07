@@ -112,7 +112,6 @@ from sae_shared import (
     prepare_domain_dataset, split_into_phrases,
     compute_metrics, compute_rho_sae,
     downstream_classification,
-    diff_features, compute_npmi,
     steer_activations, steer_and_decode,
     load_and_clean_emails,
     FrozenCoreResidualSAE, ExtendedSAE,
@@ -130,6 +129,30 @@ from src.sae.judge import (
 )
 
 from src.sae.batch import batch_topk_encode
+try:
+    from src.analysis.cooccurrence import compute_npmi, corpus_diff_stats
+except ImportError:
+    from cooccurrence import compute_npmi, corpus_diff_stats
+
+# Labels GemmaScope officiels (Neuronpedia) — cache JSON obligatoire (cluster offline)
+try:
+    from src.sae.neuronpedia_labels import merge_with_judge_labels  # noqa: F401
+except ImportError:
+    merge_with_judge_labels = None
+
+import ctypes
+
+def _trim_host_memory():
+    """Rend les arènes glibc libérées à l'OS après teardown d'un gros modèle.
+    Sans cela, le RSS croît de façon monotone à chaque cycle load/unload
+    (fragmentation malloc) → OOM SLURM même si Python a bien libéré."""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 try:
     from src.storage.fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
@@ -301,13 +324,14 @@ def generate_llm_diff_hypothesis(
     label_a: str, label_b: str,
 ) -> str:
     model.eval()
-    top_diffs = diff_df.head(8)
+    top_diffs = diff_df[diff_df.get("significant", True) == True].head(8) \
+        if "significant" in diff_df.columns else diff_df.head(8)
     features_desc = []
     for _, row in top_diffs.iterrows():
         features_desc.append(
-            f"- Feature #{int(row['feature_id'])} ({row['feature_label']}) : "
+            f"- Feature #{int(row['feature_id'])} ({row['label']}) : "
             f"{label_a}={row['freq_A']:.3f} vs {label_b}={row['freq_B']:.3f} "
-            f"(écart={row['frequency_difference']:.3f})"
+            f"(log-odds={row['log_odds_ratio']:+.2f}, q={row['q']:.1e})"
         )
     prompt = (
         f"Chercheur en interprétabilité SAE EDF R&D. Corpus '{label_a}' vs '{label_b}'.\n"
@@ -419,6 +443,10 @@ def analyze_with_umap(
 
     N_DOCS = len(texts)
     sae_np = sae_acts.float().detach().cpu().numpy()
+    n_inf = np.isinf(sae_np).sum()
+    if n_inf:
+        print(f"  [WARN] {n_inf} valeurs infinies détectées — clip appliqué.")
+        sae_np = np.nan_to_num(sae_np, posinf=np.finfo(np.float32).max, neginf=0.0)
     active_mask = sae_np.max(axis=0) > 0
     sae_active = sae_np[:, active_mask]
     n_active = int(active_mask.sum())
@@ -431,11 +459,18 @@ def analyze_with_umap(
         n_neighbors=min(30, max(2, N_DOCS - 1)),
         min_dist=0.1, 
         random_state=SEED,
+        n_jobs=1,   # random_state force déjà n_jobs=1 ; explicite → supprime le UserWarning
     )
     coords = reducer.fit_transform(sae_active)
 
+    # Libération immédiate des copies denses (N_DOCS × n_active en fp32, potentiellement
+    # plusieurs Go à width 262k) : UMAP a fini, seuls `coords` (2D) et `sae_acts`
+    # (torch, partagé avec l'appelant) restent nécessaires.
+    del sae_np, sae_active, reducer
+    _trim_host_memory()
+
     min_cs = max(2, N_DOCS // 15)
-    clusterer = HDBSCAN(min_cluster_size=min_cs, min_samples=max(1, min_cs // 2))
+    clusterer = HDBSCAN(min_cluster_size=min_cs, min_samples=max(1, min_cs // 2), copy=True)
     clusters = clusterer.fit_predict(coords)
 
     df = pd.DataFrame({
@@ -739,7 +774,7 @@ def run_llm_max_pool_pipeline(
             _need_residuals = False
             
         del llm, tokenizer
-        gc.collect(); torch.cuda.empty_cache()
+        _trim_host_memory()
 
     d_total = d_core
     active_sae = pretrained_sae
@@ -792,12 +827,17 @@ def run_llm_max_pool_pipeline(
 
         if ext_sae is not None:
             cache_acts_ext = os.path.join(CACHE_DIR, f"p1_all_doc_acts_ext_d{D_EXTRA}.pt")
-            if os.path.exists(cache_acts_ext):
+            if os.path.exists(cache_acts_ext) and not _need_extraction:
                 all_doc_sae_acts = torch.load(cache_acts_ext, map_location="cpu", weights_only=True)
+                if all_doc_sae_acts.shape[0] != len(all_texts):   # garde-fou explicite
+                    all_doc_sae_acts = None
             else:
+                all_doc_sae_acts = None
+            if all_doc_sae_acts is None:
                 print("  [P1] Re-encodage ExtendedSAE (fragments sparse, O(nnz))...")
                 ext_sae.eval()
                 new_acts = []
+                _eval_raw, _EVAL_CAP = [], 4096   # capture x_t brut du split test avant purge (fix B1)
                 with torch.no_grad():
                     for i in tqdm(range(len(all_texts)), desc="Re-encodage ExtendedSAE (sparse)"):
                         frag = load_fragment(token_fragments_dir, i)
@@ -806,6 +846,10 @@ def run_llm_max_pool_pipeline(
                         core_out_tokens = decode_core_sparse(frag, pretrained_sae, d_core, device=DEVICE)
                         residual_tokens = raw_acts - core_out_tokens
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
+
+                        if n_train <= i < n_train + n_test and \
+                           sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
+                            _eval_raw.append(raw_acts.float().cpu())
 
                         csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
                         save_fragment(token_fragments_dir, i,
@@ -816,6 +860,9 @@ def run_llm_max_pool_pipeline(
 
                 all_doc_sae_acts = torch.stack(new_acts)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
+                if _eval_raw:
+                    torch.save(torch.cat(_eval_raw)[:_EVAL_CAP],
+                               os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt"))
                     
             d_total = d_core + D_EXTRA
             active_sae = ext_sae
@@ -825,47 +872,97 @@ def run_llm_max_pool_pipeline(
     test_doc_acts  = all_doc_sae_acts[n_train: n_train + n_test]
     email_doc_acts = all_doc_sae_acts[n_train + n_test:]
 
-    # ─── LLM JUDGE P1 (PROTOCOL ODD-ONE-OUT & RHO_INTERP) ─────────────────
-    judge_cache = os.path.join(CACHE_DIR, "p1_saebench_judge_labels.json")
-    
-    if os.path.exists(judge_cache):
-        print(f"  [P1 Judge] Restauration des labels depuis le cache : {judge_cache}")
-        with open(judge_cache, "r", encoding="utf-8") as f:
-            label_map_data = json.load(f)
-    else:
-        print("  [P1 Judge] Sélection des features par magnitude token-level...")
-        top_feat_indices = feature_selection_by_magnitude(
-            token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL
-        )
-        
-        print(f"  [P1 Judge] Chargement temporaire de Gemma-3 pour labellisation ({N_FEATURES_TO_LABEL} fts)...")
-        expert_tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-        )
-        expert_model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto",
-            token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-        ).eval()
-        
-        # Exécution du protocole complet (Feature detection + Labeling + Évaluation continue)
-        label_map_data = odd_one_out_judge(
-            model=expert_model, tokenizer=expert_tokenizer,
-            feature_indices=top_feat_indices,
-            token_fragments_dir=token_fragments_dir,
-            acts=train_doc_acts, offset=0,
-        )
-        
-        # Nettoyage strict de la VRAM immédiatement après utilisation
-        print("  [P1 Judge] Libération de la VRAM du LLM Judge...")
-        del expert_model, expert_tokenizer
-        gc.collect()
-        torch.cuda.empty_cache()
-        
-        with open(judge_cache, "w", encoding="utf-8") as f:
-            json.dump(label_map_data, f, indent=2, ensure_ascii=False)
+    # ─── LABELS DÉCOUPLÉS : GemmaScope (core) ⊕ Juge LLM (extension) ──────
+    #
+    # 1. CORE (idx < d_core) : labels officiels GemmaScope récupérés via
+    #    Neuronpedia (cache JSON produit hors-cluster par
+    #    src/sae/neuronpedia_labels.fetch_neuronpedia_labels). PAS de juge :
+    #    ces features sont déjà auto-interprétées côté DeepMind.
+    # 2. EXTENSION (idx >= d_core) : juge LLM odd-one-out, seul moyen de
+    #    labelliser des features qui n'existent nulle part ailleurs.
+    # 3. Sélection top-N SÉPARÉE par plage : les magnitudes JumpReLU du core
+    #    (non bornées, outliers ~1e5) écraseraient systématiquement celles de
+    #    l'extension TopK dans un classement global — un top-N joint ne
+    #    sélectionnerait que du core. Deux appels à
+    #    feature_selection_by_magnitude(lo, hi) rendent les deux parties
+    #    comparables indépendamment.
 
-    # Reconstruction du dictionnaire de mapping pour l'UMAP et les visualisations
-    label_map_p1 = {int(k): v.get("label", f"F{k}") for k, v in label_map_data.items()}
+    # -- Labels core : Neuronpedia (cache offline) ---------------------------
+    np_labels_path = os.environ.get(
+        "NEURONPEDIA_LABELS", os.path.join(CACHE_DIR, "neuronpedia_labels_core.json"))
+    labels_core: dict[int, str] = {}
+    if os.path.exists(np_labels_path):
+        with open(np_labels_path, "r", encoding="utf-8") as f:
+            labels_core = {int(k): v for k, v in json.load(f).items()}
+        print(f"  [P1 Labels] {len(labels_core)} labels GemmaScope (Neuronpedia) chargés.")
+    else:
+        print(f"  [P1 Labels] WARN : {np_labels_path} absent — features core affichées F{{idx}}. "
+              "Générer le cache hors-cluster via fetch_neuronpedia_labels().")
+
+    # -- Sélection top-N par plage ------------------------------------------
+    print("  [P1 Labels] Sélection par magnitude token-level, plages core / extension séparées...")
+    top_core_indices = feature_selection_by_magnitude(
+        token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
+        lo=0, hi=d_core,
+    )
+    top_ext_indices = []
+    if USE_FROZEN_CORE and d_total > d_core:
+        top_ext_indices = feature_selection_by_magnitude(
+            token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
+            lo=d_core, hi=d_total,
+        )
+
+    with open(os.path.join(SAVE_DIR, "p1_top_core_features.json"), "w", encoding="utf-8") as f:
+        json.dump({int(i): labels_core.get(int(i), f"F{i}") for i in top_core_indices},
+                  f, indent=2, ensure_ascii=False)
+
+    # -- Juge LLM : extension UNIQUEMENT ------------------------------------
+    judge_cache = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
+    judge_ext_data = {}
+    if top_ext_indices:
+        if os.path.exists(judge_cache):
+            print(f"  [P1 Judge] Restauration labels extension : {judge_cache}")
+            with open(judge_cache, "r", encoding="utf-8") as f:
+                judge_ext_data = json.load(f)
+        else:
+            print(f"  [P1 Judge] Chargement Gemma-3 — labellisation des "
+                  f"{len(top_ext_indices)} features EXTENSION uniquement...")
+            expert_tokenizer = AutoTokenizer.from_pretrained(
+                MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+            )
+            expert_model = AutoModelForCausalLM.from_pretrained(
+                MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+                low_cpu_mem_usage=True,
+                token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+            ).eval()
+            judge_ext_data = odd_one_out_judge(
+                model=expert_model, tokenizer=expert_tokenizer,
+                feature_indices=top_ext_indices,
+                token_fragments_dir=token_fragments_dir,
+                acts=train_doc_acts, offset=0,
+            )
+            print("  [P1 Judge] Libération VRAM + malloc_trim...")
+            del expert_model, expert_tokenizer
+            _trim_host_memory()
+            with open(judge_cache, "w", encoding="utf-8") as f:
+                json.dump(judge_ext_data, f, indent=2, ensure_ascii=False)
+
+    # -- Fusion : core (Neuronpedia) ∪ extension (juge), préfixées [EXT] ----
+    label_map_p1 = dict(labels_core)
+    for k, v in judge_ext_data.items():
+        label_map_p1[int(k)] = "[EXT] " + v.get("label", f"F{k}")
+
+    with open(os.path.join(SAVE_DIR, "p1_top_extended_features.json"), "w", encoding="utf-8") as f:
+        json.dump(judge_ext_data, f, indent=2, ensure_ascii=False)
+
+    # -- Comparaison core vs extension, côte à côte -------------------------
+    print("\n  [P1] TOP FEATURES — CORE GemmaScope (labels Neuronpedia) :")
+    for i in top_core_indices:
+        print(f"    F{i:<7d} {label_map_p1.get(int(i), f'F{i}')[:80]}")
+    if top_ext_indices:
+        print("  [P1] TOP FEATURES — EXTENSION FrozenCore (labels juge LLM) :")
+        for i in top_ext_indices:
+            print(f"    F{i:<7d} {label_map_p1.get(int(i), f'F{i}')[:80]}")
 
     umap_res_test = analyze_with_umap(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
@@ -885,22 +982,30 @@ def run_llm_max_pool_pipeline(
     sports_mask  = np.array([l == "sports"  for l in train_labels])
     diff_hypothesis = "Aucun écart mesurable."
     if energy_mask.sum() > 0 and sports_mask.sum() > 0:
-        diff_df = diff_features(
-            train_doc_acts[torch.from_numpy(energy_mask)].float(),
-            train_doc_acts[torch.from_numpy(sports_mask)].float(),
+        # corpus_diff_stats : test exact de Fisher par feature + correction BH
+        # (remplace diff_features, écarts de fréquences sans contrôle du FDR).
+        pair_mask = energy_mask | sports_mask
+        diff_df = corpus_diff_stats(
+            train_doc_acts[torch.from_numpy(pair_mask)].float(),
+            group_mask=energy_mask[pair_mask],       # True = Énergie (corpus A)
             feature_labels=label_map_p1,
         )
         diff_df.to_csv(os.path.join(SAVE_DIR, "p1_diff_energy_sports.csv"), index=False)
-        
-        j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
-        j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto",
-            token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-        ).eval()
-        with torch.no_grad():
-            diff_hypothesis = generate_llm_diff_hypothesis(j_llm, j_tok, diff_df, "Énergie", "Sports")
-        print(f"  [Task 1] Hypothèse LLM :\n  {diff_hypothesis}\n")
-        del j_llm, j_tok; gc.collect(); torch.cuda.empty_cache()
+
+        if os.environ.get("RUN_DIFF_HYPOTHESIS", "1") == "1":
+            j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
+            j_llm = AutoModelForCausalLM.from_pretrained(
+                MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+                low_cpu_mem_usage=True,
+                token=HF_TOKEN, trust_remote_code=True, local_files_only=True
+            ).eval()
+            with torch.no_grad():
+                diff_hypothesis = generate_llm_diff_hypothesis(j_llm, j_tok, diff_df, "Énergie", "Sports")
+            print(f"  [Task 1] Hypothèse LLM :\n  {diff_hypothesis}\n")
+            del j_llm, j_tok
+            _trim_host_memory()
+        else:
+            print("  [Task 1] RUN_DIFF_HYPOTHESIS=0 — hypothèse LLM sautée (3e chargement 12B évité).")
 
     npmi_mat = compute_npmi(test_doc_acts)
     torch.save(npmi_mat, os.path.join(CACHE_DIR, "p1_npmi.pt"))
@@ -920,36 +1025,24 @@ def run_llm_max_pool_pipeline(
     l0_mean    = (test_doc_acts > 1e-6).float().sum(dim=-1).mean().item()
     dead_pct   = (test_doc_acts.sum(dim=0) == 0).float().mean().item() * 100
     
-    print("  [Metrics] Échantillonnage de tokens denses pour le calcul de ρ_SAE...")
-    raw_tokens_sample = []
-    fragment_ids_test = list_fragment_ids(token_fragments_dir)[n_train:n_train+n_test]
+    print("  [Metrics] Chargement des tokens bruts d'évaluation (cache dédié, non purgé)...")
+    eval_raw_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt")
 
-    for _fid in fragment_ids_test:
-        frag_data = load_fragment(token_fragments_dir, _fid)
-        with torch.no_grad():
-            x_raw_tokens = decode_core_sparse(frag_data, pretrained_sae, d_core, device=DEVICE).cpu()
-        raw_tokens_sample.append(x_raw_tokens)
-        if sum(t.shape[0] for t in raw_tokens_sample) >= 1000:
-            break
-
-    if raw_tokens_sample:
-        raw_tokens_tensor = torch.cat(raw_tokens_sample, dim=0)[:1000].to(DEVICE).to(torch.bfloat16)
+    if os.path.exists(eval_raw_path):
+        eval_raw_tokens = torch.load(eval_raw_path, weights_only=True)  # x_t bruts, fp32, [n, d_in]
+        raw_tokens_tensor = eval_raw_tokens[:1000].to(DEVICE).to(torch.bfloat16)
         with torch.no_grad():
             rho_sae = compute_rho_sae(active_sae, raw_tokens_tensor,
                                       n_sample=500, is_saelens=not USE_FROZEN_CORE, device=DEVICE)
     else:
+        print("  [Metrics] WARN: p1_eval_raw_tokens.pt absent (run antérieur au fix B1 — "
+              "fragments déjà purgés, x_t irrécupérable). Purger le cache et relancer P1.")
+        eval_raw_tokens = None
         rho_sae = float("nan")
 
     print("\n  [FR/EN] Comparaison FVE baseline sur un échantillon de tokens...")
-    token_sample_list = []
-    for _fid in fragment_ids_test[:20]:
-        frag_data = load_fragment(token_fragments_dir, _fid)
-        with torch.no_grad():
-            x_raw = decode_core_sparse(frag_data, pretrained_sae, d_core, device=DEVICE).cpu()
-        token_sample_list.append(x_raw)
-    
-    if token_sample_list:
-        token_sample = torch.cat(token_sample_list, dim=0)[:4096]
+    if eval_raw_tokens is not None:
+        token_sample = eval_raw_tokens[:4096]
         with torch.no_grad():
             metrics_pretrained = compute_metrics(
                 pretrained_sae, token_sample,
@@ -987,7 +1080,13 @@ def run_llm_max_pool_pipeline(
         print(f"  [Downstream P1] Échantillons insuffisants pour entraîner la sonde logistique.")
         clf_results = {}
 
-    return {
+    # ─── HYGIÈNE MÉMOIRE HÔTE avant Pipeline 2 ───────────────────────────
+    # test_doc_acts est une VUE de all_doc_sae_acts : la retourner telle quelle
+    # maintiendrait vivant le storage complet [n_docs, 263168] fp32 (~5 Go).
+    # .clone() détache le slice ; on libère ensuite le tenseur global, les SAEs
+    # GPU (262k×4096 bf16 ≈ 4 Go VRAM + copies hôte) et on rend les arènes glibc.
+    test_doc_acts_out = test_doc_acts.clone()
+    results = {
         "L0": l0_mean, "dead_pct": dead_pct, "silhouette": silhouette,
         "rho_sae": rho_sae,
         "n_clusters": umap_res_test["n_clusters"],
@@ -995,10 +1094,21 @@ def run_llm_max_pool_pipeline(
         "diff_hypothesis": diff_hypothesis,
         "clf_acc_sae": clf_results.get("acc_sae", float("nan")),
         "fve_pretrained": metrics_pretrained.get("FVE", float("nan")),
-        "_test_doc_acts": test_doc_acts,
+        "_test_doc_acts": test_doc_acts_out,
         "_label_map": label_map_p1,
-        "_active_sae": active_sae,
+        "_top_core": top_core_indices,
+        "_top_ext": top_ext_indices,
     }
+    del all_doc_sae_acts, train_doc_acts, test_doc_acts, email_doc_acts
+    del pretrained_sae, active_sae
+    if USE_FROZEN_CORE and "ext_sae" in dir():
+        try:
+            del ext_sae
+        except NameError:
+            pass
+    del umap_res_test
+    _trim_host_memory()
+    return results
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1025,7 +1135,7 @@ def run_f2llm_pipeline(
 
     train_phrase_emb, d_in = extract_f2llm_embeddings(
         train_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}"),
+        cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(train_phrases)}"),
     )
 
     idx = torch.randperm(len(train_phrase_emb), generator=torch.Generator().manual_seed(SEED))
@@ -1035,7 +1145,8 @@ def run_f2llm_pipeline(
 
     sae_path = os.path.join(SAVE_DIR, f"p2_sae_dim{d_in}_d{D_SAE}_k{K_SPARSE}.pt")
     sae, history = load_or_train_sae(d_in=d_in, d_sae=D_SAE, k=K_SPARSE,
-                                      embeddings=emb_train_split, save_path=sae_path)
+                                    embeddings=emb_train_split, save_path=sae_path,
+                                    epochs=EPOCHS, lr=LR)
     m_eval = compute_sae_metrics(sae, emb_eval_split)
     rho_sae_p2 = compute_rho_sae(sae, emb_eval_split, n_sample=500, device=DEVICE)
     del emb_train_split, emb_eval_split; gc.collect(); torch.cuda.empty_cache()
@@ -1044,7 +1155,7 @@ def run_f2llm_pipeline(
     print(f"  Test  : {len(test_texts)} docs → {len(test_phrases)} phrases")
     test_phrase_emb, _ = extract_f2llm_embeddings(
         test_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}"),
+        cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(test_phrases)}"),
     )
     test_p2d_arr = np.array(test_p2d_list)
     doc_acts = encode_documents_with_phrase_sae(
@@ -1057,7 +1168,7 @@ def run_f2llm_pipeline(
         email_phrases, email_p2d_list = split_into_phrases(email_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
         email_phrase_emb, _ = extract_f2llm_embeddings(
             email_phrases, max_length=128,
-            cache_path=os.path.join(CACHE_DIR, f"email_phrase_emb_dim{MATRYOSHKA_DIM}"),
+            cache_path=os.path.join(CACHE_DIR, f"email_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(email_phrases)}"),
         )
         email_p2d_arr = np.array(email_p2d_list)
         email_doc_acts = encode_documents_with_phrase_sae(
@@ -1074,7 +1185,8 @@ def run_f2llm_pipeline(
     else:
         j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, local_files_only=True)
         j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE, local_files_only=True
+            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+            low_cpu_mem_usage=True, local_files_only=True
         ).eval()
         # FIX 9 : local_gemma_judge attend les activations et textes au niveau PHRASE
         # (pas au niveau document max-poolé) — ce sont les phrases individuelles
@@ -1087,7 +1199,8 @@ def run_f2llm_pipeline(
             phrase_texts=test_phrases, phrase_acts=test_phrase_acts,
             phrase_to_doc=test_p2d_arr,
         )
-        del j_llm, j_tok; gc.collect(); torch.cuda.empty_cache()
+        del j_llm, j_tok
+        _trim_host_memory()
         with open(judge_cache, "w", encoding="utf-8") as f:
             json.dump(feature_labels_p2, f, indent=2, ensure_ascii=False)
 
@@ -1152,7 +1265,7 @@ def run_f2llm_pipeline(
     silhouette_p2 = compute_silhouette(doc_acts, test_labels)
     del sae, doc_acts, test_phrase_emb, train_phrase_emb
     if email_doc_acts is not None: del email_doc_acts
-    gc.collect(); torch.cuda.empty_cache()
+    _trim_host_memory()
 
     return {
         **m_eval,
@@ -1253,10 +1366,14 @@ if __name__ == "__main__":
     results_p1 = run_llm_max_pool_pipeline(
         train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
     )
+    run_steering_demo(results_p1)
+    # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).
+    results_p1.pop("_test_doc_acts", None)
+    _trim_host_memory()
+
     results_p2 = run_f2llm_pipeline(
         train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
     )
-    run_steering_demo(results_p1)
 
     print("\n" + "=" * 70)
     print(" BILAN COMPARATIF")

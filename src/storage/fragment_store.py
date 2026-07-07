@@ -189,5 +189,5 @@ def merge_extra(frag: dict, extra_dense: torch.Tensor, d_core: int) -> tuple:
     rowptr = torch.zeros(T + 1, dtype=torch.int64)
     rowptr.scatter_add_(0, rows + 1, torch.ones_like(rows))
     rowptr = rowptr.cumsum(0)
-    return rowptr, cols.to(torch.int32), vals.to(torch.float16), \
+    return rowptr, cols.to(torch.int32), vals, \
         (T, d_core + extra_dense.shape[1])

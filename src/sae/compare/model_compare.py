@@ -43,7 +43,7 @@ try:
     from src.sae.sae_shared import compute_npmi
 except ImportError:
     from sae_shared import compute_npmi
-from .cooccurrence import cooccurrence_graph
+from ...analysis.cooccurrence import cooccurrence_graph
 
 
 # ─── 1. Appariement cross-modèle ───

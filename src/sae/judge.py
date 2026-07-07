@@ -163,12 +163,21 @@ def feature_selection_by_magnitude(
     d_sae: int,
     n_features: int,
     sample_docs: int = 500,
+    lo: int = 0,                # borne basse (incluse) de la plage d'indices candidats
+    hi: int = None,             # borne haute (exclue) — None = d_sae
 ) -> list[int]:
     """
     Sélection des n_features features par mean activation magnitude sur tokens
-    (pas par fréquence sur doc max-pool).
+    (pas par fréquence sur doc max-pool), RESTREINTE à la plage [lo, hi).
+    Découplage frozen-core / extension :
+      - core     : lo=0,       hi=d_core
+      - extended : lo=d_core,  hi=d_core+D_EXTRA
+    Sélectionner séparément dans chaque plage garantit que le top-N d'une partie
+    n'est jamais écrasé par les magnitudes de l'autre (les activations JumpReLU
+    du core, non bornées, dominent systématiquement celles de l'extension TopK).
     Échantillonne sample_docs documents pour éviter OOM.
     """
+    hi = d_sae if hi is None else hi
     sample_docs = min(sample_docs, len(doc_indices))
     sampled = random.sample(doc_indices, sample_docs)
     acc = np.zeros(d_sae, dtype=np.float64)
@@ -177,12 +186,13 @@ def feature_selection_by_magnitude(
         if not fragment_exists(token_fragments_dir, d_idx):
             continue
         frag = load_fragment(token_fragments_dir, d_idx)
-        acc += sum_columns(frag)[:d_sae]
+        s = sum_columns(frag)
+        acc[:len(s)] += s[:d_sae]
         n_tokens += frag["shape"][0]
     if n_tokens == 0:
-        return list(range(n_features))
-    mean_mag = acc / n_tokens
-    return np.argsort(mean_mag)[::-1][:n_features].tolist()
+        return list(range(lo, min(lo + n_features, hi)))
+    mean_mag = acc[lo:hi] / n_tokens
+    return (np.argsort(mean_mag)[::-1][:n_features] + lo).tolist()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

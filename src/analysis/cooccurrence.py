@@ -1,7 +1,7 @@
 """
 cooccurrence.py — Graphe de co-occurrence NPMI, diff de corpus, clustering en
 espace sparse. S'appuie sur networkx + scipy (pas d'implémentation maison de
-Louvain/tests stat). Réutilise compute_npmi/diff_features de sae_shared.
+Louvain/tests stat). Héberge compute_npmi (implémentation unique) et corpus_diff_stats (Fisher+BH).
 """
 from __future__ import annotations
 from typing import Optional
@@ -14,10 +14,20 @@ from scipy import sparse
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
-try:
-    from src.sae.sae_shared import compute_npmi
-except ImportError:
-    from sae_shared import compute_npmi
+
+def compute_npmi(doc_acts: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """NPMI vectorisée. npmi_ij = pmi_ij / (-log p_ij) ; diag = 1 ; 0 si cooc nulle.
+    (Unique implémentation — supprimée de sae_shared.)"""
+    n = doc_acts.shape[0]
+    b = (doc_acts > 1e-6).float()
+    cooc = b.T @ b
+    p_ij = cooc / n
+    p_i = b.sum(0) / n
+    pmi = torch.log((p_ij + eps) / (p_i.unsqueeze(1) * p_i.unsqueeze(0) + eps))
+    npmi = pmi / (-torch.log(p_ij + eps))
+    npmi = torch.where(cooc > 0, npmi, torch.zeros_like(npmi))
+    npmi.fill_diagonal_(1.0)
+    return npmi
 
 
 # ─── Graphe de co-occurrence ───
@@ -102,6 +112,6 @@ def cluster_in_feature_space(
 
     X = sparse.csr_matrix((doc_acts > 1e-6).float().cpu().numpy())
     X = TfidfTransformer().fit_transform(X)               # downweight features denses
-    emb2d = umap.UMAP(n_components=2, metric=metric, random_state=0).fit_transform(X)
+    emb2d = umap.UMAP(n_components=2, metric=metric, random_state=0, n_jobs=1).fit_transform(X)
     labels = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size).fit_predict(emb2d)
     return labels, emb2d

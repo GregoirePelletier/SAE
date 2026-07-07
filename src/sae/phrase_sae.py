@@ -123,7 +123,10 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
         return emb, emb.shape[1]
 
     print(f"  [Phrase] Extraction embeddings avec F2LLM-v2-80M ({len(texts)} phrases)...")
-    from SAE.src.saev5 import EMB_MODEL, MATRYOSHKA_DIM
+    try:
+        from src.config import EMB_MODEL, MATRYOSHKA_DIM   # FIX : plus d'import circulaire vers saev5
+    except ImportError:
+        from config import EMB_MODEL, MATRYOSHKA_DIM
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
     model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEFAULT_DEVICE).eval()
 
@@ -163,11 +166,11 @@ def encode_documents_with_phrase_sae(
             all_phrase_acts.append(f.cpu())
     phrase_acts = torch.cat(all_phrase_acts, dim=0)
 
-    phrase_to_doc_t = torch.from_numpy(phrase_to_doc).long()
-    doc_acts = torch.full((n_docs, sae.d_sae), float("-inf"), dtype=phrase_acts.dtype)
-    doc_acts.scatter_reduce_(0, phrase_to_doc_t.unsqueeze(-1).expand(-1, sae.d_sae),
-                             phrase_acts, reduce="amax", include_self=False)
-    return torch.where(doc_acts == float("-inf"), torch.zeros_like(doc_acts), doc_acts)
+    try:
+        from src.analysis.activations import scatter_maxpool
+    except ImportError:
+        from activations import scatter_maxpool
+    return scatter_maxpool(phrase_acts, torch.from_numpy(phrase_to_doc), n_docs, sae.d_sae)
 
 
 def load_or_train_sae(d_in: int, d_sae: int, k: int, embeddings: torch.Tensor,

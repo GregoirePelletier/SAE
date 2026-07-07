@@ -96,6 +96,27 @@ def extract_residual_acts(
         )
 
 
+def scatter_maxpool(
+    values: torch.Tensor,        # [n_units, d]  (tokens ou phrases)
+    unit_to_doc: torch.Tensor,   # [n_units] int64
+    n_docs: int,
+    d: int = None,
+) -> torch.Tensor:
+    """
+    doc_vec[j, f] = max_{i : unit_to_doc[i]=j} values[i, f].
+    Implémentation UNIQUE du max-pooling en espace SAE (scatter_reduce amax).
+    Remplace : sae_shared.pool_embeddings_by_document,
+               phrase_sae.encode_documents_with_phrase_sae (boucle interne),
+               la double boucle de maxpool_sae_docs.
+    Docs sans unité → vecteur nul.
+    """
+    d = d or values.shape[1]
+    out = torch.full((n_docs, d), float("-inf"), dtype=values.dtype, device=values.device)
+    idx = unit_to_doc.long().unsqueeze(-1).expand(-1, d)
+    out.scatter_reduce_(0, idx, values, reduce="amax", include_self=False)
+    return torch.where(torch.isinf(out), torch.zeros_like(out), out)
+
+
 def maxpool_sae_docs(
     act_stream: Iterator[ActBatch],
     encode_fn: Callable[[torch.Tensor], torch.Tensor],
@@ -109,8 +130,7 @@ def maxpool_sae_docs(
     for ab in act_stream:
         for s in range(0, ab.acts.shape[0], chunk):
             f = encode_fn(ab.acts[s:s + chunk].to(device)).float().cpu()
-            ids = ab.doc_ids[s:s + chunk]
-            for d in ids.unique():
-                sel = ids == d
-                doc_acts[d] = torch.maximum(doc_acts[d], f[sel].max(dim=0).values)
+            ids = ab.doc_ids[s:s + chunk].long()
+            pooled = scatter_maxpool(f, ids, n_docs, d_sae)
+            doc_acts = torch.maximum(doc_acts, pooled)
     return doc_acts
