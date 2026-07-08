@@ -138,7 +138,9 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
             input_ids = enc["input_ids"].to(DEFAULT_DEVICE)
             attention_mask = enc["attention_mask"].to(DEFAULT_DEVICE)
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            pooled = _mean_pool(outputs, attention_mask)
+            last_idx = attention_mask.sum(dim=1) - 1
+            pooled = outputs.last_hidden_state[
+                torch.arange(outputs.last_hidden_state.shape[0]), last_idx]
             pooled_m = F.normalize(pooled[:, :MATRYOSHKA_DIM], p=2, dim=-1)
             all_embs.append(pooled_m.cpu())
 

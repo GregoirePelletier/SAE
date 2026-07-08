@@ -38,27 +38,31 @@ class FrozenCoreResidualSAE(nn.Module):
         self.b_enc_extra = nn.Parameter(torch.zeros(d_extra))
         self.topk_extra = BatchTopKEncoder(k_extra)
         self.register_buffer("steps_since_active_extra", torch.zeros(d_extra))
+        self.register_buffer("input_scale", torch.tensor(1.0))
 
     def _pre_extra(self, x: torch.Tensor) -> torch.Tensor:
-        return x @ self.W_enc_extra + self.b_enc_extra
+        return (x.float() / self.input_scale) @ self.W_enc_extra.float() + self.b_enc_extra.float()
 
     def _encode_extra_acts(self, x: torch.Tensor) -> torch.Tensor:
         return self.topk_extra(self._pre_extra(x))
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
+        x_bf16 = x.to(torch.bfloat16)
         with torch.no_grad():
-            core_acts = self.core_sae.encode(x.to(torch.bfloat16))
-        extra_acts = self._encode_extra_acts(x.to(torch.bfloat16))
-        return torch.cat([core_acts, extra_acts], dim=-1)
+            core_acts = self.core_sae.encode(x_bf16)
+            core_out = self.core_sae.decode(core_acts)
+        extra_acts = self._encode_extra_acts(x_bf16 - core_out)
+        return torch.cat([core_acts.float(), extra_acts.float()], dim=-1)
 
     def decode(self, acts: torch.Tensor) -> torch.Tensor:
         d_core = self.core_sae.cfg.d_sae
-        core_acts = acts[:, :d_core].to(torch.bfloat16)
-        extra_acts = acts[:, d_core:].to(torch.bfloat16)
+        core_acts = acts[:, :d_core].to(torch.bfloat16)   # le core GemmaScope attend du bf16
+        extra_acts = acts[:, d_core:].float()             # la branche extra travaille en fp32
         with torch.no_grad():
             core_out = self.core_sae.decode(core_acts)
-        return core_out + extra_acts @ self.W_dec_extra
-
+        extra_out = (extra_acts @ self.W_dec_extra.float()) * self.input_scale
+        return core_out.float() + extra_out
+    
     def _aux_loss(self, pre: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
         dead = self.steps_since_active_extra > self.dead_steps_threshold
         n_dead = int(dead.sum())
@@ -68,7 +72,7 @@ class FrozenCoreResidualSAE(nn.Module):
         pre_dead = pre.masked_fill(~dead.unsqueeze(0), float("-inf"))
         vals, idx = pre_dead.topk(k_aux, dim=-1)
         f_aux = torch.zeros_like(pre).scatter_(-1, idx, vals.clamp(min=0.0))
-        e_hat = f_aux @ self.W_dec_extra
+        e_hat = (f_aux @ self.W_dec_extra) * self.input_scale
         return F.mse_loss(e_hat, err) / (err.pow(2).mean() + 1e-8)
 
     def forward(self, x: torch.Tensor) -> dict:
@@ -80,7 +84,7 @@ class FrozenCoreResidualSAE(nn.Module):
         residual = x_bf16 - core_out
         pre = self._pre_extra(residual)
         extra_acts = self.topk_extra(pre)
-        extra_out = extra_acts @ self.W_dec_extra
+        extra_out = (extra_acts @ self.W_dec_extra) * self.input_scale
 
         mse_loss = F.mse_loss(extra_out, residual)
         var_residual = (residual - residual.mean(dim=0)).pow(2).mean()
@@ -129,6 +133,7 @@ class ExtendedSAE(FrozenCoreResidualSAE):
     def _init_from_residual_pca(self, residuals: torch.Tensor) -> None:
         print("  [ExtendedSAE] Initialisation PCA sur la distribution d'erreurs locale...")
         sample = residuals[:min(8192, len(residuals))].float()
+        self.input_scale = sample.norm(dim=-1).median().to(self.input_scale.dtype)
         centered = sample - sample.mean(dim=0)
         try:
             _, _, Vt = torch.linalg.svd(centered, full_matrices=False)
@@ -141,7 +146,7 @@ class ExtendedSAE(FrozenCoreResidualSAE):
             self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
             mean_residual = sample.mean(dim=0)
             self.b_enc_extra.data.copy_(
-                (-mean_residual @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
+                (-(mean_residual / self.input_scale) @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
             print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
         except Exception as e:
             print(f"  [ExtendedSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")

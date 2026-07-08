@@ -29,7 +29,7 @@ def compute_metrics(
             out = model(acts_bf16)
             recon = out["sae_out"]
 
-    acts_f = acts_bf16.float()
+    acts_f = acts.to(device).float()   # référence non quantifiée
     recon_f = recon.float()
 
     mse = torch.mean((acts_f - recon_f).pow(2))

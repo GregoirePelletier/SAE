@@ -39,8 +39,10 @@ import networkx as nx
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_mutual_info_score
 
-from ...analysis.cooccurrence import compute_npmi, cooccurrence_graph
-
+try:
+    from src.analysis.cooccurrence import compute_npmi, cooccurrence_graph
+except ImportError:
+    from cooccurrence import compute_npmi, cooccurrence_graph
 
 # ─── 1. Appariement cross-modèle ───
 

@@ -26,6 +26,11 @@ from requests.sessions import Session
 from sae_lens.registry import SAE_CLASS_REGISTRY
 import gc
 
+try:
+    from src.analysis.activations import valid_token_mask, norm_outlier_mask
+except ImportError:
+    from activations import valid_token_mask, norm_outlier_mask
+
 # Compatibilité Gemma Scope 2
 if "jump_relu" not in SAE_CLASS_REGISTRY and "jumprelu" in SAE_CLASS_REGISTRY:
     SAE_CLASS_REGISTRY["jump_relu"] = SAE_CLASS_REGISTRY["jumprelu"]
@@ -710,6 +715,8 @@ def run_llm_max_pool_pipeline(
         all_doc_sae_acts = []
         raw_residuals_list = []
         n_residuals_collected = 0
+        n_residuals_seen = 0      # C3 : total de tokens train vus (dénominateur réservoir)
+        reservoir = None          # C3 : buffer [N_TOKENS_EXTRA_TRAIN, d_in] une fois plein
 
         with torch.no_grad():
             for i in tqdm(range(0, len(all_texts), 4), desc="Extraction P1"):
@@ -722,20 +729,22 @@ def run_llm_max_pool_pipeline(
                 acts_raw = outputs.hidden_states[LAYER].detach().to(torch.bfloat16)
 
                 acts = acts_raw
-                mask = inputs["attention_mask"].bool()
-
+                # B7 résolu — implémentation UNIQUE du masquage :
+                # src/analysis/activations (special tokens + skip-first + σ-clip).
+                # NB : le σ-clip devient intra-batch (stats sur B docs) au lieu
+                # d'intra-doc ; justifié par l'unimodalité des normes (diag v9).
+                keep_bt = valid_token_mask(
+                    inputs["input_ids"], inputs["attention_mask"],
+                    tokenizer, skip_first_content_token=True,
+                )
+                keep_bt = norm_outlier_mask(acts, keep_bt, sigma_clip=4.0)
                 for b in range(acts.shape[0]):
                     doc_global_idx = i + b
-                    valid_ids = inputs["input_ids"][b, mask[b]]
-                    valid_toks = acts[b, mask[b]]
-                    special_mask = torch.isin(
-                        valid_ids, torch.tensor(tokenizer.all_special_ids).to(DEVICE)
-                    )
-                    keep = ~special_mask
-                    if keep.sum() == 0:
-                        keep = torch.ones_like(keep, dtype=torch.bool)
-                    filtered = valid_toks[keep]
-                    filtered_ids = valid_ids[keep]
+                    keep = keep_bt[b]
+                    if keep.sum() == 0:   # garde-fou doc vidé par le masquage
+                        keep = inputs["attention_mask"][b].bool()
+                    filtered = acts[b, keep]
+                    filtered_ids = inputs["input_ids"][b, keep]
 
                     token_sae_acts = pretrained_sae.encode(filtered)
                     
@@ -759,15 +768,37 @@ def run_llm_max_pool_pipeline(
 
                     all_doc_sae_acts.append(doc_sae_vec.cpu())
 
-                    if USE_FROZEN_CORE and n_residuals_collected < N_TOKENS_EXTRA_TRAIN and doc_global_idx < len(train_texts):
-                        raw_residuals_list.append(filtered.cpu())
-                        n_residuals_collected += filtered.shape[0]
+                    if USE_FROZEN_CORE and doc_global_idx < len(train_texts):
+                        # C3 — Réservoir (Vitter, Algorithm R) : échantillon uniforme
+                        # sur TOUS les tokens du split train, au lieu des seuls
+                        # premiers documents. Phase 1 : remplissage séquentiel ;
+                        # phase 2 : le m-ième token vu remplace reservoir[j],
+                        # j ~ U[0, m), ssi j < N. Vectorisé par chunk (les
+                        # collisions intra-chunk sont résolues last-write-wins,
+                        # biais négligeable pour chunk << N).
+                        x_new = filtered.cpu()
+                        if n_residuals_collected < N_TOKENS_EXTRA_TRAIN:
+                            take = min(N_TOKENS_EXTRA_TRAIN - n_residuals_collected, x_new.shape[0])
+                            raw_residuals_list.append(x_new[:take])
+                            n_residuals_collected += take
+                            n_residuals_seen += take
+                            x_new = x_new[take:]
+                        if x_new.shape[0] > 0:
+                            if reservoir is None:
+                                reservoir = torch.cat(raw_residuals_list, dim=0)
+                                raw_residuals_list.clear()
+                            m = n_residuals_seen + torch.arange(1, x_new.shape[0] + 1)
+                            j = (torch.rand(x_new.shape[0]) * m).long()
+                            hit = j < N_TOKENS_EXTRA_TRAIN
+                            reservoir[j[hit]] = x_new[hit]
+                            n_residuals_seen += x_new.shape[0]
 
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
         torch.save(all_doc_sae_acts, cache_acts_path)
 
-        if USE_FROZEN_CORE and raw_residuals_list:
-            raw_residuals = torch.cat(raw_residuals_list, dim=0)[:N_TOKENS_EXTRA_TRAIN]
+        if USE_FROZEN_CORE and (reservoir is not None or raw_residuals_list):
+            raw_residuals = reservoir if reservoir is not None \
+                else torch.cat(raw_residuals_list, dim=0)[:N_TOKENS_EXTRA_TRAIN]
             torch.save(raw_residuals, cache_residuals_path)
             print(f"  [P1] Résidus bruts d'apprentissage enregistrés : {raw_residuals.shape}")
             del raw_residuals_list
@@ -846,10 +877,10 @@ def run_llm_max_pool_pipeline(
                 with torch.no_grad():
                     for i in tqdm(range(len(all_texts)), desc="Re-encodage ExtendedSAE (sparse)"):
                         frag = load_fragment(token_fragments_dir, i)
-                        raw_acts = frag["raw_acts"].to(DEVICE).to(torch.bfloat16)
+                        raw_acts = frag["raw_acts"].to(DEVICE).float()
                         # x_core reconstruit sans densifier [T, d_core] :
                         core_out_tokens = decode_core_sparse(frag, pretrained_sae, d_core, device=DEVICE)
-                        residual_tokens = raw_acts - core_out_tokens
+                        residual_tokens = raw_acts - core_out_tokens   # fp32 − fp32
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
                         del core_out_tokens
                         del residual_tokens
