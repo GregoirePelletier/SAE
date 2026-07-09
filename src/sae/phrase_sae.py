@@ -142,7 +142,10 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
             pooled = outputs.last_hidden_state[
                 torch.arange(outputs.last_hidden_state.shape[0]), last_idx]
             pooled_m = F.normalize(pooled[:, :MATRYOSHKA_DIM], p=2, dim=-1)
-            all_embs.append(pooled_m.cpu())
+            # PhraseLevelSAE est entraîné from-scratch en fp32 : caster ici plutôt que de
+            # laisser passer le dtype natif du checkpoint F2LLM (bf16 avec les versions
+            # récentes de transformers) qui casse le backward (paramètres fp32 vs grad bf16).
+            all_embs.append(pooled_m.float().cpu())
 
     embeddings = torch.cat(all_embs, dim=0)
     if cache_path:

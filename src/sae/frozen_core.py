@@ -72,7 +72,7 @@ class FrozenCoreResidualSAE(nn.Module):
         pre_dead = pre.masked_fill(~dead.unsqueeze(0), float("-inf"))
         vals, idx = pre_dead.topk(k_aux, dim=-1)
         f_aux = torch.zeros_like(pre).scatter_(-1, idx, vals.clamp(min=0.0))
-        e_hat = (f_aux @ self.W_dec_extra) * self.input_scale
+        e_hat = (f_aux @ self.W_dec_extra.float()) * self.input_scale
         return F.mse_loss(e_hat, err) / (err.pow(2).mean() + 1e-8)
 
     def forward(self, x: torch.Tensor) -> dict:
@@ -81,10 +81,17 @@ class FrozenCoreResidualSAE(nn.Module):
             core_acts = self.core_sae.encode(x_bf16)
             core_out = self.core_sae.decode(core_acts)
 
-        residual = x_bf16 - core_out
+        # .float() immédiat : core_sae travaille en bf16 (cf. commentaire decode()) mais
+        # toute la branche "extra" (paramètres, loss) est fp32 partout ailleurs dans ce
+        # fichier. Laisser `residual` en bf16 jusqu'ici et compter sur la promotion
+        # implicite fp32/bf16 dans mse_loss/var_residual/_aux_loss casse le backward
+        # ("Found dtype BFloat16 but expected Float" — la promotion marche en forward
+        # mais pas de façon fiable pour le gradient d'une op mêlant un tenseur fp32
+        # avec grad_fn et un tenseur bf16 sans grad_fn). Confirmé par isolation empirique.
+        residual = (x_bf16 - core_out).float()
         pre = self._pre_extra(residual)
         extra_acts = self.topk_extra(pre)
-        extra_out = (extra_acts @ self.W_dec_extra) * self.input_scale
+        extra_out = (extra_acts @ self.W_dec_extra.float()) * self.input_scale
 
         mse_loss = F.mse_loss(extra_out, residual)
         var_residual = (residual - residual.mean(dim=0)).pow(2).mean()

@@ -2,12 +2,13 @@
 a.py — Smoke test : valide que le SAE Gemma Scope se charge correctement.
 """
 
-from src.sae import load_gemma_scope_sae
+import os
 
-SAE_DIR = (
-    "/home/h21486/SAE/saes/gemma-scope-2-12b-it-res/snapshots/"
-    "0000000000000000000000000000000000000000/"
-    "resid_post/layer_24_width_16k_l0_medium"
+from src.sae import load_gemma_scope_sae
+from src.config import LOCAL_SAE_ROOT, SAE_SNAPSHOT, HOOK_TYPE, SAE_ID
+
+SAE_DIR = os.environ.get(
+    "SAE_DIR", os.path.join(LOCAL_SAE_ROOT, "snapshots", SAE_SNAPSHOT, HOOK_TYPE, SAE_ID)
 )
 
 if __name__ == "__main__":

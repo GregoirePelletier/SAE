@@ -31,6 +31,11 @@ try:
 except ImportError:
     from activations import valid_token_mask, norm_outlier_mask
 
+from src.config import (
+    MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, D_MODEL, HOOK_TYPE,
+    LOCAL_SAE_ROOT, SAE_SNAPSHOT, DTYPE, CLUSTER_OFFLINE_MODE,
+)
+
 # Compatibilité Gemma Scope 2
 if "jump_relu" not in SAE_CLASS_REGISTRY and "jumprelu" in SAE_CLASS_REGISTRY:
     SAE_CLASS_REGISTRY["jump_relu"] = SAE_CLASS_REGISTRY["jumprelu"]
@@ -38,37 +43,42 @@ if "jump_relu" not in SAE_CLASS_REGISTRY and "jumprelu" in SAE_CLASS_REGISTRY:
 # ======================================================================
 # CONFIGURATION ET PATCHS SÉCURITÉ RESEAU (CLUSTER & FRONT DGX)
 # ======================================================================
+# Le cluster SLURM (pas d'accès internet direct, proxy à certificat auto-signé)
+# nécessite de désactiver la vérif SSL et de forcer le mode offline HF une fois
+# les modèles/SAE mis en cache. En local (CLUSTER_OFFLINE_MODE=0, défaut), ces
+# patchs sont sautés pour permettre les premiers téléchargements.
 
-os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
-os.environ["CURL_CA_BUNDLE"] = ""
+if CLUSTER_OFFLINE_MODE:
+    os.environ["HF_HUB_DISABLE_SSL_VERIFY"] = "1"
+    os.environ["CURL_CA_BUNDLE"] = ""
 
-_old_merge_environment_settings = Session.merge_environment_settings
+    _old_merge_environment_settings = Session.merge_environment_settings
 
-def patched_merge_environment_settings(self, url, proxies, stream, verify, cert):
-    settings = _old_merge_environment_settings(self, url, proxies, stream, verify, cert)
-    settings['verify'] = False
-    return settings
+    def patched_merge_environment_settings(self, url, proxies, stream, verify, cert):
+        settings = _old_merge_environment_settings(self, url, proxies, stream, verify, cert)
+        settings['verify'] = False
+        return settings
 
-Session.merge_environment_settings = patched_merge_environment_settings
+    Session.merge_environment_settings = patched_merge_environment_settings
 
-import huggingface_hub.utils
-import huggingface_hub.file_download
+    import huggingface_hub.utils
+    import huggingface_hub.file_download
 
-_old_get_session = huggingface_hub.utils.get_session
+    _old_get_session = huggingface_hub.utils.get_session
 
-def patched_get_session():
-    session = _old_get_session()
-    session.verify = False
-    return session
+    def patched_get_session():
+        session = _old_get_session()
+        session.verify = False
+        return session
 
-huggingface_hub.utils.get_session = patched_get_session
-huggingface_hub.file_download.get_session = patched_get_session
+    huggingface_hub.utils.get_session = patched_get_session
+    huggingface_hub.file_download.get_session = patched_get_session
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-os.environ["HF_DATASETS_OFFLINE"] = "1"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
 
 import sae_lens.loading.pretrained_sae_loaders as sae_loaders
 
@@ -76,9 +86,9 @@ def mocked_get_safetensors_tensor_shapes(url, headers=None, timeout=10):
     """Lit les configurations de formes directement en mémoire locale."""
     from pathlib import Path
     cache_dir = Path(os.path.expanduser(f"~/.cache/huggingface/hub/models--google--{RELEASE_ID}"))
-    d_model = 4096 if MODEL_SIZE == "12b" else 2560
+    d_model = D_MODEL
     d_sae = 16384
-    
+
     if cache_dir.exists():
         snapshots = list(cache_dir.iterdir())
         if snapshots:
@@ -91,7 +101,7 @@ def mocked_get_safetensors_tensor_shapes(url, headers=None, timeout=10):
                     d_model = cfg.get("act_size", d_model)
                 except Exception:
                     pass
-                
+
     return {
         "w_enc": [d_model, d_sae], "b_enc": [d_sae], "w_dec": [d_sae, d_model], "b_dec": [d_model],
         "W_enc": [d_model, d_sae], "B_enc": [d_sae], "W_dec": [d_sae, d_model], "B_dec": [d_model],
@@ -110,6 +120,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 from sae_lens import SAE
+
+# fp16 par défaut en local (GPU Turing 6 Go sans bf16 natif) ; bf16 dispo via DTYPE=bf16 (cluster).
+TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 
 from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
@@ -133,7 +146,6 @@ from src.sae.judge import (
     local_gemma_judge,
 )
 
-from src.sae.batch import batch_topk_encode
 try:
     from src.analysis.cooccurrence import compute_npmi, corpus_diff_stats
 except ImportError:
@@ -154,10 +166,11 @@ def _trim_host_memory():
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    try:
-        ctypes.CDLL("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
+    if os.name != "nt":
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
 try:
     from src.storage.fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
@@ -184,13 +197,7 @@ random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
 if DEVICE == "cuda":
     torch.cuda.manual_seed_all(SEED)
 
-HF_TOKEN           = os.environ.get("HF_TOKEN")
-SAVE_DIR           = os.environ.get("SAVE_DIR", "./results/")
-LOCAL_DATASET_PATH = os.environ.get(
-    "LOCAL_DATASET_PATH",
-    "/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-)
-LOCAL_MAILS_PATH   = os.environ.get("LOCAL_MAILS_PATH", "/home/h21486/SAE/Mails.tsv")
+from src.config import HF_TOKEN, SAVE_DIR, LOCAL_DATASET_PATH, LOCAL_MAILS_PATH
 
 os.makedirs(SAVE_DIR, exist_ok=True)
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
@@ -202,56 +209,14 @@ N_TOTAL_SPORTS = int(os.environ.get("N_TOTAL_SPORTS", "2000"))
 N_TOTAL_SUPPORT = int(os.environ.get("N_TOTAL_SUPPORT", "2000"))
 TEST_SPLIT     = float(os.environ.get("TEST_SPLIT", "0.1"))
 
-# Pipeline 2
-EMB_MODEL       = os.environ.get("EMB_MODEL", "/home/h21486/SAE/models/F2LLM-v2-80M")
-MATRYOSHKA_DIM  = int(os.environ.get("MATRYOSHKA_DIM", "320"))
-D_SAE           = int(os.environ.get("D_SAE", "8192"))
-K_SPARSE        = int(os.environ.get("K_SPARSE", "16"))
-EPOCHS          = int(os.environ.get("EPOCHS", "30"))
-LR              = float(os.environ.get("LR", "5e-4"))
-BATCH_TRAIN     = int(os.environ.get("BATCH_TRAIN", "256"))
-MAX_PHRASES_DOC = int(os.environ.get("MAX_PHRASES_DOC", "20"))
-
-# Pipeline 1 — FrozenCore
-D_EXTRA         = int(os.environ.get("D_EXTRA", "1024"))
-K_EXTRA         = int(os.environ.get("K_EXTRA", "32"))
-EPOCHS_EXTRA    = int(os.environ.get("EPOCHS_EXTRA", "10"))
-LR_EXTRA        = float(os.environ.get("LR_EXTRA", "3e-4"))
-USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
-N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
-
-# LLM Judge
-N_FEATURES_TO_LABEL = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
-
-# Modèle Gemma-3
-MODEL_SIZE = os.environ.get("MODEL_SIZE", "12b")
-
-if MODEL_SIZE == "12b":
-    MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-12b-it")
-    RELEASE_ID = "gemma-scope-2-12b-it-res"
-    SAE_ID     = os.environ.get("SAE_ID", "layer_24_width_16k_l0_medium")
-    LAYER      = 24
-elif MODEL_SIZE == "4b":
-    MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-4b-it")
-    RELEASE_ID = "gemma-scope-2-4b-it-res"
-    SAE_ID     = "layer_17_width_16k_l0_medium"
-    LAYER      = 17
-elif MODEL_SIZE == "1b":
-    MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-1b-it")
-    RELEASE_ID = "gemma-scope-2-1b-it-res"
-    SAE_ID     = "layer_13_width_16k_l0_medium"
-    LAYER      = 13
-else:  # 270m
-    MODEL_ID   = os.environ.get("MODEL_ID", "/home/h21486/SAE/models/gemma-3-270m")
-    RELEASE_ID = "gemma-scope-2-270m-pt-res"
-    SAE_ID     = "layer_12_width_16k_l0_medium"
-    LAYER      = 12
-
-HOOK_TYPE      = os.environ.get("HOOK_TYPE", "resid_post")
-LOCAL_SAE_ROOT = os.environ.get("LOCAL_SAE_DIR", f"/home/h21486/SAE/saes/{RELEASE_ID}")
-SAE_SNAPSHOT   = os.environ.get(
-    "SAE_SNAPSHOT", "0000000000000000000000000000000000000000"
+from src.config import (
+    EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
+    D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
+    N_FEATURES_TO_LABEL,
 )
+# MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
+# sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
+# partagée avec download_sae.py et src/sae/gemma_scope_loader.py.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHARGEMENT DU SAE PRÉENTRAÎNÉ
@@ -458,15 +423,42 @@ def analyze_with_umap(
     active_indices = np.where(active_mask)[0].tolist()
     print(f"  Features actives (UMAP) : {n_active} / {sae_acts.shape[1]}")
 
+    if n_active == 0:
+        # Corpus trop petit (smoke test) ou features trop sparses pour ce sous-ensemble :
+        # aucune activation positive -> UMAP ne peut pas fitter (0 colonnes). Dégrade
+        # proprement plutôt que de crasher (cf. Context.md règle "gestion des exceptions
+        # propre" — attendu notamment sur des runs locaux à corpus réduit).
+        print("  [WARN] Aucune feature active — UMAP/HDBSCAN sautés pour ce sous-ensemble.")
+        del sae_np, sae_active
+        return {
+            "coords": None, "clusters": None, "n_clusters": 0,
+            "n_active": 0, "active_indices": [], "df": None,
+        }
+
+    # Sur très petits corpus (ex. fallback emails synthétiques, n<15), l'initialisation
+    # spectrale par défaut de UMAP appelle scipy.sparse.linalg.eigsh avec k >= N et lève
+    # un TypeError — bascule sur une init aléatoire (moins de structure globale mais
+    # robuste) plutôt que de planter.
+    init = "spectral" if N_DOCS >= 15 else "random"
     reducer = umap.UMAP(
-        n_components=2, 
+        n_components=2,
         metric="cosine",
         n_neighbors=min(30, max(2, N_DOCS - 1)),
-        min_dist=0.1, 
+        min_dist=0.1,
         random_state=SEED,
         n_jobs=1,   # random_state force déjà n_jobs=1 ; explicite → supprime le UserWarning
+        init=init,
     )
-    coords = reducer.fit_transform(sae_active)
+    try:
+        coords = reducer.fit_transform(sae_active)
+    except TypeError as e:
+        print(f"  [WARN] UMAP spectral init a échoué ({e}) — retry avec init='random'.")
+        reducer = umap.UMAP(
+            n_components=2, metric="cosine",
+            n_neighbors=min(30, max(2, N_DOCS - 1)),
+            min_dist=0.1, random_state=SEED, n_jobs=1, init="random",
+        )
+        coords = reducer.fit_transform(sae_active)
 
     # Libération immédiate des copies denses (N_DOCS × n_active en fp32, potentiellement
     # plusieurs Go à width 262k) : UMAP a fini, seuls `coords` (2D) et `sae_acts`
@@ -653,7 +645,7 @@ def run_llm_max_pool_pipeline(
     all_texts = train_texts + test_texts + email_texts
 
     pretrained_sae = load_pretrained_sae()
-    pretrained_sae = pretrained_sae.to(DEVICE).to(torch.bfloat16).eval()
+    pretrained_sae = pretrained_sae.to(DEVICE).to(TORCH_DTYPE).eval()
     pretrained_sae.requires_grad_(False)
     d_core = pretrained_sae.cfg.d_sae
 
@@ -708,7 +700,7 @@ def run_llm_max_pool_pipeline(
             tokenizer.pad_token = tokenizer.eos_token
 
         llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+            MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
 
@@ -726,7 +718,7 @@ def run_llm_max_pool_pipeline(
                     truncation=True, max_length=512,
                 ).to(DEVICE)
                 outputs = llm(**inputs, output_hidden_states=True)
-                acts_raw = outputs.hidden_states[LAYER].detach().to(torch.bfloat16)
+                acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
 
                 acts = acts_raw
                 # B7 résolu — implémentation UNIQUE du masquage :
@@ -814,7 +806,13 @@ def run_llm_max_pool_pipeline(
         frozen_core_path = os.path.join(SAVE_DIR, f"p1_frozen_core_d{D_EXTRA}_k{K_EXTRA}.pt")
         if os.path.exists(frozen_core_path):
             print(f"  [P1] Chargement FrozenCoreResidualSAE : {frozen_core_path}")
-            ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE).to(torch.bfloat16)
+            # Pas de .to(TORCH_DTYPE) ici : core_sae (pretrained_sae) est déjà dans
+            # TORCH_DTYPE (ligne ~648) ; la branche "extra" (W_dec_extra/W_enc_extra/
+            # b_enc_extra/threshold/input_scale) doit rester fp32 — frozen_core.py la
+            # traite explicitement en fp32 partout (.float() systématique). Un cast
+            # module-wide ici la bascule en bf16/fp16 et casse le backward
+            # ("Found dtype X but expected Float"), cf. bug rencontré en test réel.
+            ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
             ext_sae.load_state_dict(ckpt["state_dict"])
         else:
@@ -827,17 +825,19 @@ def run_llm_max_pool_pipeline(
             if raw_residuals is not None:
                 print(f"  [P1] Entraînement ExtendedSAE sur {len(raw_residuals)} tokens résidus...")
                 with torch.no_grad():
-                    sample = raw_residuals[:min(8192, len(raw_residuals))].to(DEVICE).to(torch.bfloat16)
+                    sample = raw_residuals[:min(8192, len(raw_residuals))].to(DEVICE).to(TORCH_DTYPE)
                     core_acts = pretrained_sae.encode(sample)
                     core_out  = pretrained_sae.decode(core_acts)
                     domain_residuals_cpu = (sample - core_out).cpu().float()
                     del sample, core_acts, core_out
                     gc.collect(); torch.cuda.empty_cache()
 
+                # Idem : pas de .to(TORCH_DTYPE) module-wide (cf. commentaire ci-dessus) —
+                # la branche "extra" reste fp32, seul core_sae (déjà casté) est en TORCH_DTYPE.
                 ext_sae = ExtendedSAE(
                     pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
                     domain_residuals=domain_residuals_cpu
-                ).to(DEVICE).to(torch.bfloat16)
+                ).to(DEVICE)
 
                 # FIX : Résolution de la signature erronée d'import
                 from sae_shared import load_or_train_extended_sae as load_or_train
@@ -974,7 +974,7 @@ def run_llm_max_pool_pipeline(
                 MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
             )
             expert_model = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+                MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
                 low_cpu_mem_usage=True,
                 token=HF_TOKEN, trust_remote_code=True, local_files_only=True
             ).eval()
@@ -1038,7 +1038,7 @@ def run_llm_max_pool_pipeline(
         if os.environ.get("RUN_DIFF_HYPOTHESIS", "1") == "1":
             j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
             j_llm = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+                MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
                 low_cpu_mem_usage=True,
                 token=HF_TOKEN, trust_remote_code=True, local_files_only=True
             ).eval()
@@ -1075,7 +1075,7 @@ def run_llm_max_pool_pipeline(
 
     if os.path.exists(eval_raw_path):
         eval_raw_tokens = torch.load(eval_raw_path, weights_only=True)  # x_t bruts, fp32, [n, d_in]
-        raw_tokens_tensor = eval_raw_tokens[:1000].to(DEVICE).to(torch.bfloat16)
+        raw_tokens_tensor = eval_raw_tokens[:1000].to(DEVICE).to(TORCH_DTYPE)
         with torch.no_grad():
             rho_sae = compute_rho_sae(active_sae, raw_tokens_tensor,
                                       n_sample=500, is_saelens=not USE_FROZEN_CORE, device=DEVICE)
@@ -1230,7 +1230,7 @@ def run_f2llm_pipeline(
     else:
         j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, local_files_only=True)
         j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map=DEVICE,
+            MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
             low_cpu_mem_usage=True, local_files_only=True
         ).eval()
         # FIX 9 : local_gemma_judge attend les activations et textes au niveau PHRASE

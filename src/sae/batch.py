@@ -14,11 +14,7 @@ Problème corrigé (discontinuité train/eval) :
 API :
   - BatchTopKEncoder : module à état (buffers threshold/calibrated), à instancier
     une fois par SAE.
-  - batch_topk_encode(pre, k, training) : conservée pour rétro-compatibilité
-    (stateless : train = vrai BatchTopK, eval = TopK per-sample). Émet un warning.
 """
-import warnings
-
 import torch
 import torch.nn as nn
 
@@ -68,14 +64,3 @@ class BatchTopKEncoder(nn.Module):
         k_clamp = min(self.k, pre_acts.shape[-1])
         vals, idx = pre_acts.topk(k_clamp, dim=-1)
         return torch.zeros_like(pre_acts).scatter_(-1, idx, vals.clamp(min=0.0))
-
-
-def batch_topk_encode(pre_acts: torch.Tensor, k: int, training: bool) -> torch.Tensor:
-    """DEPRECATED — préférer BatchTopKEncoder (seuil θ calibré à l'inférence)."""
-    warnings.warn("batch_topk_encode stateless : pas de seuil θ ; "
-                  "utiliser BatchTopKEncoder.", DeprecationWarning, stacklevel=2)
-    if training:
-        return _batch_topk(pre_acts, k)
-    k_clamp = min(k, pre_acts.shape[-1])
-    vals, idx = pre_acts.topk(k_clamp, dim=-1)
-    return torch.zeros_like(pre_acts).scatter_(-1, idx, vals.clamp(min=0.0))

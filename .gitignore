@@ -29,6 +29,10 @@ Mails.tsv
 models/
 datasets/
 saes/
+# Artefacts d'expérimentation locale (caches de labels, poids, jeux de test
+# synthétiques générés à la volée — régénérables via download_sae.py /
+# neuronpedia_labels.fetch_neuronpedia_labels / scripts/retrieval_demo.py)
+local_data/
 
 # Future-proofing
 outputs/

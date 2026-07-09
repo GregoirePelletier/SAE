@@ -23,7 +23,11 @@ export USE_FROZEN_CORE="1"
 
 # ── Pipeline 1 : mêmes IDs que le run cible pour valider le chemin complet ──
 export MODEL_SIZE=12b
-export SAE_ID="layer_24_width_262k_l0_medium"
+# 16k plutôt que 262k : couverture Neuronpedia bien plus dense en proportion sur
+# 24-gemmascope-2-res-16k (262k n'a qu'environ 10k features labellisées sur 262144,
+# constaté manuellement) — cf. src/config.py pour le détail du choix.
+export SAE_ID="layer_24_width_16k_l0_medium"
+export DTYPE=bf16
 
 # ── Volumes réduits ~×12 : extraction P1 ~30 min (vs 6h),
 #    ré-encodage sparse : secondes/doc -> minutes (vs 28h projetées) ──

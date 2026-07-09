@@ -5,6 +5,7 @@ Chargement hors ligne d'un SAE Gemma Scope 2 (sae-lens 6.39.0) depuis disque.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -22,12 +23,16 @@ if "jump_relu" not in SAE_CLASS_REGISTRY:
 
 def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dict] = None):
     """
-    Converter pour SAE.load_from_disk(). Lit cfg.json + params.safetensors
+    Converter pour SAE.load_from_disk(). Lit config.json (ou cfg.json — nom historique
+    des premières releases GemmaScope 2 avant renommage upstream) + params.safetensors
     sans aucune écriture disque. Mappe w_enc/w_dec -> W_enc/W_dec.
     """
     path = Path(path)
 
-    with open(path / "cfg.json", "r", encoding="utf-8") as f:
+    cfg_path = path / "config.json"
+    if not cfg_path.exists():
+        cfg_path = path / "cfg.json"
+    with open(cfg_path, "r", encoding="utf-8") as f:
         raw_cfg = json.load(f)
 
     raw_state = load_file(str(path / "params.safetensors"), device=device)
@@ -41,6 +46,17 @@ def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dic
         "threshold": raw_state["threshold"],
     }
 
+    hook_name = raw_cfg.get("hf_hook_point_in", "blocks.24.hook_resid_post")
+    # hook_layer était figé à 24 (biais 12b/layer-24) : on le dérive du hook_name résolu,
+    # avec repli sur raw_cfg["hook_layer"] si présent, sinon 24 (comportement historique).
+    # Deux conventions observées : "blocks.N.hook_resid_post" (style TransformerLens,
+    # anciennes releases) et "model.layers.N.output" (style HF, gemma-scope-2-270m-it).
+    _layer_match = re.search(r"(?:blocks|model\.layers)\.(\d+)\.", hook_name)
+    default_hook_layer = (
+        int(_layer_match.group(1)) if _layer_match
+        else raw_cfg.get("hook_layer", 24)
+    )
+
     cfg_dict = {
         "architecture": "jump_relu",
         "d_in": d_in,
@@ -48,8 +64,8 @@ def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dic
         "dtype": "bfloat16",
         "device": device,
         "model_name": raw_cfg.get("model_name", "google/gemma-3-12b-it"),
-        "hook_name": raw_cfg.get("hf_hook_point_in", "blocks.24.hook_resid_post"),
-        "hook_layer": 24,
+        "hook_name": hook_name,
+        "hook_layer": default_hook_layer,
         "apply_b_dec_to_input": False,
         "normalize_activations": "none",
     }
@@ -63,8 +79,8 @@ def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dic
 def load_gemma_scope_sae(
     sae_dir: str,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    release_id: str = "gemma-scope-2-12b-it-res",
-    sae_id: str = "resid_post/layer_24_width_16k_l0_medium",
+    release_id: Optional[str] = None,
+    sae_id: Optional[str] = None,
 ) -> SAE:
     """
     Charge un SAE Gemma Scope local si sae_dir existe, sinon fallback Hub.
@@ -76,6 +92,11 @@ def load_gemma_scope_sae(
 
     if sae_path.is_dir():
         return SAE.load_from_disk(str(sae_path), device=device, converter=gemma_scope_converter)
+
+    if release_id is None or sae_id is None:
+        from src.config import RELEASE_ID as _default_release, HOOK_TYPE as _hook, SAE_ID as _sae_id
+        release_id = release_id or _default_release
+        sae_id = sae_id or f"{_hook}/{_sae_id}"
 
     sae, _cfg, _sparsity = SAE.from_pretrained(release=release_id, sae_id=sae_id, device=device)
     return sae

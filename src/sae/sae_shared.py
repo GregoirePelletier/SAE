@@ -18,8 +18,13 @@ import pandas as pd
 from typing import Optional, List, Dict, Tuple, Any
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(ROOT_DIR, "external/interp_embed"))
-sys.path.insert(0, os.path.join(ROOT_DIR, "external/sae-lens"))
+REPO_ROOT = os.path.abspath(os.path.join(ROOT_DIR, "..", ".."))  # src/sae/ -> racine du repo
+# external/ vit à la racine du repo, pas sous src/sae/ — chemin corrigé (bug historique
+# qui pointait vers src/sae/external/..., toujours inexistant, masqué par le try/except
+# ci-dessous). interp_embed reste volontairement non peuplé (Context.md : inspiration
+# seulement) ; ce chemin ne prend effet que si le submodule est un jour initialisé.
+sys.path.insert(0, os.path.join(REPO_ROOT, "external", "interp_embed"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "external", "sae-lens"))
 sys.path.insert(0, os.path.join(ROOT_DIR, "..", "data"))
 sys.path.insert(0, os.path.join(ROOT_DIR, "..", "analysis"))
 

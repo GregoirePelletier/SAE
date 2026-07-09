@@ -17,16 +17,19 @@ from ...analysis.activations import extract_residual_acts, maxpool_sae_docs
 from ...analysis.cooccurrence import cooccurrence_graph, corpus_diff_stats, cluster_in_feature_space
 from .model_compare import compare_embedding_models
 from .crosslingual import crosslingual_alignment, downstream_report, ce_loss_increase
-from . import visualization as viz
+from ...analysis import visualization as viz
+from ...config import DTYPE
 
 OUT = Path("results_v9")
+_DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+_TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 
 
-def embed_corpus(texts: list[str], model_name: str, device="cuda", batch=32) -> torch.Tensor:
+def embed_corpus(texts: list[str], model_name: str, device=_DEFAULT_DEVICE, batch=32) -> torch.Tensor:
     """Embeddings phrase-level mean-poolés (Pipeline 2)."""
     from transformers import AutoModel, AutoTokenizer
     tok = AutoTokenizer.from_pretrained(model_name)
-    mdl = AutoModel.from_pretrained(model_name, torch_dtype=torch.bfloat16).to(device).eval()
+    mdl = AutoModel.from_pretrained(model_name, torch_dtype=_TORCH_DTYPE).to(device).eval()
     embs = []
     with torch.no_grad():
         for s in range(0, len(texts), batch):
@@ -43,7 +46,7 @@ def embed_corpus(texts: list[str], model_name: str, device="cuda", batch=32) -> 
     return torch.cat(embs)
 
 
-def train_phrase_sae(emb, d_sae=2048, k=16, epochs=60, tag="A", device="cuda"):
+def train_phrase_sae(emb, d_sae=2048, k=16, epochs=60, tag="A", device=_DEFAULT_DEVICE):
     """Délègue au harnais v9 du repo : BatchTopKEncoder (θ), AuxK, cache load_or_train."""
     try:
         from src.sae.phrase_sae import load_or_train_sae
@@ -103,7 +106,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--mails", required=True)
     p.add_argument("--mode", choices=["analysis", "compare"], default="analysis")
-    p.add_argument("--model-a", default="Alibaba-NLP/F2LLM-v2-80M")
+    p.add_argument("--model-a", default="codefuse-ai/F2LLM-v2-80M")  # org corrigée (était Alibaba-NLP, 404)
     p.add_argument("--model-b", default="intfloat/multilingual-e5-small")
     a = p.parse_args()
     (run_compare if a.mode == "compare" else run_analysis)(a)

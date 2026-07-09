@@ -88,6 +88,11 @@ def corpus_diff_stats(
         lor = np.log((a + .5) * (nB - b + .5) / ((nA - a + .5) * (b + .5)))  # Haldane
         rows.append({"feature_id": f, "freq_A": a / nA, "freq_B": b / nB,
                      "log_odds_ratio": lor, "p": p})
+    cols = ["feature_id", "freq_A", "freq_B", "log_odds_ratio", "p", "q", "significant", "label"]
+    if not rows:
+        # Corpus trop petit / features trop sparses : aucune feature active dans A ∪ B.
+        # DataFrame vide mais bien formée plutôt qu'un KeyError sur colonnes absentes.
+        return pd.DataFrame(columns=cols)
     df = pd.DataFrame(rows)
     df["q"] = multipletests(df["p"], method="fdr_bh")[1]
     df["significant"] = df["q"] < alpha

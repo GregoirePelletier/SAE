@@ -111,7 +111,7 @@ def prepare_domain_dataset(
             ds = load_dataset("wikimedia/wikipedia", "20231101.fr", split="train",
                               streaming=True, token=hf_token)
         except Exception:
-            local_wiki_dir = "/home/h21486/SAE/datasets/data_wikipedia"
+            local_wiki_dir = os.environ.get("LOCAL_WIKI_DIR", "./local_data/datasets/data_wikipedia")
             data_files = sorted(glob.glob(os.path.join(local_wiki_dir, "*.parquet")))
             if not data_files:
                 return [re.sub(r"<[^>]+>", "", t).strip() for t in texts][:n_target]
