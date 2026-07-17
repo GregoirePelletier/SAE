@@ -168,6 +168,80 @@ def split_into_phrases(
     return all_phrases, phrase_to_doc
 
 
+def build_email_train_test_corpus(
+    mails_tsv_path: str,
+    augmented_jsonl_path: str,
+    test_split: float = 0.05,
+    max_augmented_per_mail: int = 13,
+    seed: int = 42,
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """
+    Corpus principal d'entraînement du SAE : mails réels + variantes augmentées
+    acceptées (cf. décision utilisateur -- emails+augmentés doivent dominer le
+    train, au lieu du corpus générique energy/sports/support historique qui
+    n'incluait jamais d'email, cf. RESULTS_TESTS.md/Context.md).
+
+    Split GROUP-AWARE par mail d'origine (parent_id) : un mail réel et TOUTES ses
+    variantes augmentées tombent ensemble du même côté train/test. Sans ça, une
+    variante augmentée d'un mail présent en test fuiterait dans le train (quasi-
+    duplicata sémantique) et gonflerait artificiellement les métriques
+    (classification, silhouette) -- biais classique de leakage par groupe.
+
+    Retourne (train_texts, train_labels, test_texts, test_labels). Label =
+    "original" pour un mail réel, "{axis}__{level}" pour une variante augmentée
+    (réutilisable tel quel pour la classification/diffing par axe de perturbation).
+    """
+    real_texts, _ = load_and_clean_emails(mails_tsv_path)
+    if not real_texts:
+        return [], [], [], []
+
+    rng = np.random.default_rng(seed)
+    n_real = len(real_texts)
+    test_mask = rng.random(n_real) < test_split
+    parent_split = {i: ("test" if test_mask[i] else "train") for i in range(n_real)}
+
+    train_texts, train_labels = [], []
+    test_texts, test_labels = [], []
+    for i, text in enumerate(real_texts):
+        (test_texts if parent_split[i] == "test" else train_texts).append(text)
+        (test_labels if parent_split[i] == "test" else train_labels).append("original")
+
+    if augmented_jsonl_path and os.path.exists(augmented_jsonl_path):
+        try:
+            from src.data.augmentation import load_augmented
+        except ImportError:
+            from augmentation import load_augmented
+        df_aug = load_augmented(augmented_jsonl_path)
+        df_aug = df_aug[df_aug["text"].notna()].copy()
+        df_aug["parent_idx"] = df_aug["parent_id"].astype(int)
+        df_aug = df_aug[df_aug["parent_idx"] < n_real]  # ignore parents hors plage courante
+
+        if max_augmented_per_mail:
+            sampled_idx = np.concatenate([
+                rng.choice(group.index.to_numpy(), size=min(len(group), max_augmented_per_mail), replace=False)
+                for _, group in df_aug.groupby("parent_idx")
+            ])
+            df_aug = df_aug.loc[sampled_idx]
+
+        for row in df_aug.itertuples(index=False):
+            split = parent_split.get(int(row.parent_idx), "train")
+            label = f"{row.aug_axis}__{row.aug_level}"
+            if split == "test":
+                test_texts.append(row.text)
+                test_labels.append(label)
+            else:
+                train_texts.append(row.text)
+                train_labels.append(label)
+
+        print(f"  [corpus] Emails : {n_real} réels + {len(df_aug)} augmentés "
+              f"({len(train_texts)} train / {len(test_texts)} test, split par mail d'origine).")
+    else:
+        print(f"  [corpus] Emails : {n_real} réels, pas de fichier augmenté "
+              f"({augmented_jsonl_path!r} absent) -- {len(train_texts)} train / {len(test_texts)} test.")
+
+    return train_texts, train_labels, test_texts, test_labels
+
+
 def load_and_clean_emails(tsv_path: str) -> Tuple[List[str], List[str]]:
     """Retourne (texts, labels). Le parsing TSV délègue à dataset.load_mails_tsv
     (implémentation unique, quoting-aware, dédupliquée) ; ne subsiste ici que

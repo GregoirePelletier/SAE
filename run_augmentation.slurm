@@ -12,11 +12,11 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/Mails.tsv"
+export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
-# Doit matcher le SAVE_DIR utilisé par run_baseline.slurm.
-export SAVE_DIR="./results_v9_test/"
+# Emplacement canonique des données email (cf. run_augmentation_full.slurm).
+export SAVE_DIR="./local_data/emails/"
 # Run de validation rapide : 60 mails × 13 axes/niveaux ≈ 780 générations
 # (≈65 min au rythme observé sur job 38949, vs ~63h GPU pour le corpus complet
 # 3480 mails × 13 -- cf. RESULTS_TESTS.md). Sortie dans un fichier distinct pour ne

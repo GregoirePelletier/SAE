@@ -22,7 +22,7 @@ import pandas as pd
 import torch
 
 from src.sae.gemma_scope_loader import load_gemma_scope_sae
-from src.sae.neuronpedia_labels import fetch_neuronpedia_labels, merge_with_judge_labels, np_source
+from src.sae.neuronpedia_labels import fetch_neuronpedia_labels
 from src.analysis.activations import extract_residual_acts, maxpool_sae_docs
 from src.analysis.cooccurrence import corpus_diff_stats
 from src.analysis.visualization import plot_corpus_diff
@@ -30,6 +30,7 @@ from src.data.preparation import load_and_clean_emails
 from src.data.augmentation import load_augmented
 from src.config import (
     MODEL_ID, LAYER, SAE_ID, LOCAL_SAE_ROOT, SAE_SNAPSHOT, HOOK_TYPE, DTYPE,
+    NEURONPEDIA_LABELS_PATH,
 )
 
 CACHE = os.environ.get("CACHE_DIR", "cache_baseline")
@@ -37,7 +38,7 @@ os.makedirs(CACHE, exist_ok=True)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 
-# Ex: "layer_12_width_65k_l0_medium" -> largeur "65k" pour np_source() (Neuronpedia).
+# Ex: "layer_12_width_65k_l0_medium" -> largeur "65k" (Neuronpedia).
 _SAE_WIDTH = SAE_ID.split("_width_")[1].split("_")[0] if "_width_" in SAE_ID else "16k"
 
 
@@ -64,11 +65,17 @@ def main(mails_tsv: str, augmented_jsonl: str):
     sae_dir = os.path.join(LOCAL_SAE_ROOT, "snapshots", SAE_SNAPSHOT, HOOK_TYPE, SAE_ID)
     sae = load_gemma_scope_sae(sae_dir, device=DEVICE)
     model_np_id = MODEL_ID.split("/")[-1] if "/" in MODEL_ID else MODEL_ID
+    # Cache partagé canonique (src/config.py) : réutilisé par tous les scripts/runs,
+    # jamais dupliqué par run, jamais re-téléchargé une fois présent (cf. Context.md).
     np_labels = fetch_neuronpedia_labels(
         model_id=model_np_id, layer=LAYER, width=_SAE_WIDTH,
-        cache_path=os.path.join(CACHE, f"neuronpedia_labels_{np_source(LAYER, _SAE_WIDTH)}.json"),
+        cache_path=NEURONPEDIA_LABELS_PATH,
     )
-    labels = merge_with_judge_labels(np_labels, "p1_saebench_judge_labels.json")
+    # merge_with_judge_labels("p1_saebench_judge_labels.json") retiré : ce script
+    # utilise le SAE GemmaScope natif (pas de FrozenCoreResidualSAE/d_extra) -> il
+    # n'existe aucune feature d'extension à labelliser par le juge ici, l'appel
+    # était un no-op (fichier jamais présent au chemin relatif attendu).
+    labels = np_labels
 
     # 2. Corpus
     texts_orig, _ = load_and_clean_emails(mails_tsv)

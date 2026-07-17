@@ -131,7 +131,7 @@ from sae_shared import (
     compute_metrics, compute_rho_sae,
     downstream_classification,
     steer_activations, steer_and_decode,
-    load_and_clean_emails,
+    build_email_train_test_corpus,
     FrozenCoreResidualSAE, ExtendedSAE,
     PhraseLevelSAE, extract_f2llm_embeddings,
     encode_documents_with_phrase_sae, load_or_train_sae,
@@ -197,17 +197,29 @@ random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
 if DEVICE == "cuda":
     torch.cuda.manual_seed_all(SEED)
 
-from src.config import HF_TOKEN, SAVE_DIR, LOCAL_DATASET_PATH, LOCAL_MAILS_PATH
+from src.config import (
+    HF_TOKEN, SAVE_DIR, LOCAL_DATASET_PATH, LOCAL_MAILS_PATH,
+    LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH,
+)
 
 os.makedirs(SAVE_DIR, exist_ok=True)
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 USE_FINEWEB2   = True
-N_TOTAL_ENERGY = int(os.environ.get("N_TOTAL_ENERGY", "2000"))
-N_TOTAL_SPORTS = int(os.environ.get("N_TOTAL_SPORTS", "2000"))
-N_TOTAL_SUPPORT = int(os.environ.get("N_TOTAL_SUPPORT", "2000"))
-TEST_SPLIT     = float(os.environ.get("TEST_SPLIT", "0.1"))
+# Corpus de diffing cross-domaine (energy/sports/support) : SEUL usage restant,
+# volontairement réduit (n'entraîne plus le SAE, cf. section "CORPUS PRINCIPAL"
+# dans le bloc MAIN plus bas -- emails+augmentés dominent désormais l'entraînement).
+N_TOTAL_ENERGY = int(os.environ.get("N_TOTAL_ENERGY", "300"))
+N_TOTAL_SPORTS = int(os.environ.get("N_TOTAL_SPORTS", "300"))
+N_TOTAL_SUPPORT = int(os.environ.get("N_TOTAL_SUPPORT", "300"))
+# Proportion d'emails+augmentés réservée au test (le reste va en train -- objectif :
+# maximiser la part réellement utilisée en entraînement, cf. décision utilisateur).
+EMAIL_TEST_SPLIT = float(os.environ.get("EMAIL_TEST_SPLIT", "0.05"))
+# Nombre max de variantes augmentées par mail réel conservées (limite le
+# déséquilibre train si un mail génère beaucoup plus de variantes qu'un autre,
+# et borne le volume total si besoin de contrôler le temps de calcul).
+MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
 
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
@@ -633,16 +645,20 @@ def run_llm_max_pool_pipeline(
     train_labels: list,
     test_texts: list,
     test_labels: list,
-    email_texts: list = None,
-    email_labels: list = None,
+    diff_texts: list = None,
+    diff_labels: list = None,
 ) -> dict:
+    """train_texts/test_texts : corpus principal (emails+augmentés), utilisé pour
+    l'entraînement du SAE et les métriques. diff_texts/diff_labels : corpus
+    secondaire (energy/sports/support), encodé post-hoc UNIQUEMENT pour la
+    démonstration de diffing cross-domaine -- jamais utilisé pour entraîner."""
     print("\n" + "=" * 70)
     print(" PIPELINE 1 : GEMMA-3 → MAX-POOL SAE ACTS")
     print("=" * 70)
 
-    email_texts = email_texts or []
-    email_labels = email_labels or []
-    all_texts = train_texts + test_texts + email_texts
+    diff_texts = diff_texts or []
+    diff_labels = diff_labels or []
+    all_texts = train_texts + test_texts + diff_texts
 
     pretrained_sae = load_pretrained_sae()
     pretrained_sae = pretrained_sae.to(DEVICE).to(TORCH_DTYPE).eval()
@@ -926,7 +942,7 @@ def run_llm_max_pool_pipeline(
 
     train_doc_acts = all_doc_sae_acts[:n_train]
     test_doc_acts  = all_doc_sae_acts[n_train: n_train + n_test]
-    email_doc_acts = all_doc_sae_acts[n_train + n_test:]
+    diff_doc_acts  = all_doc_sae_acts[n_train + n_test:]  # corpus energy/sports/support, post-hoc
 
     # ─── LABELS DÉCOUPLÉS : GemmaScope (core) ⊕ Juge LLM (extension) ──────
     #
@@ -943,14 +959,16 @@ def run_llm_max_pool_pipeline(
     #    feature_selection_by_magnitude(lo, hi) rendent les deux parties
     #    comparables indépendamment.
 
-    # -- Labels core : Neuronpedia (cache offline) ---------------------------
-    np_labels_path = os.environ.get(
-        "NEURONPEDIA_LABELS", os.path.join(CACHE_DIR, "neuronpedia_labels_core.json"))
+    # -- Labels core : Neuronpedia (cache local partagé, jamais d'appel réseau) --
+    # NEURONPEDIA_LABELS_PATH (src/config.py) pointe vers un emplacement UNIQUE
+    # partagé par tous les runs (local_data/neuronpedia_labels/), pas un cache par
+    # SAVE_DIR -- évite de re-télécharger/dupliquer le même fichier par run.
+    np_labels_path = os.environ.get("NEURONPEDIA_LABELS", NEURONPEDIA_LABELS_PATH)
     labels_core: dict[int, str] = {}
     if os.path.exists(np_labels_path):
         with open(np_labels_path, "r", encoding="utf-8") as f:
             labels_core = {int(k): v for k, v in json.load(f).items()}
-        print(f"  [P1 Labels] {len(labels_core)} labels GemmaScope (Neuronpedia) chargés.")
+        print(f"  [P1 Labels] {len(labels_core)} labels GemmaScope (Neuronpedia) chargés depuis {np_labels_path}.")
     else:
         print(f"  [P1 Labels] WARN : {np_labels_path} absent — features core affichées F{{idx}}. "
               "Générer le cache hors-cluster via fetch_neuronpedia_labels().")
@@ -1022,27 +1040,29 @@ def run_llm_max_pool_pipeline(
 
     umap_res_test = analyze_with_umap(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
-        filename="umap_pipeline1_llm_per_token.html",
-        title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (FineWeb-2)",
+        filename="umap_pipeline1_emails.html",
+        title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (Emails EDF, test)",
         token_fragments_dir=token_fragments_dir, offset=n_train, feature_labels=label_map_p1,
     )
-    if email_texts:
+    if diff_texts:
         analyze_with_umap(
-            texts=email_texts, sae_acts=email_doc_acts, labels=email_labels,
-            filename="umap_pipeline1_emails.html",
-            title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (EDF Mails)",
+            texts=diff_texts, sae_acts=diff_doc_acts, labels=diff_labels,
+            filename="umap_pipeline1_diffcorpus.html",
+            title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (energy/sports/support, post-hoc)",
             token_fragments_dir=token_fragments_dir, offset=n_train + n_test, feature_labels=label_map_p1,
         )
 
-    energy_mask = np.array([l == "energy" for l in train_labels])
-    sports_mask  = np.array([l == "sports"  for l in train_labels])
+    # Diffing cross-domaine (démonstration, corpus secondaire post-hoc -- cf.
+    # docstring de la fonction) : energy vs sports, jamais le corpus d'entraînement.
+    energy_mask = np.array([l == "energy" for l in diff_labels])
+    sports_mask  = np.array([l == "sports"  for l in diff_labels])
     diff_hypothesis = "Aucun écart mesurable."
     if energy_mask.sum() > 0 and sports_mask.sum() > 0:
         # corpus_diff_stats : test exact de Fisher par feature + correction BH
         # (remplace diff_features, écarts de fréquences sans contrôle du FDR).
         pair_mask = energy_mask | sports_mask
         diff_df = corpus_diff_stats(
-            train_doc_acts[torch.from_numpy(pair_mask)].float(),
+            diff_doc_acts[torch.from_numpy(pair_mask)].float(),
             group_mask=energy_mask[pair_mask],       # True = Énergie (corpus A)
             feature_labels=label_map_p1,
         )
@@ -1068,13 +1088,16 @@ def run_llm_max_pool_pipeline(
     npmi_mat = compute_npmi(test_doc_acts[:, keep_npmi])
     torch.save({"npmi": npmi_mat, "feature_ids": keep_npmi}, os.path.join(CACHE_DIR, "p1_npmi.pt"))
 
+    # Requêtes retrieval/clustering alignées sur le domaine réel (test_texts =
+    # emails+augmentés depuis cette bascule, plus des chunks energy/FineWeb-2) --
+    # cf. Context.md "Fonctionnalités futures / Retrieval interprétable".
     targeted_clustering_by_axis(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
-        feature_labels=label_map_p1, axis_query="énergie électrique"
+        feature_labels=label_map_p1, axis_query="urgence réclamation client"
     )
 
     results_retrieval = property_based_retrieval(
-        "électrique nucléaire réseau", test_doc_acts, test_texts, label_map_p1
+        "facturation résiliation panne", test_doc_acts, test_texts, label_map_p1
     )
     for rank, (doc, score) in enumerate(results_retrieval):
         print(f"    Rang {rank+1} (Boltzmann={score:.4f}) : {doc[:100]}...")
@@ -1120,15 +1143,15 @@ def run_llm_max_pool_pipeline(
         metrics_pretrained = {"FVE": float("nan")}
         print("  [Metrics] Échantillon de tokens indisponible pour la FVE.")
 
-    print("\n  [Downstream P1] Sonde logistique sur SAE activations...")
+    print("\n  [Downstream P1] Sonde logistique sur SAE activations (energy vs sports, corpus diffing)...")
     en_mask = torch.from_numpy(energy_mask)
     sp_mask = torch.from_numpy(sports_mask)
     if en_mask.sum() > 0 and sp_mask.sum() > 0:
         try:
             clf_results = downstream_classification(
                 acts_by_label={
-                    "energy": train_doc_acts[en_mask],
-                    "sports": train_doc_acts[sp_mask],
+                    "energy": diff_doc_acts[en_mask],
+                    "sports": diff_doc_acts[sp_mask],
                 }
             )
         except Exception as e:
@@ -1137,6 +1160,29 @@ def run_llm_max_pool_pipeline(
     else:
         print(f"  [Downstream P1] Échantillons insuffisants pour entraîner la sonde logistique.")
         clf_results = {}
+
+    # Sonde logistique sur le corpus principal (emails+augmentés) : le SAE
+    # sépare-t-il linéairement les axes de perturbation (émotion, urgence,
+    # registre...) et l'original ? Question bien plus pertinente pour le cas
+    # d'usage EDF que le probe energy/sports (générique, corpus secondaire).
+    print("  [Downstream P1] Sonde logistique sur SAE activations (axes email, corpus principal)...")
+    train_labels_arr = np.array(train_labels)
+    label_counts = pd.Series(train_labels_arr).value_counts()
+    usable_labels = label_counts[label_counts >= 10].index.tolist()  # StratifiedKFold(5) minimum
+    clf_results_email = {}
+    if len(usable_labels) >= 2:
+        try:
+            acts_by_label_email = {
+                lbl: train_doc_acts[torch.from_numpy(train_labels_arr == lbl)]
+                for lbl in usable_labels
+            }
+            clf_results_email = downstream_classification(acts_by_label=acts_by_label_email)
+            print(f"  [Downstream P1] acc_SAE (axes email, {len(usable_labels)} classes) = "
+                  f"{clf_results_email.get('acc_sae', float('nan')):.4f}")
+        except Exception as e:
+            print(f"  [Downstream P1] WARN: Classification (axes email) failed: {e}")
+    else:
+        print("  [Downstream P1] Pas assez de classes email avec ≥10 échantillons pour la sonde.")
 
     # ─── HYGIÈNE MÉMOIRE HÔTE avant Pipeline 2 ───────────────────────────
     # test_doc_acts est une VUE de all_doc_sae_acts : la retourner telle quelle
@@ -1151,13 +1197,15 @@ def run_llm_max_pool_pipeline(
         "active_features": umap_res_test["n_active"],
         "diff_hypothesis": diff_hypothesis,
         "clf_acc_sae": clf_results.get("acc_sae", float("nan")),
+        "clf_acc_email_axes": clf_results_email.get("acc_sae", float("nan")),
+        "clf_n_email_classes": len(usable_labels),
         "fve_pretrained": metrics_pretrained.get("FVE", float("nan")),
         "_test_doc_acts": test_doc_acts_out,
         "_label_map": label_map_p1,
         "_top_core": top_core_indices,
         "_top_ext": top_ext_indices,
     }
-    del all_doc_sae_acts, train_doc_acts, test_doc_acts, email_doc_acts
+    del all_doc_sae_acts, train_doc_acts, test_doc_acts, diff_doc_acts
     del pretrained_sae, active_sae
     if USE_FROZEN_CORE and "ext_sae" in dir():
         try:
@@ -1178,15 +1226,18 @@ def run_f2llm_pipeline(
     train_labels: list,
     test_texts: list,
     test_labels: list,
-    email_texts: list = None,
-    email_labels: list = None,
+    diff_texts: list = None,
+    diff_labels: list = None,
 ) -> dict:
+    """train_texts/test_texts : corpus principal (emails+augmentés) -- entraîne
+    directement le PhraseLevelSAE. diff_texts/diff_labels : corpus secondaire
+    (energy/sports/support), encodé post-hoc pour la démo de diffing uniquement."""
     print("\n" + "=" * 70)
     print(" PIPELINE 2 : F2LLM-v2 PHRASE-LEVEL SAE → MAX-POOL DOCUMENT")
     print("=" * 70)
 
-    email_texts  = email_texts or []
-    email_labels = email_labels or []
+    diff_texts  = diff_texts or []
+    diff_labels = diff_labels or []
 
     train_phrases, train_p2d = split_into_phrases(train_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
     print(f"  Train : {len(train_texts)} docs → {len(train_phrases)} phrases")
@@ -1221,17 +1272,17 @@ def run_f2llm_pipeline(
         phrase_embeddings=test_phrase_emb, phrase_to_doc=test_p2d_arr,
     )
 
-    email_doc_acts = None
-    if email_texts:
-        email_phrases, email_p2d_list = split_into_phrases(email_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
-        email_phrase_emb, _ = extract_f2llm_embeddings(
-            email_phrases, max_length=128,
-            cache_path=os.path.join(CACHE_DIR, f"email_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(email_phrases)}"),
+    diff_doc_acts = None
+    if diff_texts:
+        diff_phrases, diff_p2d_list = split_into_phrases(diff_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
+        diff_phrase_emb, _ = extract_f2llm_embeddings(
+            diff_phrases, max_length=128,
+            cache_path=os.path.join(CACHE_DIR, f"diffcorpus_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(diff_phrases)}"),
         )
-        email_p2d_arr = np.array(email_p2d_list)
-        email_doc_acts = encode_documents_with_phrase_sae(
-            n_docs=len(email_texts), sae=sae,
-            phrase_embeddings=email_phrase_emb, phrase_to_doc=email_p2d_arr,
+        diff_p2d_arr = np.array(diff_p2d_list)
+        diff_doc_acts = encode_documents_with_phrase_sae(
+            n_docs=len(diff_texts), sae=sae,
+            phrase_embeddings=diff_phrase_emb, phrase_to_doc=diff_p2d_arr,
         )
 
     # ─── LLM Judge P2 ────────────────────────────────────────────────────────
@@ -1283,46 +1334,67 @@ def run_f2llm_pipeline(
 
     umap_res_test = analyze_with_umap(
         texts=test_texts, sae_acts=doc_acts, labels=test_labels,
-        filename="umap_pipeline2_f2llm_phrases.html",
-        title="Pipeline 2 : F2LLM-v2 Phrase SAE → Max-Pool Document (FineWeb-2)",
+        filename="umap_pipeline2_emails.html",
+        title="Pipeline 2 : F2LLM-v2 Phrase SAE → Max-Pool Document (Emails EDF, test)",
         activating_tokens_map=activating_phrases_map, feature_labels=label_map_p2,
     )
-    if email_texts and email_doc_acts is not None:
+    if diff_texts and diff_doc_acts is not None:
         analyze_with_umap(
-            texts=email_texts, sae_acts=email_doc_acts, labels=email_labels,
-            filename="umap_pipeline2_emails.html",
-            title="Pipeline 2 : F2LLM-v2 Phrase SAE → Max-Pool Document (EDF Mails)",
+            texts=diff_texts, sae_acts=diff_doc_acts, labels=diff_labels,
+            filename="umap_pipeline2_diffcorpus.html",
+            title="Pipeline 2 : F2LLM-v2 Phrase SAE → Max-Pool Document (energy/sports/support, post-hoc)",
             feature_labels=label_map_p2,
         )
 
-    print("\n  [Downstream P2] Sonde logistique sur SAE activations...")
-    energy_mask_test = np.array([l == "energy" for l in test_labels])
-    sports_mask_test  = np.array([l == "sports"  for l in test_labels])
-    if energy_mask_test.sum() > 0 and sports_mask_test.sum() > 0:
+    print("\n  [Downstream P2] Sonde logistique sur SAE activations (energy vs sports, corpus diffing)...")
+    energy_mask_diff = np.array([l == "energy" for l in diff_labels])
+    sports_mask_diff  = np.array([l == "sports"  for l in diff_labels])
+    if energy_mask_diff.sum() > 0 and sports_mask_diff.sum() > 0 and diff_doc_acts is not None:
         try:
-            test_phrase_emb_pooled = pool_embeddings_by_document(
-                test_phrase_emb, test_p2d_arr, n_docs=len(test_texts)
+            diff_phrase_emb_pooled = pool_embeddings_by_document(
+                diff_phrase_emb, diff_p2d_arr, n_docs=len(diff_texts)
             )
             clf_results_p2 = downstream_classification(
                 acts_by_label={
-                    "energy": doc_acts[torch.from_numpy(energy_mask_test)],
-                    "sports": doc_acts[torch.from_numpy(sports_mask_test)],
+                    "energy": diff_doc_acts[torch.from_numpy(energy_mask_diff)],
+                    "sports": diff_doc_acts[torch.from_numpy(sports_mask_diff)],
                 },
                 raw_emb_by_label={
-                    "energy": test_phrase_emb_pooled[torch.from_numpy(energy_mask_test)],
-                    "sports": test_phrase_emb_pooled[torch.from_numpy(sports_mask_test)],
+                    "energy": diff_phrase_emb_pooled[torch.from_numpy(energy_mask_diff)],
+                    "sports": diff_phrase_emb_pooled[torch.from_numpy(sports_mask_diff)],
                 }
             )
         except Exception as e:
             print(f"  [Downstream P2] WARN: Classification failed: {e}")
             clf_results_p2 = {}
     else:
-        print(f"  [Downstream P2] Insufficient samples: energy={energy_mask_test.sum()}, sports={sports_mask_test.sum()}")
+        print(f"  [Downstream P2] Insufficient samples: energy={energy_mask_diff.sum()}, sports={sports_mask_diff.sum()}")
         clf_results_p2 = {}
+
+    # Sonde sur les axes email (test split, corpus principal) : cf. P1 pour la
+    # même logique/justification (probe plus pertinent que energy/sports ici).
+    print("  [Downstream P2] Sonde logistique sur SAE activations (axes email, corpus principal)...")
+    test_labels_arr = np.array(test_labels)
+    label_counts_p2 = pd.Series(test_labels_arr).value_counts()
+    usable_labels_p2 = label_counts_p2[label_counts_p2 >= 10].index.tolist()
+    clf_results_p2_email = {}
+    if len(usable_labels_p2) >= 2:
+        try:
+            acts_by_label_email_p2 = {
+                lbl: doc_acts[torch.from_numpy(test_labels_arr == lbl)]
+                for lbl in usable_labels_p2
+            }
+            clf_results_p2_email = downstream_classification(acts_by_label=acts_by_label_email_p2)
+            print(f"  [Downstream P2] acc_SAE (axes email, {len(usable_labels_p2)} classes) = "
+                  f"{clf_results_p2_email.get('acc_sae', float('nan')):.4f}")
+        except Exception as e:
+            print(f"  [Downstream P2] WARN: Classification (axes email) failed: {e}")
+    else:
+        print("  [Downstream P2] Pas assez de classes email avec ≥10 échantillons pour la sonde.")
 
     silhouette_p2 = compute_silhouette(doc_acts, test_labels)
     del sae, doc_acts, test_phrase_emb, train_phrase_emb
-    if email_doc_acts is not None: del email_doc_acts
+    if diff_doc_acts is not None: del diff_doc_acts
     _trim_host_memory()
 
     return {
@@ -1334,6 +1406,8 @@ def run_f2llm_pipeline(
         "clf_acc_sae": clf_results_p2.get("acc_sae", float("nan")),
         "clf_acc_raw": clf_results_p2.get("acc_raw", float("nan")),
         "clf_delta":   clf_results_p2.get("delta_acc", float("nan")),
+        "clf_acc_email_axes": clf_results_p2_email.get("acc_sae", float("nan")),
+        "clf_n_email_classes": len(usable_labels_p2),
     }
 
 
@@ -1374,6 +1448,35 @@ if __name__ == "__main__":
     print(" CHARGEMENT DU CORPUS")
     print("=" * 70)
 
+    # ─── CORPUS PRINCIPAL : emails réels + variantes augmentées ────────────────
+    # Domine désormais l'entraînement du SAE (reservoir de résidus + PhraseLevelSAE),
+    # là où le corpus generic energy/sports/support l'occupait entièrement par le
+    # passé sans jamais qu'un email n'entre dans le train (cf. RESULTS_TESTS.md /
+    # Context.md — diagnostic du faible taux de labellisation "odd-one-out" :
+    # features d'extension entraînées uniquement sur du FineWeb-2/Wikipedia
+    # générique, jamais sur du contenu email -> exemples positifs incohérents
+    # présentés au juge). Split GROUP-AWARE par mail d'origine (aucune fuite
+    # d'une variante augmentée d'un mail de test vers le train).
+    train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+        test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL, seed=SEED,
+    )
+    if not train_texts:
+        print("  Fallback emails synthétiques (Mails.tsv introuvable).")
+        train_texts = [
+            "Bonjour, je conteste ma facture d'électricité Linky, hausse injustifiée.",
+            "Merci de planifier l'installation de mon compteur de raccordement électrique.",
+            "Coupure réseau dans notre rue depuis 2 heures. Envoyez un technicien.",
+        ]
+        train_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
+        test_texts, test_labels = train_texts, train_labels
+    print(f"Train (emails+augmentés) : {len(train_texts)} docs | Test : {len(test_texts)} docs")
+
+    # ─── CORPUS SECONDAIRE : diffing cross-domaine (energy vs sports) ──────────
+    # Petit corpus generic, gardé UNIQUEMENT pour la démonstration existante de
+    # diffing cross-domaine (p1_diff_energy_sports.csv) : encodé post-hoc par le
+    # SAE déjà entraîné sur les emails (comme les emails l'étaient avant cette
+    # bascule), jamais utilisé pour l'entraînement lui-même.
     energy_texts = prepare_domain_dataset(
         ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
         chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
@@ -1389,43 +1492,15 @@ if __name__ == "__main__":
         chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
         local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
     )
-
-    rng = np.random.default_rng(SEED)
-
-    def _split(texts, label, frac=TEST_SPLIT):
-        n = len(texts)
-        idx = rng.permutation(n)
-        n_test = max(1, int(n * frac))
-        test_idx, train_idx = idx[:n_test], idx[n_test:]
-        return (
-            [texts[i] for i in train_idx], [label] * (n - n_test),
-            [texts[i] for i in test_idx],  [label] * n_test,
-        )
-
-    en_tr, en_tr_lbl, en_te, en_te_lbl = _split(energy_texts, "energy")
-    sp_tr, sp_tr_lbl, sp_te, sp_te_lbl = _split(sports_texts, "sports")
-    su_tr, su_tr_lbl, su_te, su_te_lbl = _split(support_texts, "support")
-    train_texts  = en_tr  + sp_tr  + su_tr
-    train_labels = en_tr_lbl + sp_tr_lbl + su_tr_lbl
-    test_texts   = en_te  + sp_te  + su_te
-    test_labels  = en_te_lbl + sp_te_lbl + su_te_lbl
-    print(f"Train : {len(train_texts)} chunks | Test : {len(test_texts)} chunks")
-
-    email_texts, email_labels = load_and_clean_emails(LOCAL_MAILS_PATH)
-    if not email_texts:
-        print("  Fallback emails synthétiques.")
-        email_texts = [
-            "Bonjour, je conteste ma facture d'électricité Linky, hausse injustifiée.",
-            "Merci de planifier l'installation de mon compteur de raccordement électrique.",
-            "Coupure réseau dans notre rue depuis 2 heures. Envoyez un technicien.",
-        ]
-        email_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
+    diff_texts  = energy_texts + sports_texts + support_texts
+    diff_labels = ["energy"] * len(energy_texts) + ["sports"] * len(sports_texts) + ["support"] * len(support_texts)
+    print(f"Corpus diffing (energy/sports/support, post-hoc uniquement) : {len(diff_texts)} chunks")
 
     RUN = set(os.environ.get("PIPELINES", "p1,p2").split(","))
     results_p1 = {}
     if "p1" in RUN:
         results_p1 = run_llm_max_pool_pipeline(
-            train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
+            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
         )
         run_steering_demo(results_p1)
     # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).
@@ -1435,8 +1510,8 @@ if __name__ == "__main__":
     results_p2 = {}
     if "p2" in RUN:
         results_p2 = run_f2llm_pipeline(
-        train_texts, train_labels, test_texts, test_labels, email_texts, email_labels
-    )
+            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
+        )
 
     print("\n" + "=" * 70)
     print(" BILAN COMPARATIF")
@@ -1450,6 +1525,8 @@ if __name__ == "__main__":
             "ρ_SAE":       f"{results_p1.get('rho_sae', float('nan')):.4f}",
             "silhouette":  f"{results_p1.get('silhouette', float('nan')):.4f}",
             "acc_SAE":     f"{results_p1.get('clf_acc_sae', float('nan')):.4f}",
+            "acc_axes_email": f"{results_p1.get('clf_acc_email_axes', float('nan')):.4f} "
+                               f"({results_p1.get('clf_n_email_classes', 0)} classes)",
             "FVE_base":    f"{results_p1.get('fve_pretrained', float('nan')):.4f}",
             "clusters":    results_p1.get("n_clusters", "—"),
         },
@@ -1461,6 +1538,8 @@ if __name__ == "__main__":
             "ρ_SAE":       f"{results_p2.get('rho_sae', float('nan')):.4f}",
             "silhouette":  f"{results_p2.get('silhouette', float('nan')):.4f}",
             "acc_SAE":     f"{results_p2.get('clf_acc_sae', float('nan')):.4f}",
+            "acc_axes_email": f"{results_p2.get('clf_acc_email_axes', float('nan')):.4f} "
+                               f"({results_p2.get('clf_n_email_classes', 0)} classes)",
             "FVE_base":    "—",
             "clusters":    results_p2.get("n_clusters", "—"),
         },

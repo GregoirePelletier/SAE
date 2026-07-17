@@ -41,6 +41,7 @@ try:
         prepare_domain_dataset,
         split_into_phrases,
         load_and_clean_emails,
+        build_email_train_test_corpus,
         url_match,
     )
 except ImportError:
@@ -49,6 +50,7 @@ except ImportError:
         prepare_domain_dataset,
         split_into_phrases,
         load_and_clean_emails,
+        build_email_train_test_corpus,
         url_match,
     )
 

@@ -4,7 +4,7 @@
 # les 8 tâches de l'array sont COMPLETED (squeue -u $USER pour vérifier).
 set -euo pipefail
 cd /home/h21486/SAE/
-SAVE_DIR="./results_v9_test/"
+SAVE_DIR="./local_data/emails/"
 OUT="${SAVE_DIR}augmented_mails.jsonl"
 
 shopt -s nullglob

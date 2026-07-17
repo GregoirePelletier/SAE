@@ -18,7 +18,7 @@ et n'ajoute que le scoring BM25 sparse (scipy CSR, ~40 lignes).
 
 Usage (cluster, offline) :
   uv run python src/sae/retrieval/latent_terms.py \
-      --mails /home/h21486/SAE/Mails.tsv \
+      --mails /home/h21486/SAE/local_data/emails/Mails.tsv \
       --query "contestation facture Linky trop-perçu"
 """
 from __future__ import annotations
@@ -91,7 +91,7 @@ class LatentTermsIndex:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mails", default=os.environ.get("LOCAL_MAILS_PATH", "Mails.tsv"))
+    ap.add_argument("--mails", default=os.environ.get("LOCAL_MAILS_PATH", "local_data/emails/Mails.tsv"))
     ap.add_argument("--query", default="réclamation facturation compteur Linky")
     ap.add_argument("--top-k", type=int, default=5)
     args = ap.parse_args()

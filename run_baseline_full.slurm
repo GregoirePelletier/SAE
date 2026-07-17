@@ -16,7 +16,8 @@ export HF_DATASETS_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/Mails.tsv"
+export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
 export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
 export LOCAL_SAE_DIR="/home/h21486/SAE/saes/gemma-scope-2-12b-it-res"
 export SAVE_DIR="./results_v9_test/"
@@ -25,6 +26,7 @@ export CACHE_DIR="${SAVE_DIR}cache_baseline_full"
 mkdir -p logs "${CACHE_DIR}"
 
 cd /home/h21486/SAE/
-# Corpus complet : ${SAVE_DIR}augmented_mails.jsonl doit avoir été généré et fusionné
-# au préalable via run_augmentation_full.slurm (array 8 shards) + merge_augmentation_shards.sh.
-.venv/bin/python scripts/baseline_gemmascope.py "${LOCAL_MAILS_PATH}" "${SAVE_DIR}augmented_mails.jsonl"
+# Corpus complet : emplacement canonique local_data/emails/ (déplacé hors de
+# results_v9_test/ -- un jeu de données d'entrée ne doit pas vivre sous un dossier
+# de résultats d'expérience, cf. réorganisation des données).
+.venv/bin/python scripts/baseline_gemmascope.py "${LOCAL_MAILS_PATH}" "${LOCAL_AUGMENTED_MAILS_PATH}"

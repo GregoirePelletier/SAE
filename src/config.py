@@ -4,6 +4,7 @@ Casse l'import circulaire phrase_sae → saev5 et centralise l'env.
 Tout est surchargé par variables d'environnement (compat sbatch existants).
 """
 import os
+import re
 
 SEED = int(os.environ.get("SEED", "42"))
 
@@ -92,4 +93,24 @@ CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 LOCAL_DATASET_PATH = os.environ.get(
     "LOCAL_DATASET_PATH",
     "./local_data/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet")
-LOCAL_MAILS_PATH = os.environ.get("LOCAL_MAILS_PATH", "./local_data/Mails.tsv")
+# Corpus EDF réel + variantes augmentées (générées par scripts/run_augmentation.py,
+# cf. RESULTS_TESTS.md §0) : emplacement canonique unique, utilisé par saev5.py,
+# scripts/run_augmentation.py et scripts/baseline_gemmascope.py. Anciennement
+# Mails.tsv à la racine et augmented_mails.jsonl sous un results_*/ de run
+# particulier (accidentel : un jeu de données d'entrée ne doit pas vivre sous un
+# dossier de résultats d'expérience).
+LOCAL_MAILS_PATH = os.environ.get("LOCAL_MAILS_PATH", "./local_data/emails/Mails.tsv")
+LOCAL_AUGMENTED_MAILS_PATH = os.environ.get(
+    "LOCAL_AUGMENTED_MAILS_PATH", "./local_data/emails/augmented_mails.jsonl")
+
+# Labels Neuronpedia (cf. src/sae/neuronpedia_labels.py) : cache partagé entre TOUS
+# les runs (indépendant de SAVE_DIR/CACHE_DIR), régénérable hors-cluster via
+# fetch_neuronpedia_labels() mais réutilisé tel quel une fois présent -- jamais
+# re-téléchargé, jamais dupliqué par run. Override par env si besoin d'un autre jeu.
+# Largeur dérivée de SAE_ID (ex. "layer_24_width_16k_l0_medium" -> "16k") au lieu
+# d'être figée en dur : varie selon MODEL_SIZE (65k pour 270m, 16k pour 12b/4b/1b).
+_WIDTH_MATCH = re.search(r"width_(\w+?)_l0", SAE_ID)
+_SAE_WIDTH = _WIDTH_MATCH.group(1) if _WIDTH_MATCH else "16k"
+NEURONPEDIA_LABELS_PATH = os.environ.get(
+    "NEURONPEDIA_LABELS_PATH",
+    f"./local_data/neuronpedia_labels/neuronpedia_labels_{LAYER}-gemmascope-2-res-{_SAE_WIDTH}.json")

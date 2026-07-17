@@ -13,17 +13,25 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/Mails.tsv"
+export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
-export SAVE_DIR="./results_v9_test/"
+# Écrit directement dans l'emplacement canonique des données email (pas un
+# results_*/ -- corrigé après la réorganisation des données : un jeu de données
+# d'entrée ne doit pas vivre sous un dossier de résultats d'expérience). Ce job a
+# déjà tourné une fois avec succès (job 39017, cf. RESULTS_TESTS.md §0) et son
+# résultat fusionné vit maintenant sous local_data/emails/augmented_mails.jsonl ;
+# ce script ne sert plus qu'à générer des variantes SUPPLÉMENTAIRES (nouveaux
+# mails ajoutés à Mails.tsv) -- il reprend automatiquement (skip des aug_id déjà
+# présents), ne régénère jamais ce qui existe déjà.
+export SAVE_DIR="./local_data/emails/"
 
-# Corpus complet (3480 mails × 13 axes ≈ 45 240 générations, ~63h GPU cumulées au
-# rythme observé sur job 38949/38987) réparti en 8 shards indépendants tournant en
-# parallèle sur les 8 GPUs du nœud a100 (idle au moment du lancement) -> ~8h de mur
-# au lieu de 63h séquentielles. Chaque tâche de l'array traite 1/8 des mails
-# (découpage entrelacé df.iloc[idx::8], cf. scripts/run_augmentation.py) et écrit
-# results_v9_test/augmented_mails_shard{idx}of8.jsonl -- à fusionner avec
+# 3480 mails × 13 axes ≈ 45 240 générations, ~63h GPU cumulées au rythme observé sur
+# job 38949/38987, réparti en 8 shards indépendants tournant en parallèle sur les 8
+# GPUs du nœud a100 (idle au moment du lancement) -> ~8h de mur au lieu de 63h
+# séquentielles. Chaque tâche de l'array traite 1/8 des mails (découpage entrelacé
+# df.iloc[idx::8], cf. scripts/run_augmentation.py) et écrit
+# local_data/emails/augmented_mails_shard{idx}of8.jsonl -- à fusionner avec
 # merge_augmentation_shards.sh une fois les 8 tâches terminées.
 export AUGMENT_NUM_SHARDS=8
 export AUGMENT_SHARD_IDX=$SLURM_ARRAY_TASK_ID
