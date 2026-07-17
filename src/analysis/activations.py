@@ -59,7 +59,6 @@ def norm_outlier_mask(resid: torch.Tensor, mask: torch.Tensor, sigma_clip: float
     return mask & ((norms - mu) / sd < sigma_clip)
 
 
-@torch.no_grad()
 def extract_residual_acts(
     texts: list[str],
     model,
@@ -76,24 +75,40 @@ def extract_residual_acts(
     output_hidden_states ; layer indexé sur hidden_states (0 = embeddings).
     """
     model.eval()
-    for start in range(0, len(texts), batch_size):
-        batch = texts[start:start + batch_size]
-        enc = tokenizer(batch, return_tensors="pt", padding=True,
-                        truncation=True, max_length=max_length)
-        input_ids = enc["input_ids"].to(device)          # dict explicite — jamais enc.to(device)
-        attn = enc["attention_mask"].to(device)
-        out = model(input_ids=input_ids, attention_mask=attn, output_hidden_states=True)
-        resid = out.hidden_states[layer]                  # [B, T, d]
+    # @torch.no_grad() sur une fonction génératrice ne protège QUE l'appel qui crée
+    # l'objet générateur (quasi instantané, le corps ne s'exécute pas encore) — pas les
+    # itérations réelles faites via next()/for. Chaque forward tournait donc avec
+    # l'autograd actif (graphe retenu pour les ~48 couches, output_hidden_states=True),
+    # d'où l'OOM CUDA constaté sur A100 40GB bien avant la fin du corpus (jobs
+    # 38988/38999/39000). `with torch.no_grad()` explicite ici couvre bien tout le corps.
+    with torch.no_grad():
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start:start + batch_size]
+            enc = tokenizer(batch, return_tensors="pt", padding=True,
+                            truncation=True, max_length=max_length)
+            input_ids = enc["input_ids"].to(device)       # dict explicite — jamais enc.to(device)
+            attn = enc["attention_mask"].to(device)
+            # logits_to_keep=1 : seul hidden_states nous intéresse ici, mais le forward
+            # de AutoModelForCausalLM calcule par défaut (logits_to_keep=0) les logits sur
+            # TOUTE la séquence (vocab Gemma-3 ~262k) -> ex. 2 GiB rien que pour un batch
+            # de 8 sur 512 tokens.
+            out = model(input_ids=input_ids, attention_mask=attn,
+                        output_hidden_states=True, logits_to_keep=1)
+            # out.hidden_states garde une référence à TOUTES les couches (48 pour le 12b)
+            # simultanément tant que `out` vit ; on n'en veut qu'une -> clone + del pour
+            # libérer les 47 autres immédiatement.
+            resid = out.hidden_states[layer].clone()      # [B, T, d]
+            del out
 
-        mask = valid_token_mask(input_ids, attn, tokenizer, skip_first_content_token)
-        mask = norm_outlier_mask(resid, mask, sigma_clip)
+            mask = valid_token_mask(input_ids, attn, tokenizer, skip_first_content_token)
+            mask = norm_outlier_mask(resid, mask, sigma_clip)
 
-        b_idx, t_idx = mask.nonzero(as_tuple=True)
-        yield ActBatch(
-            acts=resid[b_idx, t_idx].float().cpu(),
-            doc_ids=(b_idx + start).cpu(),
-            token_pos=t_idx.cpu(),
-        )
+            b_idx, t_idx = mask.nonzero(as_tuple=True)
+            yield ActBatch(
+                acts=resid[b_idx, t_idx].float().cpu(),
+                doc_ids=(b_idx + start).cpu(),
+                token_pos=t_idx.cpu(),
+            )
 
 
 def scatter_maxpool(
@@ -125,12 +140,20 @@ def maxpool_sae_docs(
     device: str = "cuda",
     chunk: int = 4096,
 ) -> torch.Tensor:
-    """doc_vec[f] = max_t enc(x_t)[f] — pooling APRÈS encodage SAE, sur tokens valides uniquement."""
-    doc_acts = torch.zeros(n_docs, d_sae)
+    """doc_vec[f] = max_t enc(x_t)[f] — pooling APRÈS encodage SAE, sur tokens valides uniquement.
+
+    Scatter direct dans l'accumulateur persistant (in-place), au lieu d'appeler
+    scatter_maxpool (qui réalloue et parcourt un tenseur [n_docs, d_sae] COMPLET) à
+    chaque chunk/batch : sur un corpus de ~43k docs (run complet), ce coût O(n_docs·d)
+    payé à chaque batch (au lieu de O(batch·d)) faisait exploser le temps total
+    (constaté : job 39246, 0 progrès en 4h sur un corpus 10x plus gros qu'un run de
+    validation qui prenait ~11 min — comportement quadratique en pratique).
+    """
+    doc_acts = torch.full((n_docs, d_sae), float("-inf"))
     for ab in act_stream:
         for s in range(0, ab.acts.shape[0], chunk):
             f = encode_fn(ab.acts[s:s + chunk].to(device)).float().cpu()
             ids = ab.doc_ids[s:s + chunk].long()
-            pooled = scatter_maxpool(f, ids, n_docs, d_sae)
-            doc_acts = torch.maximum(doc_acts, pooled)
-    return doc_acts
+            idx = ids.unsqueeze(-1).expand(-1, d_sae)
+            doc_acts.scatter_reduce_(0, idx, f, reduce="amax", include_self=True)
+    return torch.where(torch.isinf(doc_acts), torch.zeros_like(doc_acts), doc_acts)

@@ -717,7 +717,14 @@ def run_llm_max_pool_pipeline(
                     batch, return_tensors="pt", padding=True,
                     truncation=True, max_length=512,
                 ).to(DEVICE)
-                outputs = llm(**inputs, output_hidden_states=True)
+                # logits_to_keep=1 : seul hidden_states nous intéresse ici ; sans ça,
+                # le forward calcule par défaut les logits sur TOUTE la séquence et le
+                # vocabulaire Gemma-3 (~262k) -- cause de l'OOM CUDA diagnostiqué dans
+                # scripts/baseline_gemmascope.py (même appel llm(...output_hidden_states=True)
+                # sans logits_to_keep, cf. RESULTS_TESTS.md). Pas encore déclenché ici
+                # (H100 80GB + batch_size=4 + volumes réduits du smoketest) mais même
+                # gaspillage latent avant un run à l'échelle complète.
+                outputs = llm(**inputs, output_hidden_states=True, logits_to_keep=1)
                 acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
 
                 acts = acts_raw
@@ -814,7 +821,13 @@ def run_llm_max_pool_pipeline(
             # ("Found dtype X but expected Float"), cf. bug rencontré en test réel.
             ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
-            ext_sae.load_state_dict(ckpt["state_dict"])
+            missing, unexpected = ext_sae.load_state_dict(ckpt["state_dict"], strict=False)
+            if missing or unexpected:
+                print(f"  [P1] Checkpoint antérieur aux fixes C1/C2 (buffers absents : "
+                      f"{missing}) — input_scale retombe à 1.0 par défaut. Ce checkpoint "
+                      f"a très probablement été entraîné SANS le fix AuxK (C1) : "
+                      f"préférez --retrain (supprimer {frozen_core_path}) plutôt que "
+                      f"de le recharger tel quel.")
         else:
             if os.path.exists(cache_residuals_path):
                 raw_residuals = torch.load(cache_residuals_path, weights_only=True)

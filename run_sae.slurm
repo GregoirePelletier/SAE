@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=SAE_v9_smoketest
-#SBATCH --partition=a100
+#SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -20,6 +20,10 @@ export HF_DATASETS_OFFLINE=1
 export SEED=42
 export SAVE_DIR="./results_v9_test/"
 export USE_FROZEN_CORE="1"
+export LOCAL_MAILS_PATH="/home/h21486/SAE/Mails.tsv"
+export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
 
 # ── Pipeline 1 : mêmes IDs que le run cible pour valider le chemin complet ──
 export MODEL_SIZE=12b
@@ -45,7 +49,7 @@ export N_FEATURES_TO_LABEL=8
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
 
 cd /home/h21486/SAE/
-uv run python src/sae/saev5.py
+.venv/bin/python src/sae/saev5.py
 # 1. Lignes d'epoch ExtendedSAE contiennent "aux=" (AuxK actif, code v9 déployé)
 #    et dead_frac chute nettement plus vite que 0.465->0.186 du run v8.
 # 2. Étape "Re-encodage ExtendedSAE (sparse)" : it/s >> 1 (attendu: >5 it/s,

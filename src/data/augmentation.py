@@ -60,7 +60,10 @@ _SYSTEM = (
     "1. Conserver TOUS les faits : numéros de contrat/client, montants, dates, noms de produits.\n"
     "2. Longueur finale entre 50% et 200% de l'original.\n"
     "3. Rester en français.\n"
-    "4. Répondre UNIQUEMENT avec le mail réécrit, sans préambule, sans balises, sans commentaire."
+    "4. Répondre UNIQUEMENT avec le mail réécrit, sans préambule, sans balises, sans commentaire.\n"
+    "5. Ne jamais ajouter de ligne \"Objet :\"/\"Subject :\" ni de mise en forme absente du mail "
+    "original (markdown, gras **, titres) : le mail source n'en a pas, la réécriture ne doit pas "
+    "en introduire — reproduire son format brut."
 )
 
 
