@@ -114,11 +114,18 @@ def downstream_classification(
     X_sae = np.concatenate(X_sae_list, axis=0)
     y = np.concatenate(y_list, axis=0)
 
+    # liblinear ne supporte que la classification binaire (>=3 classes lève une
+    # ValueError depuis les versions récentes de sklearn, cf. probe multi-classe
+    # sur les axes email introduit ultérieurement) -- lbfgs (multinomial nativement
+    # supporté) au-delà de 2 classes, liblinear conservé pour le cas binaire déjà
+    # validé (energy/sports) afin de ne rien changer à un résultat existant.
+    solver = "liblinear" if len(acts_by_label) <= 2 else "lbfgs"
+
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     accs_sae = []
 
     for train_idx, test_idx in skf.split(X_sae, y):
-        clf = LogisticRegression(max_iter=1000, C=1.0, solver="liblinear")
+        clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
         clf.fit(X_sae[train_idx], y[train_idx])
         preds = clf.predict(X_sae[test_idx])
         accs_sae.append(accuracy_score(y[test_idx], preds))
@@ -129,7 +136,7 @@ def downstream_classification(
         X_raw = np.concatenate(X_raw_list, axis=0)
         accs_raw = []
         for train_idx, test_idx in skf.split(X_raw, y):
-            clf = LogisticRegression(max_iter=1000, C=1.0, solver="liblinear")
+            clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
             clf.fit(X_raw[train_idx], y[train_idx])
             preds = clf.predict(X_raw[test_idx])
             accs_raw.append(accuracy_score(y[test_idx], preds))
