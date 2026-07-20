@@ -160,7 +160,65 @@ volume ont démarré leur exécution avant que ce correctif ne soit disponible ;
 troisième (démarré après, une fois sorti de la file d'attente SLURM) a permis d'obtenir
 les valeurs du §5.4.
 
-## 7. Limites de cette investigation
+## 7. Suites données au diagnostic
+
+Deux analyses complémentaires ont été menées après la validation du §5, pour répondre
+plus directement aux objectifs métier du stage et à la limite identifiée au §5.4/§7
+(taux résiduel non expliqué) — toutes deux réutilisent des activations déjà en cache,
+sans calcul GPU supplémentaire pour la seconde.
+
+### 7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
+
+Le protocole odd-one-out (`odd_one_out_judge`) ne prend qu'une seule décision greedy
+par feature. Pour tester sa robustesse à l'ordre de présentation des exemples (un
+biais de position bien documenté chez les LLM en contexte de choix multiple), la même
+question a été répétée 5 fois par feature, avec un ordre de mélange différent à
+chaque fois, pour les 150 features déjà jugées du run principal
+(`scripts/judge_robustness_check.py`, job SLURM 40672 — recharge uniquement le modèle
+comme juge, aucune réextraction d'activations).
+
+| Métrique | Valeur |
+|---|---|
+| Taux d'interprétabilité, décision unique (référence) | 45,3% |
+| Taux d'interprétabilité, vote majoritaire sur 5 répétitions | 48,7% |
+| Features dont la décision change selon l'ordre | 31,3% (47/150) |
+| Taux d'accord moyen entre les 5 répétitions | 80,3% |
+| Features avec décision unanime (0/5 ou 5/5) | 30,7% (46/150) |
+
+Le taux agrégé ne change que marginalement, mais la fiabilité de la décision prise
+pour une feature individuelle est faible : moins d'un tiers des features obtiennent
+une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre différent).
+**Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
+protocole de jugement plutôt qu'un défaut réel des features testées.**
+
+### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails réels ?
+
+Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
+complété par un test sur des labels **indépendants du corpus augmenté** : des labels
+faibles par expression régulière, déjà calculés sur le texte brut des mails réels
+(`src/data/dataset.py::INTENT_KEYWORDS_FR` — réclamation, résiliation, remboursement,
+information, urgence), appliqués aux 3 300 mails réels du split d'entraînement
+(`scripts/intent_urgency_probe.py`, zéro calcul GPU — réutilise
+`p1_all_doc_acts_ext_d1024.pt` déjà en cache).
+
+| Intention | Prévalence | Précision sonde | Baseline (classe majoritaire) | Écart |
+|---|---|---|---|---|
+| Urgence | 29,3% | 97,7% | 70,7% | **+27,0 pts** |
+| Réclamation | 55,1% | 97,7% | 55,1% | **+42,6 pts** |
+| Information | 18,2% | 87,8% | 81,8% | +6,0 pts |
+| Remboursement | 14,5% | 84,5% | 85,5% | −1,0 pt |
+
+Ce résultat répond directement aux deux objectifs "détection d'urgence" et
+"détection d'intentions" énoncés dans le cadrage initial du projet
+(`Context.md`, section "Objectif") : les codes latents du SAE séparent très
+nettement l'urgence et la réclamation, sur des mails réels non augmentés, avec un
+gain net important sur la baseline naïve. Le remboursement ne bat pas sa baseline
+(déjà forte du fait du déséquilibre de classe, 85,5% de négatifs) — à interpréter
+comme une limite du label faible par regex pour cette catégorie plutôt que comme un
+échec du SAE, sans donnée annotée manuellement pour trancher entre les deux
+hypothèses.
+
+## 8. Limites de cette investigation
 
 - Le taux d'interprétabilité obtenu après correction (~41-45%) reste loin de 100% :
   environ 55 à 59% des features d'extension restent non interprétables par le juge même

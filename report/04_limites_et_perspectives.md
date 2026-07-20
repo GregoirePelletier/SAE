@@ -5,14 +5,22 @@
 ### Taux d'interprétabilité résiduel (~55-59% de features non interprétées)
 
 Établi comme n'étant pas dû au volume de tokens (cf. `03_experiences_et_resultats.md`).
-Pistes non testées par manque de temps, par ordre de coût croissant :
 
-1. **Robustesse du protocole de jugement** : `odd_one_out_judge` ne fait qu'une seule
-   génération greedy (`do_sample=False`) par décision. Un vote majoritaire sur
-   plusieurs échantillonnages (température > 0), ou une reformulation de la question
-   (ordre des exemples, format de réponse), pourrait changer le taux mesuré sans
-   changer la qualité réelle des features — à tester avant d'investir dans des
-   changements plus coûteux.
+**Mise à jour (testé)** : la piste "robustesse du protocole de jugement" a été
+vérifiée (`scripts/judge_robustness_check.py`, `RESULTS_TESTS.md` §13.1). En
+répétant la question odd-one-out 5 fois par feature avec un ordre de mélange
+différent à chaque fois : seulement 30,7% des features obtiennent une décision
+unanime sur les 5 répétitions ; le taux agrégé d'interprétabilité bouge peu (45,3%→
+48,7%) mais 31,3% des features changent individuellement de statut selon l'ordre de
+présentation. **Confirmé : une partie substantielle du résidu non-interprété est due
+au bruit du protocole de jugement (décision greedy unique, sensible à l'ordre), pas
+nécessairement à un défaut réel des features.** Un vote majoritaire sur plusieurs
+répétitions devrait être adopté comme protocole par défaut plutôt qu'une seule
+décision greedy.
+
+Pistes encore non testées par manque de temps, par ordre de coût croissant :
+
+1. ~~**Robustesse du protocole de jugement**~~ **FAIT**, cf. ci-dessus.
 2. **Qualité du contrôle négatif** : le contrôle négatif (`build_feature_examples_with_control`)
    est actuellement un document sous un quantile bas d'activation pour la feature
    testée, pas nécessairement un contre-exemple "propre" conceptuellement. Une
@@ -32,13 +40,19 @@ Pistes non testées par manque de temps, par ordre de coût croissant :
 ### Comparaisons avec l'état de l'art incomplètes
 
 `Context.md` (règle n°2) demande une comparaison documentée et systématique avec
-SAELens. À date : `src/analysis/metrics.py` réimplémente les formules FVE/NMSE/L0 "en
-alignement" avec SAELens (justifié techniquement — nécessité de scorer à la fois un
-SAE natif sae-lens et le `FrozenCoreResidualSAE` custom du projet, aux API
-différentes) mais aucune comparaison chiffrée formelle des deux implémentations n'a
-été produite. De même, la comparaison avec `interp_embed` reste partielle (test
-optionnel dépendant d'une installation non faite par défaut), et aucune comparaison
-avec "SAE Boost" n'a été entreprise (implémentation officielle non identifiée à date).
+SAELens. Une comparaison **de formule** a été faite (`docs/references.md`) : la
+variance expliquée de `sae_lens.evals` et notre `compute_metrics` mesurent le même
+concept avec une structure d'agrégation comparable (SAELens maintient elle-même deux
+variantes, "legacy" et "corrigée", selon l'ordre d'agrégation par token vs global).
+Une comparaison **chiffrée** sur les mêmes activations reste à faire : elle
+nécessiterait de faire passer le chargement Gemma-3+GemmaScope-2 par
+`transformer_lens.HookedTransformer` + `sae_lens.ActivationsStore` plutôt que le
+chargeur custom du projet (`src/sae/gemma_scope_loader.py`, écrit précisément pour
+contourner des incompatibilités de ce chemin de chargement direct) — arbitrage
+coût/valeur non tranché en faveur de cette réintégration dans le temps disponible. La
+comparaison avec `interp_embed` reste partielle (test optionnel dépendant d'une
+installation non faite par défaut), et aucune comparaison avec "SAE Boost" n'a été
+entreprise (implémentation officielle non identifiée à date).
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -61,17 +75,23 @@ investigation.
 
 ## Perspectives pour la suite du stage
 
-1. Tester en priorité la robustesse du protocole de jugement (vote majoritaire) — coût
-   de calcul faible (pas de réextraction d'activations, juste re-jugement), gain
-   potentiel direct sur le résultat central du stage.
-2. Formaliser la comparaison avec SAELens (règle n°2 de `Context.md`), non faite
-   systématiquement à date.
+1. ~~Tester en priorité la robustesse du protocole de jugement (vote majoritaire)~~
+   **FAIT** (cf. section "Limites actuelles" ci-dessus) — passer ce vote majoritaire
+   en protocole par défaut de `odd_one_out_judge` (actuellement une fonction séparée,
+   `scripts/judge_robustness_check.py`, à fusionner dans `src/sae/judge.py` si adopté).
+2. Formaliser la comparaison **chiffrée** avec SAELens sur les mêmes activations
+   (au-delà de la comparaison de formule déjà faite, cf. `docs/references.md`) —
+   nécessite de faire passer le chargement par `HookedTransformer`/`ActivationsStore`.
 3. Poursuivre la factorisation de `src/sae/saev5.py` vers l'architecture cible décrite
    dans `Context.md` (`src/models/`, séparation training/extraction) — dette technique
    qui n'affecte pas la validité des résultats mais complique la maintenance.
 4. Dashboard interactif (Streamlit) — fonctionnalité future non commencée, mentionnée
    dès l'énoncé initial du projet.
-5. Exploiter le résultat de séparabilité linéaire des axes de perturbation
-   (§5.4 de `03_experiences_et_resultats.md`) pour un cas d'usage concret de détection
-   d'urgence/d'intention sur mails réels (pas seulement sur le corpus augmenté),
-   objectif final énoncé du projet.
+5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
+   un cas d'usage concret de détection d'urgence/d'intention sur mails réels~~
+   **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
+   les labels faibles réels (regex, indépendants du corpus augmenté) : +27,0 points
+   sur l'urgence, +42,6 points sur la réclamation par rapport à la baseline classe
+   majoritaire. Reste à faire : évaluer sur un jeu de labels d'urgence/intention
+   annotés manuellement plutôt que des labels faibles par regex (limite ci-dessous),
+   et sur le Pipeline 2 (F2LLM) en plus du Pipeline 1 déjà testé.

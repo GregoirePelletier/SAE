@@ -573,3 +573,70 @@ métrique annexe) ; le job 39661 (soumis avant le fix mais resté `PENDING` en
 file d'attente jusqu'après le commit du correctif) a démarré son exécution
 avec le code corrigé et donne les valeurs `acc_axes_email` exploitables
 ci-dessus.
+
+---
+
+## 13. Suites données au diagnostic §12 : robustesse du juge et validation métier sur mails réels
+
+Deux analyses complémentaires, lancées après le diagnostic §12, pour répondre plus
+largement aux objectifs du stage (`Context.md`, section "Projet" : détection
+d'urgence, détection d'intentions) et à la piste ouverte sur le résidu de ~55-59% de
+features non interprétées.
+
+### 13.1. Le résidu non-interprété est-il dû au biais de position du protocole de jugement ?
+
+`scripts/judge_robustness_check.py` (nouveau) + `run_judge_robustness.slurm`, job
+40672 — **aucune réextraction Gemma-3** : réutilise les activations et fragments déjà
+en cache (`results_v10_emails_main/`), recharge seulement le modèle comme juge.
+Pour chacune des 150 features déjà jugées, répète la question odd-one-out **5 fois**
+avec un ordre de mélange différent à chaque fois (mêmes exemples), et calcule le vote
+majoritaire.
+
+| Métrique | Valeur |
+|---|---|
+| Taux interp. single-shot (déjà connu) | 45,3% (68/150) |
+| Taux interp. vote majoritaire (5 répétitions) | 48,7% (73/150) |
+| Features dont la décision change (0→1 ou 1→0) | 47/150 (31,3%) — 26 vers interprétable, 21 vers non-interprétable |
+| Taux d'accord moyen entre les 5 répétitions | 80,3% |
+| Distribution des décisions (n_correct/5) | 0/5: 22 · 1/5: 30 · 2/5: 25 · 3/5: 19 · 4/5: 30 · 5/5: 24 |
+
+**Lecture** : seulement 46/150 features (30,7%) obtiennent une décision **unanime**
+sur les 5 répétitions (0/5 ou 5/5) — les 69,3% restantes montrent un désaccord partiel
+purement dû à l'ordre de présentation des mêmes exemples. Le taux agrégé change peu
+(45,3%→48,7%, les bascules dans les deux sens se compensant globalement), mais la
+fiabilité de la décision **par feature individuelle** est clairement insuffisante à
+une seule question greedy. **Conclusion : une partie du résidu non-interprété est due
+au protocole de jugement lui-même (bruit de position), pas nécessairement à un défaut
+réel des features.** Un vote majoritaire sur plusieurs répétitions (ou une
+température non nulle) est recommandé avant de conclure qu'une feature spécifique
+n'est "pas interprétable".
+
+### 13.2. Le SAE prédit-il l'urgence et l'intention sur des mails réels (pas augmentés) ?
+
+`scripts/intent_urgency_probe.py` (nouveau) — **zéro calcul GPU**, réutilise les
+activations déjà en cache (`p1_all_doc_acts_ext_d1024.pt`) et les labels faibles par
+regex déjà calculés dans `src/data/dataset.py::load_mails_tsv`
+(`INTENT_KEYWORDS_FR` : réclamation, résiliation, remboursement, information,
+urgence), appliqués aux 3300 mails **réels** (non augmentés) du split train.
+Répond directement aux objectifs du stage "détection d'urgence"/"détection
+d'intentions" avec un test indépendant du corpus augmenté synthétique.
+
+| Intention | Prévalence | acc_SAE (sonde logistique, 5-fold) | Baseline (classe majoritaire) | Δ |
+|---|---|---|---|---|
+| `intent_urgence` | 29,3% (968/3300) | **97,7%** | 70,7% | **+27,0 pts** |
+| `intent_reclamation` | 55,1% (1819/3300) | **97,7%** | 55,1% | **+42,6 pts** |
+| `intent_information` | 18,2% (599/3300) | 87,8% | 81,8% | +6,0 pts |
+| `intent_remboursement` | 14,5% (479/3300) | 84,5% | 85,5% | −1,0 pt |
+| `intent_resiliation` | 0,03% (1/3480) | — | — | ignoré (classe dégénérée) |
+
+**Lecture** : les codes latents du SAE (Pipeline 1, 17 408 dimensions) séparent très
+nettement l'**urgence** (+27 points au-dessus de la baseline) et la **réclamation**
+(+42,6 points) sur des mails réels non augmentés — validation directe et à moindre
+coût (aucun calcul GPU supplémentaire) des deux objectifs "détection d'urgence" et
+"détection d'intentions" du projet. L'**information** est modérément mieux détectée
+que la baseline ; le **remboursement** ne l'est pas mieux qu'une baseline déjà forte
+(la classe est déséquilibrée à 85,5% de négatifs, la baseline est donc déjà un
+prédicteur difficile à battre) — pas un échec du SAE en soi, plutôt un signal que
+"remboursement" au sens de la regex n'est peut-être pas une catégorie linéairement
+séparable dans cet espace, ou que le label faible par regex est trop bruité pour ce
+cas précis.
