@@ -259,6 +259,18 @@ python test_chargement_sae.py
 python scripts/test_massive_acts.py
 ```
 
+### `src/visualization/dashboard.py` — dashboard interactif (Streamlit)
+
+Lit uniquement des artefacts déjà produits sur disque (JSON, parquet, CSV) — aucun
+modèle chargé, aucun GPU requis, démarre en quelques secondes. Vue d'ensemble par run,
+UMAP interactif, features (core Neuronpedia + extension + phrase-level, exemples
+positifs/négatifs), diffing, recherche par mot-clé sur les labels, urgence/robustesse
+du juge. Sélecteur de run dans la barre latérale (tous les `results_*/` du dépôt).
+
+```bash
+.venv/bin/python -m streamlit run src/visualization/dashboard.py
+```
+
 ### Suite de tests (`pytest`)
 
 ```bash
@@ -325,14 +337,14 @@ Voir `Context.md` pour le détail complet (bugs corrigés, historique, prochaine
 et `RESULTS_TESTS.md` §12 pour le diagnostic complet du taux d'interprétabilité. En
 résumé :
 
-- **Taux d'interprétabilité des features d'extension (RÉSOLU À ~45%, pas 100%)** :
+- **Taux d'interprétabilité des features d'extension (RÉSOLU À ~41-45%, pas 100%)** :
   corriger le corpus d'entraînement (emails dominants) a fait passer le taux
-  d'odd-one-out de 20% à ~41-45% (n=150) — un gain net important, mais qui laisse
-  encore ~55% des features d'extension non interprétables par le juge. Pistes non
-  explorées faute de temps : robustesse du protocole de jugement lui-même (une seule
-  génération greedy par décision, pas de vote majoritaire/ensemble ; qualité du
-  contrôle négatif dans `build_feature_examples_with_control`), ou architecture de
-  l'extension elle-même (`D_EXTRA`/`K_EXTRA`, actifs non testés dans cette session).
+  d'odd-one-out de 20% à ~41-45% (n=150) — un gain net important. Testé et confirmé
+  (`RESULTS_TESTS.md` §13.1) : une partie substantielle du résidu non-interprété est
+  due au bruit du protocole de jugement lui-même (décision greedy unique, sensible à
+  l'ordre de présentation — 31,3% des décisions changent selon l'ordre) plutôt qu'à un
+  défaut réel des features. Reste non testé : qualité du contrôle négatif, capacité
+  architecturale de l'extension (`D_EXTRA`/`K_EXTRA`).
 - **Budget d'entraînement de l'extension FrozenCore** : confirmé **non limitant** une
   fois le domaine du corpus corrigé — 100k/500k/2M tokens donnent des taux
   d'interprétabilité statistiquement indistinguables (cf. `RESULTS_TESTS.md` §12).
@@ -340,8 +352,14 @@ résumé :
   problème n'était pas le volume.
 - **`run_augmentation.py` / `baseline_gemmascope.py`** : exécutés avec succès à
   l'échelle complète sur le corpus réel EDF (cf. `RESULTS_TESTS.md` §0 et §12) —
-  n'est plus une limite.
-- **Dashboard interactif** (Streamlit, mentionné dans `Context.md` comme fonctionnalité
-  future) : non implémenté.
-- **Comparaison documentée avec SAELens** (règle n°2 de `Context.md`) : toujours pas
-  faite systématiquement.
+  n'est plus une limite. Biais de formatage résiduel ("Objet :" dans les mails
+  augmentés) corrigé et effet mesuré (`RESULTS_TESTS.md` §14.1).
+- **Détection d'urgence/d'intentions** (objectifs énoncés dès le cadrage initial) :
+  validée sur mails réels, +27,0/+42,6 points sur l'urgence/la réclamation par rapport
+  à une baseline classe majoritaire (`RESULTS_TESTS.md` §13.2).
+- **Dashboard interactif** (Streamlit) : implémenté, `src/visualization/dashboard.py`.
+- **Comparaison chiffrée avec SAELens** (règle n°2 de `Context.md`) : faite —
+  désaccord numérique important entre notre FVE et les deux formules de variance
+  expliquée de `sae_lens.evals`, causé par les activations massives de Gemma-3
+  (cf. `docs/references.md`). Reste non faite : comparaison avec `interp_embed`
+  (partielle) et "SAE Boost" (non identifié).

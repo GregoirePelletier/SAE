@@ -1,0 +1,273 @@
+"""
+src/visualization/dashboard.py — Dashboard interactif (Streamlit).
+
+Fonctionnalité future listée dès l'énoncé initial du projet (Context.md,
+"Fonctionnalités futures / Dashboard") : UMAP, features activées, exemples positifs/
+négatifs, recherche. Lit UNIQUEMENT des artefacts déjà produits sur disque par
+src/sae/saev5.py / scripts/baseline_gemmascope.py (JSON, parquet, CSV) -- aucun
+modèle chargé, aucun GPU requis, démarre en quelques secondes sur n'importe quelle
+machine ayant accès au dépôt.
+
+Usage :
+    .venv/bin/python -m streamlit run src/visualization/dashboard.py
+    # ou, depuis la racine du dépôt :
+    .venv/bin/streamlit run src/visualization/dashboard.py
+"""
+from __future__ import annotations
+
+import glob
+import json
+import os
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Découverte des runs disponibles
+# ─────────────────────────────────────────────────────────────────────────────
+
+def discover_result_dirs() -> list[str]:
+    dirs = sorted(glob.glob(os.path.join(REPO_ROOT, "results_*")))
+    return [os.path.relpath(d, REPO_ROOT) for d in dirs if os.path.isdir(d)]
+
+
+def load_json(path: str) -> dict | None:
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pages
+# ─────────────────────────────────────────────────────────────────────────────
+
+def page_overview(run_dir: str) -> None:
+    st.header("Vue d'ensemble du run")
+    results = load_json(os.path.join(REPO_ROOT, run_dir, "results.json"))
+    if not results:
+        st.warning("Pas de results.json dans ce run (run partiel ou script encore en cours).")
+        return
+    for pipeline_key, title in [("P1_Gemma3_SAE", "Pipeline 1 — Gemma-3 + GemmaScope"),
+                                 ("P2_F2LLM_PhSAE", "Pipeline 2 — F2LLM + PhraseLevelSAE")]:
+        metrics = results.get(pipeline_key)
+        if not metrics:
+            continue
+        st.subheader(title)
+        # diff_hypothesis (texte libre généré par LLM) affiché séparément ci-dessous
+        # (st.caption) -- l'exclure ici évite une colonne à types mixtes (float/str)
+        # que pyarrow ne peut pas convertir proprement pour le rendu du tableau.
+        display = {k: v for k, v in metrics.items()
+                   if not isinstance(v, (dict, list)) and k != "diff_hypothesis"}
+        st.dataframe(pd.DataFrame([display]).T.rename(columns={0: "valeur"}), width='stretch')
+        if metrics.get("diff_hypothesis"):
+            st.caption(f"Hypothèse LLM (diffing cross-domaine) : {metrics['diff_hypothesis']}")
+
+
+def page_umap(run_dir: str) -> None:
+    st.header("UMAP — projection des activations SAE")
+    coord_files = sorted(glob.glob(os.path.join(REPO_ROOT, run_dir, "umap_*_coords.parquet")))
+    if not coord_files:
+        st.warning("Aucun fichier umap_*_coords.parquet dans ce run.")
+        return
+    chosen = st.selectbox("Projection", [os.path.basename(f) for f in coord_files])
+    df = pd.read_parquet(os.path.join(REPO_ROOT, run_dir, chosen))
+    color_by = st.radio("Colorer par", [c for c in ["label", "cluster_id", "cluster_signature"] if c in df.columns],
+                         horizontal=True)
+    hover_cols = [c for c in ["text_preview", "top_features", "cluster_signature"] if c in df.columns]
+    fig = px.scatter(
+        df, x="x", y="y", color=df[color_by].astype(str),
+        hover_data=hover_cols, opacity=0.7, height=650,
+        title=chosen,
+    )
+    fig.update_layout(legend_title_text=color_by)
+    st.plotly_chart(fig, width='stretch')
+    with st.expander("Données brutes (échantillon)"):
+        st.dataframe(df.sample(min(200, len(df))), width='stretch')
+
+
+def _feature_search_box(label_map: dict, key: str) -> None:
+    query = st.text_input("Filtrer par texte du label/description", key=key)
+    rows = []
+    for f_idx, v in label_map.items():
+        if isinstance(v, str):
+            label, desc, interp, rho, pos, neg = v, "", None, None, [], None
+        else:
+            label = v.get("label", f"F{f_idx}")
+            desc = v.get("brief_description", "")
+            interp = v.get("interp_score")
+            rho = v.get("rho_interp")
+            pos = v.get("pos_examples", [])
+            neg = v.get("neg_example")
+        if query and query.lower() not in f"{label} {desc}".lower():
+            continue
+        rows.append({"feature": f_idx, "label": label, "description": desc,
+                     "interp_score": interp, "rho_interp": rho,
+                     "n_pos_examples": len(pos) if pos else 0,
+                     "_pos": pos, "_neg": neg})
+    if not rows:
+        st.info("Aucune feature ne correspond au filtre.")
+        return
+    df = pd.DataFrame(rows)
+    st.write(f"{len(df)} features")
+    st.dataframe(df.drop(columns=["_pos", "_neg"]), width='stretch', height=300)
+    chosen_idx = st.selectbox("Voir les exemples d'une feature", df["feature"].tolist(), key=key + "_sel")
+    row = df[df["feature"] == chosen_idx].iloc[0]
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Exemples positifs** (activent fortement la feature)")
+        for ex in (row["_pos"] or []):
+            st.markdown(f"- {ex}")
+        if not row["_pos"]:
+            st.caption("Aucun exemple positif stocké.")
+    with col2:
+        st.markdown("**Exemple négatif** (contrôle, activation quasi-nulle)")
+        if row["_neg"]:
+            st.markdown(f"- {row['_neg']}")
+        else:
+            st.caption("Non stocké (run antérieur à l'ajout de ce champ dans src/sae/judge.py, "
+                       "ou feature core Neuronpedia sans contrôle négatif applicable).")
+
+
+def page_features(run_dir: str) -> None:
+    st.header("Features — labels et exemples")
+    tab_core, tab_ext, tab_p2 = st.tabs(["Core (Neuronpedia)", "Extension (juge LLM, P1)", "Phrase-level (juge LLM, P2)"])
+
+    with tab_core:
+        core = load_json(os.path.join(REPO_ROOT, run_dir, "p1_top_core_features.json"))
+        if core:
+            _feature_search_box(core, key="core")
+        else:
+            st.info("p1_top_core_features.json absent de ce run.")
+
+    with tab_ext:
+        ext = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p1_judge_labels_extended.json"))
+        if ext:
+            n_interp = sum(1 for v in ext.values() if v.get("interp_score") == 1)
+            st.metric("Taux d'interprétabilité (odd-one-out)", f"{100*n_interp/len(ext):.1f}%",
+                       help=f"{n_interp}/{len(ext)} features passent le test.")
+            _feature_search_box(ext, key="ext")
+        else:
+            st.info("cache/p1_judge_labels_extended.json absent de ce run.")
+
+    with tab_p2:
+        p2 = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p2_feature_labels.json"))
+        if p2:
+            _feature_search_box(p2, key="p2")
+        else:
+            st.info("cache/p2_feature_labels.json absent de ce run.")
+
+
+def page_diffing(run_dir: str) -> None:
+    st.header("Diffing de corpus (Fisher exact + BH)")
+    csv_files = sorted(glob.glob(os.path.join(REPO_ROOT, run_dir, "**", "diff_*.csv"), recursive=True))
+    csv_files += sorted(glob.glob(os.path.join(REPO_ROOT, run_dir, "diff_*.csv")))
+    if not csv_files:
+        st.info("Aucun diff_*.csv trouvé dans ce run (le diffing vit typiquement sous "
+                "cache_baseline*/ ou à la racine du run pour p1_diff_energy_sports.csv).")
+        return
+    rel_files = [os.path.relpath(f, REPO_ROOT) for f in csv_files]
+    chosen = st.selectbox("Fichier de diff", rel_files)
+    df = pd.read_csv(os.path.join(REPO_ROOT, chosen))
+    n_sig = int(df["significant"].sum()) if "significant" in df.columns else None
+    if n_sig is not None:
+        st.metric("Features significatives (q<0.05)", f"{n_sig}/{len(df)}")
+    st.dataframe(df.head(50), width='stretch')
+
+
+def page_search(run_dir: str) -> None:
+    st.header("Recherche par concept (sur les labels de features)")
+    st.caption("Recherche par mot-clé sur les labels/descriptions déjà attribués (Neuronpedia + juge LLM) — "
+               "pas une ré-inférence live du modèle. Pour une recherche BM25 sur le vocabulaire latent complet, "
+               "voir `src/sae/retrieval/latent_terms.py` / `scripts/retrieval_demo.py`.")
+    all_labels = {}
+    for fname in ["p1_top_core_features.json", "p1_top_extended_features.json"]:
+        d = load_json(os.path.join(REPO_ROOT, run_dir, fname))
+        if d:
+            all_labels.update({f"{fname}:{k}": v for k, v in d.items()})
+    ext = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p1_judge_labels_extended.json"))
+    if ext:
+        all_labels.update({f"extension:{k}": v for k, v in ext.items()})
+
+    query = st.text_input("Requête (ex. 'urgence', 'facturation', 'résiliation')")
+    if not query:
+        st.info("Entrer une requête pour lister les features dont le label/description matche.")
+        return
+    rows = []
+    for key, v in all_labels.items():
+        label = v.get("label", "") if isinstance(v, dict) else str(v)
+        desc = v.get("brief_description", "") if isinstance(v, dict) else ""
+        text = f"{label} {desc}".lower()
+        if query.lower() in text:
+            rows.append({"feature": key, "label": label, "description": desc})
+    if rows:
+        st.dataframe(pd.DataFrame(rows), width='stretch')
+    else:
+        st.info("Aucune feature trouvée pour cette requête dans ce run.")
+
+
+def page_urgence_robustesse(run_dir: str) -> None:
+    st.header("Détection d'urgence/intention & robustesse du juge")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Sonde intention/urgence (mails réels)")
+        d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "intent_urgency_probe_results.json"))
+        if d:
+            rows = [{"intention": k, **v} for k, v in d.items()]
+            df = pd.DataFrame(rows)
+            df["delta"] = df["acc_sae"] - df["majority_baseline"]
+            st.dataframe(df, width='stretch')
+            st.caption("cf. scripts/intent_urgency_probe.py, RESULTS_TESTS.md §13.2")
+        else:
+            st.info("intent_urgency_probe_results.json absent (lancer scripts/intent_urgency_probe.py).")
+    with col2:
+        st.subheader("Robustesse du protocole odd-one-out")
+        d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p1_judge_robustness.json"))
+        if d:
+            st.json(d["summary"])
+            st.caption("cf. scripts/judge_robustness_check.py, RESULTS_TESTS.md §13.1")
+        else:
+            st.info("p1_judge_robustness.json absent (lancer scripts/judge_robustness_check.py).")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    st.set_page_config(page_title="SAE EDF — Dashboard", layout="wide")
+    st.title("Analyse interprétable de mails clients EDF via SAE")
+    st.caption("Lecture d'artefacts déjà produits sur disque uniquement — aucun modèle chargé, aucun GPU requis.")
+
+    run_dirs = discover_result_dirs()
+    if not run_dirs:
+        st.error(f"Aucun dossier results_*/ trouvé sous {REPO_ROOT}.")
+        return
+    default_idx = run_dirs.index("results_v10_emails_main") if "results_v10_emails_main" in run_dirs else 0
+    run_dir = st.sidebar.selectbox("Run", run_dirs, index=default_idx)
+
+    page = st.sidebar.radio(
+        "Page",
+        ["Vue d'ensemble", "UMAP", "Features", "Diffing", "Recherche", "Urgence/Robustesse"],
+    )
+
+    if page == "Vue d'ensemble":
+        page_overview(run_dir)
+    elif page == "UMAP":
+        page_umap(run_dir)
+    elif page == "Features":
+        page_features(run_dir)
+    elif page == "Diffing":
+        page_diffing(run_dir)
+    elif page == "Recherche":
+        page_search(run_dir)
+    elif page == "Urgence/Robustesse":
+        page_urgence_robustesse(run_dir)
+
+
+if __name__ == "__main__":
+    main()

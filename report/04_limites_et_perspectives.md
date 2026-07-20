@@ -55,13 +55,17 @@ dépendant d'une installation non faite par défaut), et aucune comparaison avec
 
 ### Biais de génération résiduel dans le corpus augmenté
 
-17,5% des mails augmentés contiennent encore une ligne "Objet :" que les mails
-originaux n'ont pas (réduit de 25,6% après correction du prompt système, mais pas
-éliminé — le modèle générateur ne suit l'instruction que partiellement à température
-0,8). Documenté dans `RESULTS_TESTS.md` §0 comme risque de contamination des features
-de diffing par un artefact de formatage plutôt que par le contenu sémantique visé par
-l'axe de perturbation. Non traité (coût estimé : un nouveau run d'augmentation complet,
-~7h30 GPU).
+**Corrigé et mesuré** (`RESULTS_TESTS.md` §14.1) : 20,6% des mails augmentés
+contenaient encore une ligne "Objet :"/"Subject :" que les mails originaux n'ont pas.
+Fix appliqué au chargement (`load_augmented`, pas de régénération nécessaire — 0,0%
+après fix) et effet mesuré sur le diffing complet : réduction de 65% et 49% du nombre
+de features "significatives" sur les deux axes orthographiques (les plus confondables
+avec l'artefact), effet modéré sur l'urgence (−7,5%/−3,1%), négligeable ailleurs.
+Contrairement à l'hypothèse initiale, l'artefact ne dominait déjà pas la majorité des
+features significatives à l'échelle du corpus complet (0,21% des features
+significatives portaient un label "Subject:"/"Objet:", avant comme après) — son effet
+mesuré est réel mais plus circonscrit que ce que suggérait l'observation initiale sur
+l'échantillon test à 60 mails (§6, où l'artefact dominait 8/13 classements).
 
 ### Facteurs non contrôlés dans le corpus augmenté
 
@@ -86,8 +90,12 @@ investigation.
 3. Poursuivre la factorisation de `src/sae/saev5.py` vers l'architecture cible décrite
    dans `Context.md` (`src/models/`, séparation training/extraction) — dette technique
    qui n'affecte pas la validité des résultats mais complique la maintenance.
-4. Dashboard interactif (Streamlit) — fonctionnalité future non commencée, mentionnée
-   dès l'énoncé initial du projet.
+4. ~~Dashboard interactif (Streamlit)~~ **FAIT** : `src/visualization/dashboard.py`
+   (`RESULTS_TESTS.md` §14.2) — vue d'ensemble, UMAP interactif, features (avec
+   exemples positifs/négatifs), diffing, recherche par mot-clé, urgence/robustesse.
+   Limite : recherche par mot-clé sur les labels déjà attribués, pas une ré-inférence
+   BM25 live sur le vocabulaire latent complet (cf. `scripts/retrieval_demo.py` pour
+   cette dernière) ; pas de déploiement serveur persistant, lancement manuel.
 5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
    un cas d'usage concret de détection d'urgence/d'intention sur mails réels~~
    **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur

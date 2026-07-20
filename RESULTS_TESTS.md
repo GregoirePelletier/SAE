@@ -640,3 +640,74 @@ prédicteur difficile à battre) — pas un échec du SAE en soi, plutôt un sig
 "remboursement" au sens de la regex n'est peut-être pas une catégorie linéairement
 séparable dans cet espace, ou que le label faible par regex est trop bruité pour ce
 cas précis.
+
+---
+
+## 14. Suites supplémentaires : biais Objet: (mesure avant/après), dashboard, comparaison SAELens chiffrée
+
+### 14.1. Effet mesuré du fix Objet:/Subject: sur le diffing complet
+
+Suite au fix `load_augmented` (commit "Corrige le biais résiduel Objet:/Subject:..."),
+`run_baseline_full_v2.slurm` (job 40674, ✅ COMPLETED en 1h06min05s) relance
+`scripts/baseline_gemmascope.py` sur le corpus complet (43 423 textes) avec le texte
+augmenté nettoyé, dans un nouveau répertoire (`results_v11_baseline_objetfix/`, pas de
+partage de cache avec `results_v9_test/cache_baseline_full` pour éviter toute
+contamination). Comparaison directe, mêmes 13 combinaisons axe/niveau :
+
+| Axe / niveau | Features significatives (avant) | (après) | Δ |
+|---|---|---|---|
+| orthographe / corrigé | 1171 | 413 | **−64,7%** |
+| orthographe / dégradé léger | 1244 | 635 | **−49,0%** |
+| urgence / panique | 3845 | 3556 | **−7,5%** |
+| urgence / menace_résiliation | 3284 | 3183 | −3,1% |
+| registre / soutenu | 3375 | 3323 | −1,5% |
+| orthographe / dégradé fort | 4183 | 4170 | −0,3% |
+| emotion / impatience | 4158 | 4149 | −0,2% |
+| registre / standard | 3622 | 3614 | −0,2% |
+| urgence / calme | 3623 | 3615 | −0,2% |
+| registre / familier | 3969 | 3966 | −0,1% |
+| emotion / colère forte | 4208 | 4210 | +0,0% |
+| emotion / satisfaction | 3172 | 3173 | +0,0% |
+| emotion / frustration | 3897 | 3912 | +0,4% |
+
+**Lecture** : le fix réduit fortement le nombre de features "significatives" pour les
+deux axes **orthographe** (−65% et −49%) — cohérent, ces axes (dégradation/correction
+de l'orthographe) sont exactement ceux où une ligne "Objet :" ajoutée par erreur est la
+plus susceptible d'être confondue avec la variation orthographique réellement visée
+(tous deux sont des perturbations de surface au niveau du texte brut). Effet modéré sur
+**urgence/panique** (−7,5%) et **urgence/menace_résiliation** (−3,1%) ; effet
+négligeable (<2%) sur les axes émotion et registre. Le TOP-1 feature change pour 2 des
+13 combinaisons (orthographe/corrigé : "Subject: followed by email subject lines" →
+"fine-tuning, answer" ; orthographe/dégradé léger : idem → "conjunctions in Slavic
+languages"). Le proportion globale de features significatives labellisées "Subject:"/
+"Objet:" reste faible dans les deux cas (0,21%→0,20%) : sur le corpus complet (43k
+textes, forte puissance statistique), l'artefact ne dominait déjà pas la majorité des
+features significatives (contrairement à l'échantillon test à 60 mails, §6, où il
+apparaissait en position 1 pour 8/13 axes) — mais il gonflait spécifiquement le
+DÉNOMBREMENT de features significatives sur les axes orthographiques, un effet
+maintenant corrigé.
+
+### 14.2. Dashboard Streamlit
+
+`src/visualization/dashboard.py` (fonctionnalité listée dès l'énoncé initial du
+projet, `Context.md`) : lit uniquement des artefacts déjà sur disque (JSON, parquet,
+CSV) -- aucun modèle chargé, démarre en quelques secondes. Pages : vue d'ensemble
+(métriques par run), UMAP interactif (Plotly, coloration par label/cluster), features
+(core Neuronpedia + extension + phrase-level, avec exemples positifs ET négatifs --
+`neg_example` maintenant persisté dans `src/sae/judge.py` pour les runs futurs),
+diffing (parcours des `diff_*.csv`), recherche par mot-clé sur les labels, et une page
+dédiée aux résultats urgence/intention + robustesse du juge (§13). Testé avec
+`streamlit.testing.v1.AppTest` sur toutes les pages × tous les runs disponibles
+(`results_v7` à `results_v11_baseline_objetfix`) : 0 exception.
+
+```bash
+.venv/bin/python -m streamlit run src/visualization/dashboard.py
+```
+
+### 14.3. Comparaison SAELens chiffrée
+
+Cf. `docs/references.md` (section dédiée) et `scripts/saelens_numeric_comparison.py` :
+désaccord numérique important (0,41 / 0,83 / 1,00 selon la formule) entre notre FVE et
+les deux formules de variance expliquée maintenues par `sae_lens.evals`, sur le même
+SAE natif et les mêmes activations réelles -- causé par les activations massives de
+Gemma-3 (une dimension atteint une magnitude ~74752 contre une moyenne ~53).

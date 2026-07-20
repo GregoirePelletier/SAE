@@ -20,6 +20,7 @@ dependencies = [
     "scikit-learn>=1.5.0",
     "scipy>=1.13.0",
     "statsmodels>=0.14.0",
+    "streamlit>=1.59.2",
     "torch>=2.6.0",
     "transformer-lens>=1.19.0",
     "transformers>=4.57.6",

@@ -336,6 +336,7 @@ def odd_one_out_judge(
             "interp_score": interp_score,
             "rho_interp": rho_interp,
             "pos_examples": pos_examples,
+            "neg_example": neg_example,  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
         }
 
     return results
@@ -508,6 +509,7 @@ def local_gemma_judge(
             "interp_score": interp_score,
             "rho_interp": rho_interp,
             "pos_examples": pos_examples,
+            "neg_example": neg_example,  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
         }
 
     return results
