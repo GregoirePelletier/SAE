@@ -37,22 +37,21 @@ Pistes encore non testées par manque de temps, par ordre de coût croissant :
    grand comme juge (sans nécessairement l'utiliser pour l'extraction d'activations)
    est une piste possible mais coûteuse.
 
-### Comparaisons avec l'état de l'art incomplètes
+### Comparaisons avec l'état de l'art
 
 `Context.md` (règle n°2) demande une comparaison documentée et systématique avec
-SAELens. Une comparaison **de formule** a été faite (`docs/references.md`) : la
-variance expliquée de `sae_lens.evals` et notre `compute_metrics` mesurent le même
-concept avec une structure d'agrégation comparable (SAELens maintient elle-même deux
-variantes, "legacy" et "corrigée", selon l'ordre d'agrégation par token vs global).
-Une comparaison **chiffrée** sur les mêmes activations reste à faire : elle
-nécessiterait de faire passer le chargement Gemma-3+GemmaScope-2 par
-`transformer_lens.HookedTransformer` + `sae_lens.ActivationsStore` plutôt que le
-chargeur custom du projet (`src/sae/gemma_scope_loader.py`, écrit précisément pour
-contourner des incompatibilités de ce chemin de chargement direct) — arbitrage
-coût/valeur non tranché en faveur de cette réintégration dans le temps disponible. La
-comparaison avec `interp_embed` reste partielle (test optionnel dépendant d'une
-installation non faite par défaut), et aucune comparaison avec "SAE Boost" n'a été
-entreprise (implémentation officielle non identifiée à date).
+SAELens. **Fait** (`scripts/saelens_numeric_comparison.py`, `docs/references.md`) :
+comparaison chiffrée, sur le même SAE natif sae-lens et les mêmes activations réelles,
+entre notre formule de variance expliquée et les deux formules maintenues par
+`sae_lens.evals` elle-même. Résultat notable : désaccord numérique important entre
+les trois (0,41 / 0,83 / 1,00) causé par les activations massives de Gemma-3 — la
+formule qui somme sur les dimensions avant de normaliser est mécaniquement dominée
+par une seule dimension outlier et rapporte une variance quasi-totalement expliquée,
+sans rapport avec la qualité de reconstruction réelle. Recommandation retenue : ne
+jamais publier un score de variance expliquée sans préciser la formule exacte utilisée
+sur ce modèle. La comparaison avec `interp_embed` reste partielle (test optionnel
+dépendant d'une installation non faite par défaut), et aucune comparaison avec
+"SAE Boost" n'a été entreprise (implémentation officielle non identifiée à date).
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -79,9 +78,11 @@ investigation.
    **FAIT** (cf. section "Limites actuelles" ci-dessus) — passer ce vote majoritaire
    en protocole par défaut de `odd_one_out_judge` (actuellement une fonction séparée,
    `scripts/judge_robustness_check.py`, à fusionner dans `src/sae/judge.py` si adopté).
-2. Formaliser la comparaison **chiffrée** avec SAELens sur les mêmes activations
-   (au-delà de la comparaison de formule déjà faite, cf. `docs/references.md`) —
-   nécessite de faire passer le chargement par `HookedTransformer`/`ActivationsStore`.
+2. ~~Formaliser la comparaison **chiffrée** avec SAELens~~ **FAIT** (cf. section
+   "Comparaisons avec l'état de l'art" ci-dessus) — a révélé un problème plus large
+   (désaccord entre formules de variance expliquée sur activations à magnitude
+   hétérogène) qu'une simple validation d'implémentation. Reste à faire : implémenter
+   la métrique robuste aux outliers proposée (médiane des ratios par token).
 3. Poursuivre la factorisation de `src/sae/saev5.py` vers l'architecture cible décrite
    dans `Context.md` (`src/models/`, séparation training/extraction) — dette technique
    qui n'affecte pas la validité des résultats mais complique la maintenance.
