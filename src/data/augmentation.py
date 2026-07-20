@@ -204,10 +204,32 @@ def generate_variants(
     return df
 
 
+def _strip_leading_objet_line(text: str) -> str:
+    """Retire une ligne "Objet :"/"Subject :" en tête de texte, si présente.
+
+    Nécessaire pour la cohérence avec les mails réels : `load_and_clean_emails`
+    (src/data/preparation.py) applique déjà ce nettoyage aux mails originaux. Sans
+    ce même traitement ici, la ligne "Objet :" que le générateur ajoute encore dans
+    ~20% des variantes malgré la contrainte n°5 du prompt système (_SYSTEM,
+    échantillonnage à température 0.8 -- cf. RESULTS_TESTS.md §0) devient un
+    artefact de formatage qui distingue trivialement "augmenté" de "original" pour
+    le SAE, sans rapport avec l'axe de perturbation réellement visé (confirmé
+    empiriquement : "Subject: followed by email subject lines" ressortait comme
+    feature la plus discriminante sur plusieurs axes du run de diffing complet,
+    cf. RESULTS_TESTS.md §6/§0)."""
+    if not isinstance(text, str):
+        return text
+    return re.sub(r'^\s*(?:Objet|Subject)\s*:\s*[^\n]+\n*', '', text, flags=re.IGNORECASE)
+
+
 def load_augmented(jsonl_path: str) -> pd.DataFrame:
     """Charge les variantes acceptées. Colonnes prêtes pour la visu :
-    is_augmented=True, corpus_origin=corpus parent, aug_axis, aug_level."""
+    is_augmented=True, corpus_origin=corpus parent, aug_axis, aug_level.
+    Le texte est nettoyé d'une éventuelle ligne "Objet :"/"Subject :" résiduelle
+    (cf. _strip_leading_objet_line) pour rester cohérent avec le traitement des
+    mails réels et ne pas polluer le SAE avec un artefact de formatage."""
     rows = [json.loads(l) for l in open(jsonl_path, encoding="utf-8") if l.strip()]
     df = pd.DataFrame([r for r in rows if r["rejected"] is None])
+    df["text"] = df["text"].map(_strip_leading_objet_line)
     df["is_augmented"] = True
     return df.rename(columns={"corpus": "corpus_origin", "axis": "aug_axis", "level": "aug_level"})
