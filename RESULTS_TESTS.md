@@ -463,3 +463,113 @@ décisions restent à prendre avec vous :
 
 Fichiers de résultats disponibles dès maintenant : `results_v9_test/cache_baseline/diff_*.csv`
 (et `.html` pour visualisation) par axe/niveau.
+
+---
+
+## 12. Diagnostic et correction du faible taux de détection de l'intrus (odd-one-out)
+
+**Question posée par l'utilisateur** : le taux de labellisation des features d'extension
+(protocole odd-one-out, `src/sae/judge.py::odd_one_out_judge`) est faible — est-ce un
+problème de volume d'entraînement (`N_TOKENS_EXTRA_TRAIN`) ou autre chose ?
+
+### Diagnostic
+
+Relecture de `src/sae/saev5.py` (bloc `MAIN`) + inspection de
+`results_v9_full/cache/p1_judge_labels_extended.json` (dernier run complet
+disponible, job 39531) :
+
+- **0/10 features "dead_feature"** sur ce run → *pas* un problème de volume brut
+  au sens strict (les features s'activent bel et bien).
+- **Seulement 2/10 passaient le test odd-one-out** (20%).
+- Les `pos_examples` retournés pour les features non interprétables étaient des
+  extraits **FineWeb-2/Wikipedia génériques et sans rapport entre eux** (ex. un
+  extrait sur un rappel produit iPad, un extrait sur les prisons norvégiennes, un
+  extrait de recette de cuisine — présentés comme "exemples positifs" d'une même
+  feature). Aucun concept cohérent commun → le juge LLM ne pouvait objectivement
+  pas trouver l'intrus, l'odd-one-out échouant par construction, pas par manque
+  de capacité du juge.
+- **Cause racine** : `train_texts` (le corpus utilisé pour échantillonner le
+  réservoir de résidus `N_TOKENS_EXTRA_TRAIN` et entraîner `ExtendedSAE`) était
+  bâti **uniquement** à partir de `energy_texts + sports_texts + support_texts`
+  (FineWeb-2/Wikipedia filtré par mots-clés). Les emails réels et augmentés
+  (`email_texts`) n'étaient chargés qu'**après** l'entraînement, uniquement pour
+  une visualisation UMAP post-hoc (`analyze_with_umap`) — jamais vus par le SAE
+  pendant l'entraînement. Le SAE d'extension apprenait donc des concepts
+  Wikipedia génériques, jamais des concepts liés aux emails.
+
+### Correction appliquée
+
+- `src/data/preparation.py::build_email_train_test_corpus()` — nouveau corpus
+  principal : mails réels (`Mails.tsv`) + variantes augmentées acceptées
+  (`augmented_mails.jsonl`, 39 949 lignes). Split **group-aware par mail
+  d'origine** (`parent_id`) : un mail et toutes ses variantes tombent du même
+  côté train/test (sinon une variante augmentée d'un mail de test fuiterait dans
+  le train — quasi-duplicata sémantique, biais classique de leakage).
+- `src/sae/saev5.py` : `train_texts`/`test_texts` = ce nouveau corpus
+  (41 176 train / 2 177 test, contre ~5 400/600 FineWeb-2 avant — et surtout
+  100% email au lieu de 0%). `energy_texts`/`sports_texts`/`support_texts`
+  réduits (`N_TOTAL_*` 2000→300) et repositionnés en corpus **secondaire**
+  (`diff_texts`/`diff_labels`), encodés post-hoc par le SAE déjà entraîné,
+  gardés uniquement pour la démonstration de diffing cross-domaine existante
+  (jamais utilisés pour l'entraînement).
+- Labels Neuronpedia déplacés vers un cache canonique partagé
+  (`local_data/neuronpedia_labels/`, cf. `src/config.py::NEURONPEDIA_LABELS_PATH`) :
+  réutilisé par tous les runs sans jamais retenter d'appel réseau.
+- `N_FEATURES_TO_LABEL` relevé de 10 à **150** pour une puissance statistique
+  correcte sur le taux d'interprétabilité observé.
+
+### 3 runs de validation (corpus emails+augmentés, N_FEATURES_TO_LABEL=150)
+
+Objectif : confirmer le fix ET isoler l'effet du volume de celui du domaine, en
+faisant varier `N_TOKENS_EXTRA_TRAIN` à corpus strictement identique.
+
+| Run (SLURM job) | `N_TOKENS_EXTRA_TRAIN` | Durée | dead_feature | Taux interp. (odd-one-out) | ρ_interp moyen (interp=1) |
+|---|---|---|---|---|---|
+| **Baseline (avant fix)** — `results_v9_full`, job 39531 | 500 000 (corpus generic) | 37min32s | 0/10 | **2/10 = 20,0%** | n/a |
+| `run_sae_v10_ablation_tok100k.slurm`, job 39661 | 100 000 | 3h11min37s | 0/150 | **61/150 = 40,7%** | 0,362 |
+| `run_sae_v10_emails.slurm`, job 39660 (**run principal**) | 500 000 (défaut) | 3h01min53s | 0/150 | **68/150 = 45,3%** | 0,241 |
+| `run_sae_v10_ablation_tok2M.slurm`, job 39662 | 2 000 000 | 2h21min01s | 0/150 | **67/150 = 44,7%** | 0,336 |
+
+**Lecture** : corriger le domaine du corpus (emails dominants au lieu de
+Wikipedia générique) **plus que double le taux d'interprétabilité** (20% → ~41-45%),
+à volume de tokens comparable (500k) — c'est le principal levier. Une fois le
+domaine corrigé, faire varier le budget de tokens sur un facteur **20×**
+(100k → 2M) ne produit aucun écart significatif (40,7% / 45,3% / 44,7% — à
+comparer à l'écart-type binomial attendu sur n=150, ≈ 4,1 points : les trois
+valeurs sont dans le bruit les unes des autres). **Conclusion : le problème
+observé était principalement un problème de contenu/domaine du corpus
+d'entraînement (les emails n'entraient jamais dans le train), pas de volume
+brut de tokens — une fois le domaine corrigé, le SAE d'extension n'est déjà
+plus starved de volume à 100k tokens, et le porter à 2M n'apporte aucun gain
+supplémentaire mesurable.**
+
+Résultat additionnel obtenu au passage (bug `downstream_classification` corrigé
+entre les jobs 39662 et 39661, cf. section suivante) : sur le job 100k (premier
+run avec le fix), la sonde logistique sur les 14 classes d'axes email donne
+**acc_SAE = 93,5%** (P1, Gemma-3/GemmaScope) et **79,3%** (P2, F2LLM/PhraseSAE)
+— les codes latents du SAE séparent donc très bien les axes de perturbation
+(émotion, urgence, registre, orthographe, original) de façon linéaire, un
+résultat encourageant pour les cas d'usage visés (détection d'urgence,
+détection d'intention) au-delà du seul diagnostic odd-one-out.
+
+Qualité des labels obtenus (contraste direct avec les extraits Wikipedia du run
+avant fix) : `Réclamations Clients`, `Litiges Factures`, `Résiliation Énergie`,
+`Menace Résiliation`, `Demande Urgente`, `Problèmes énergie` — des concepts
+directement alignés avec les objectifs métier (détection d'urgence, d'intention,
+réclamations) au lieu d'artefacts Wikipedia sans rapport.
+
+### Bug additionnel trouvé et corrigé pendant ces runs
+
+`src/analysis/metrics.py::downstream_classification` : la nouvelle sonde de
+classification multi-classe sur les axes d'augmentation email (14 classes)
+échouait silencieusement (exception attrapée, métrique `nan`) — `liblinear` ne
+supporte que la classification binaire dans les versions récentes de
+scikit-learn. Fix : `lbfgs` (multinomial natif) au-delà de 2 classes,
+`liblinear` conservé pour le probe binaire energy/sports préexistant (ne change
+aucun résultat déjà validé). Les jobs 39660 et 39662 ont tourné avant que le fix
+ne soit sur disque (métrique `acc_axes_email` = `nan` dans leurs `results.json`,
+non bloquant pour le diagnostic principal odd-one-out, indépendant de cette
+métrique annexe) ; le job 39661 (soumis avant le fix mais resté `PENDING` en
+file d'attente jusqu'après le commit du correctif) a démarré son exécution
+avec le code corrigé et donne les valeurs `acc_axes_email` exploitables
+ci-dessus.

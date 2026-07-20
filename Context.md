@@ -192,6 +192,47 @@ façon fiable pour le gradient — confirmé par isolation empirique d'un cas mi
 
 ---
 
+## Validation à l'échelle complète (Gemma-3-12B-it, corpus réel EDF) — session v10
+
+Confirme et RÉSOUT la limite ci-dessus ("features d'extension restent `dead_feature`
+avec un budget d'entraînement modeste") : ce n'était pas (seulement) un problème de
+budget, mais surtout de **contenu du corpus**. Détail complet du diagnostic et des 3
+runs de validation dans `RESULTS_TESTS.md` §12. Résumé :
+
+- **Diagnostic** : `train_texts` (corpus servant à échantillonner le réservoir de
+  résidus ET à entraîner `ExtendedSAE`) était bâti uniquement depuis
+  energy/sports/support (FineWeb-2/Wikipedia) — les emails n'entraient JAMAIS dans le
+  train, seulement en post-hoc pour la visualisation UMAP. Sur le dernier run complet
+  avant fix (`results_v9_full`, job 39531) : 0/10 features d'extension `dead_feature`
+  (donc pas un problème de volume brut) mais seulement 2/10 (20%) passaient le test
+  odd-one-out — les "exemples positifs" présentés au juge étaient des extraits
+  Wikipedia sans rapport entre eux (aucun concept commun à trouver).
+- **Fix** : `build_email_train_test_corpus()` (nouveau, `src/data/preparation.py`) —
+  corpus principal = mails réels + variantes augmentées acceptées, split group-aware
+  par mail d'origine (`parent_id`, empêche toute fuite train/test). energy/sports/
+  support réduit et repositionné en corpus secondaire post-hoc (démonstration de
+  diffing cross-domaine uniquement, plus jamais utilisé pour l'entraînement).
+- **Résultat (3 runs, `N_FEATURES_TO_LABEL=150` pour la puissance statistique)** :
+  taux d'interprétabilité odd-one-out **20% → ~41-45%** (0 `dead_feature` dans les 3
+  cas). Labels obtenus directement alignés métier : `Réclamations Clients`, `Litiges
+  Factures`, `Résiliation Énergie`, `Menace Résiliation`, `Demande Urgente`.
+- **Ablation volume** (`N_TOKENS_EXTRA_TRAIN` ∈ {100k, 500k, 2M}, corpus identique) :
+  40,7% / 45,3% / 44,7% — **aucun écart significatif** (écart-type binomial attendu
+  ≈4,1 pts sur n=150). Conclusion : une fois le domaine corrigé, le volume de tokens
+  n'est déjà plus limitant à 100k, et le porter à 2M n'apporte rien de mesurable. Le
+  goulot d'étranglement observé était bien un problème de **contenu du corpus**, pas
+  de **volume brut**.
+- **Effet de bord positif** : la sonde de classification sur les axes email (14
+  classes, nouvelle métrique `clf_acc_email_axes`) donne acc_SAE=93,5% (P1) / 79,3%
+  (P2) — les codes latents séparent très bien émotion/urgence/registre/original,
+  résultat encourageant pour les cas d'usage détection d'urgence/intention visés par
+  le projet (cf. section Objectif).
+- **Reste non résolu** : ~55-59% des features d'extension restent non interprétables
+  même corpus corrigé — piste à explorer : robustesse du protocole de jugement
+  (génération greedy unique, pas de vote/ensemble) plutôt que le corpus ou le volume.
+
+---
+
 # Problèmes connus restants
 
 ## Duplication
@@ -314,17 +355,22 @@ Toute refactorisation doit passer les tests de non-régression.
 
 # Prochaines étapes
 
-1. **Run complet sur Gemma-3-12B-it** (machine avec plus de VRAM que la validation
-   locale 6 Go) : `MODEL_SIZE=12b` est le défaut de `src/config.py`, `run_sae.slurm` mis
-   à jour (SAE 16k au lieu de 262k). Vérifier que les features d'extension
-   `ExtendedSAE` obtiennent de vrais labels (non `dead_feature`) avec un corpus et un
-   `N_TOKENS_EXTRA_TRAIN` suffisants.
-2. **`run_augmentation.py` puis `baseline_gemmascope.py`** sur la machine disposant du
-   vrai `Mails.tsv` (EDF) — non exécutable lors de la validation locale (données absentes).
-3. Poursuivre la factorisation de `saev5.py` vers l'architecture cible (`src/models/`,
+1. ~~**Run complet sur Gemma-3-12B-it**~~ **FAIT** (session v10, cf. section
+   "Validation à l'échelle complète" ci-dessus + `RESULTS_TESTS.md` §12) : features
+   d'extension non `dead_feature`, taux d'interprétabilité 20%→~45% après correction
+   du corpus.
+2. ~~**`run_augmentation.py` puis `baseline_gemmascope.py`** sur la machine disposant du
+   vrai `Mails.tsv`~~ **FAIT** (`RESULTS_TESTS.md` §0 et §6-10 : corpus complet
+   augmenté — 45 240 générations, 39 949 acceptées — et baseline exécutés avec succès).
+3. **Piste ouverte par le diagnostic v10** : ~55-59% des features d'extension restent
+   non interprétables malgré le corpus corrigé, à volume de tokens non limitant —
+   investiguer la robustesse du protocole de jugement lui-même (`odd_one_out_judge`) :
+   vote majoritaire sur plusieurs générations plutôt qu'une décision greedy unique,
+   qualité du contrôle négatif, prompt/format de la question.
+4. Poursuivre la factorisation de `saev5.py` vers l'architecture cible (`src/models/`,
    séparation training/extraction).
-4. Dashboard Streamlit (fonctionnalité future, non commencée).
-5. Comparaison documentée avec SAELens (règle n°2), pas encore faite systématiquement.
+5. Dashboard Streamlit (fonctionnalité future, non commencée).
+6. Comparaison documentée avec SAELens (règle n°2), pas encore faite systématiquement.
 
 ---
 
@@ -412,7 +458,8 @@ docs/experiments.md
 docs/references.md
 
 *Statut* : `README.md` à jour (description de tous les scripts, installation, choix de
-config). `docs/` non créé — à faire si le projet grandit.
+config). `docs/architecture.md`, `docs/experiments.md`, `docs/references.md` créés
+(session v10).
 
 ---
 
@@ -434,5 +481,7 @@ avec :
 
 Mis à jour à chaque évolution importante.
 
-*Statut* : non créé. Les résultats de validation locale (270m) sont documentés dans ce
-fichier (section "Validation empirique") en attendant un `report/` dédié.
+*Statut* : `report/` créé (session v10) avec état de l'art, architecture, expériences/
+résultats et limites/perspectives — matériel de base pour le rapport de stage. Pas
+encore de section comparaison chiffrée avec interp_embed/SAE Boost (cf.
+`docs/references.md` pour le détail des comparaisons faites/manquantes).
