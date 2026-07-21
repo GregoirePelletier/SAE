@@ -295,3 +295,34 @@ claire pour préférer l'un à l'autre sur ce projet.
   différentes ne puisse biaiser la comparaison, au prix d'un coût de calcul plus élevé
   (~8h30 GPU cumulées pour les trois runs plutôt qu'un partage possible de l'étape
   d'extraction, identique entre les trois configurations).
+
+## 10. Ablation de mise à l'échelle du volume d'entraînement et de labellisation (v12)
+
+Question posée en fin de stage, dans le même esprit que l'ablation du §4/§5 mais sur
+un axe différent : une fois le domaine du corpus corrigé (§3) et le résidu
+non-interprété partiellement expliqué par le bruit du protocole de jugement (§7.1),
+un passage à l'échelle du **volume d'entraînement et de labellisation**, sans aucun
+autre changement de méthode, améliore-t-il la proportion de features labellisées
+avec succès et les différents scores de reconstruction/séparabilité ?
+
+Trois leviers ont été augmentés simultanément par rapport au run principal du §4
+(`results_v10_emails_main`), dans un nouveau run unique (`results_v12_scaled_65k`)
+regroupant l'ensemble des analyses du dépôt (toutes les capacités du protocole
+d'évaluation, §8.3) :
+
+| Paramètre | Run principal (§4) | Run v12 (échelle) | Facteur |
+|---|---|---|---|
+| Largeur du SAE core (couverture Neuronpedia) | 16k (82,6%, 13 535 labels) | **65k (87,8%, 57 551 labels)** | — (meilleure couverture, cf. Chapitre 1) |
+| `EPOCHS_EXTRA` (SAE d'extension, Pipeline 1) | 10 | **40** | ×4 |
+| `EPOCHS` (Phrase-Level SAE, Pipeline 2) | 30 | **100** | ×3,3 |
+| `N_FEATURES_TO_LABEL` (features jugées) | 150 | **600** | ×4 |
+| `N_TOKENS_EXTRA_TRAIN` | 500 000 | 500 000 (inchangé) | — (déjà démontré non limitant, §5.2) |
+| Backbone Pipeline 2 | F2LLM-v2-80M | F2LLM-v2-330M | (condition fixée du protocole d'évaluation, §8.3) |
+
+*[Résultats en cours de calcul au moment de la rédaction de cette version du
+rapport — jobs SLURM chaînés par dépendance (run principal → diffing par axe →
+robustesse du juge, sonde intention/urgence, fidélité, plausibilité, labellisation
+contrastive → consolidation). Cette section sera complétée avec le taux
+d'interprétabilité obtenu, le NMSE de reconstruction des deux pipelines, et la
+comparaison avec le run principal dès la fin de la chaîne de jobs — cf.
+`RESULTS_TESTS.md` pour le suivi détaillé et à jour de cette expérience.]*

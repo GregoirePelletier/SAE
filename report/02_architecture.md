@@ -17,7 +17,7 @@ partageant la même infrastructure de corpus, de stockage et d'évaluation :
               ┌─────────────────────┴─────────────────────┐
               ▼                                             ▼
      Pipeline 1 (token-level)                     Pipeline 2 (phrase-level)
-     Gemma-3-12B-it → SAE GemmaScope-2            F2LLM-v2-80M → PhraseLevelSAE
+     Gemma-3-12B-it → SAE GemmaScope-2            F2LLM-v2 → PhraseLevelSAE
      (préentraîné) + extension FrozenCore         (entraîné from-scratch)
      (entraînée from-scratch sur le résidu)
               │                                             │

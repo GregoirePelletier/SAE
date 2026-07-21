@@ -29,10 +29,16 @@ GemmaScope ([google-deepmind/gemma-scope](https://github.com/google-deepmind/gem
 est une collection de SAE préentraînés par DeepMind sur les modèles de la famille
 Gemma, à plusieurs couches et plusieurs largeurs (nombre de features). Le projet utilise
 GemmaScope-2 (variante pour Gemma-3) sur le residual stream, couche 24 pour le modèle
-12B. Le choix de la **largeur** (16k plutôt que 262k pour 12b) est un compromis
-documenté empiriquement dans ce projet : Neuronpedia (ci-dessous) n'héberge des
-explications que pour une fraction des features de la largeur 262k (~10 000/262 144,
-soit ~4%), contre une couverture bien plus dense en proportion à 16k.
+12B. Le choix de la **largeur** du SAE (parmi 16k/65k/262k/1m disponibles) est un
+arbitrage documenté empiriquement dans ce projet, sur le critère de couverture des
+labels Neuronpedia (fraction des features disposant d'une explication en langage
+naturel) : **65k** offre la meilleure couverture pour ce modèle (87,8%, 57 551/65 536
+features labellisées), devant 16k (82,6%, 13 535/16 384), très loin devant 262k (5,3%,
+13 851/262 144, confirmant une première estimation manuelle ~10 000/262 144) ; la
+largeur 1m n'est pas hébergée par Neuronpedia pour ce modèle (aucune donnée
+disponible). 16k a été le choix initial du projet (comparé uniquement à 262k au
+démarrage du stage) ; 65k, non vérifié à l'origine, a été adopté après cette
+vérification systématique pour le run de mise à l'échelle final (chapitre 3).
 
 ## Neuronpedia et l'auto-interprétation des features
 
