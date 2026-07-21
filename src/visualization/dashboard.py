@@ -133,6 +133,37 @@ def _feature_search_box(label_map: dict, key: str) -> None:
                        "ou feature core Neuronpedia sans contrôle négatif applicable).")
 
 
+def _full_neuronpedia_catalog() -> None:
+    """Catalogue COMPLET des labels Neuronpedia mis en cache localement (toutes
+    largeurs de SAE confondues), indépendant du sous-ensemble top-N sélectionné
+    par un run (p1_top_core_features.json) -- répond au besoin de parcourir
+    l'intégralité des features déjà auto-interprétées par DeepMind/Neuronpedia,
+    pas seulement celles les plus activées sur le corpus d'entraînement local."""
+    label_files = sorted(glob.glob(os.path.join(REPO_ROOT, "local_data", "neuronpedia_labels", "*.json")))
+    if not label_files:
+        st.info("Aucun fichier sous local_data/neuronpedia_labels/.")
+        return
+    rel_files = [os.path.relpath(f, REPO_ROOT) for f in label_files]
+    # Par défaut, propose le fichier le plus volumineux (généralement la largeur
+    # avec le plus de labels, ex. 65k) plutôt que le premier alphabétiquement.
+    default_idx = max(range(len(label_files)), key=lambda i: os.path.getsize(label_files[i]))
+    chosen = st.selectbox("Fichier de labels Neuronpedia", rel_files, index=default_idx, key="np_catalog_file")
+    catalog = load_json(os.path.join(REPO_ROOT, chosen)) or {}
+    st.metric("Features labellisées dans ce fichier", f"{len(catalog):,}".replace(",", " "))
+    query = st.text_input("Filtrer par texte du label (laisser vide = 500 premières features par index)",
+                           key="np_catalog_query")
+    items = sorted(catalog.items(), key=lambda kv: int(kv[0]))
+    if query:
+        items = [(k, v) for k, v in items if query.lower() in str(v).lower()]
+        st.write(f"{len(items)} features correspondent au filtre.")
+    else:
+        items = items[:500]
+        st.caption("Aucun filtre : affichage des 500 premières features par index (sur "
+                   f"{len(catalog):,}".replace(",", " ") + " au total). Utiliser la recherche pour cibler.")
+    df = pd.DataFrame([{"feature": k, "label": v} for k, v in items])
+    st.dataframe(df, width='stretch', height=400)
+
+
 def page_features(run_dir: str) -> None:
     st.header("Features — labels et exemples")
     tab_core, tab_ext, tab_p2 = st.tabs(["Core (Neuronpedia)", "Extension (juge LLM, P1)", "Phrase-level (juge LLM, P2)"])
@@ -140,9 +171,12 @@ def page_features(run_dir: str) -> None:
     with tab_core:
         core = load_json(os.path.join(REPO_ROOT, run_dir, "p1_top_core_features.json"))
         if core:
+            st.subheader(f"Top-{len(core)} features core les plus activées (ce run)")
             _feature_search_box(core, key="core")
         else:
             st.info("p1_top_core_features.json absent de ce run.")
+        with st.expander("Catalogue COMPLET des features Neuronpedia (toutes largeurs de SAE en cache local)"):
+            _full_neuronpedia_catalog()
 
     with tab_ext:
         ext = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p1_judge_labels_extended.json"))

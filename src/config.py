@@ -57,12 +57,14 @@ MODEL_SIZE = os.environ.get("MODEL_SIZE", "12b")
 # "google/gemma-scope-2-{taille}-it" SANS suffixe "-res" (l'ancien suffixe, hérité de
 # GemmaScope v1, pointait vers un repo inexistant — jamais vérifié avant ce passage).
 _PRESETS = {
-    # Largeur 16k choisie plutôt que 262k (utilisée par run_sae.slurm) : la couverture
-    # des labels Neuronpedia sur 24-gemmascope-2-res-262k est faible (~10k features
-    # labellisées sur 262144, observé manuellement) ; 16k est nettement plus dense en
-    # proportion (comparable à la couverture ~98% obtenue empiriquement sur 270m/65k)
-    # et bien moins coûteux à traiter pour un premier run complet.
-    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_16k_l0_medium", 24, 4096),
+    # Couverture Neuronpedia mesurée empiriquement pour gemma-3-12b-it/layer 24
+    # (fetch_neuronpedia_labels, cf. RESULTS_TESTS.md) : 16k -> 13535/16384 = 82.6% ;
+    # 65k -> 57551/65536 = 87.8% (meilleure couverture ET ~4.3x plus de features
+    # labellisées en absolu) ; 262k -> 13851/262144 = 5.3% (confirme le ~10k estimé
+    # manuellement, très en dessous) ; 1m -> HTTP 404, pas de labels hébergés.
+    # 65k est donc la largeur retenue pour le run à grande échelle (meilleure des
+    # deux métriques), remplaçant 16k comme choix par défaut ci-dessous.
+    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_65k_l0_medium", 24, 4096),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),
     "1b":   ("google/gemma-3-1b-it",  "gemma-scope-2-1b-it",  "layer_13_width_16k_l0_medium", 13, 1152),
     # google/gemma-3-270m-it (LM) + google/gemma-scope-2-270m-it (SAE, resid_post,
