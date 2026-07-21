@@ -105,16 +105,46 @@ bout-en-bout sur les activations déjà en cache, non revalidé par un run compl
 (ne change pas la reconstruction des activations elles-mêmes, seulement la
 sélection de latents en aval).
 
-### Corrélations "intéressantes" (gap comblé)
+### Corrélations "intéressantes" (gap comblé, résultat peu concluant)
 
 **Corrigé** (`RESULTS_TESTS.md` §15.3) : `cooccurrence_graph` (NPMI + communautés
 Louvain) n'était jamais appelée dans le pipeline principal — seule la matrice NPMI
 brute était calculée et cachée, sans analyse en sortie. Nouvelle fonction
 `find_interesting_pairs` (`src/analysis/cooccurrence.py`), filtre NPMI élevé +
-similarité sémantique des labels faible (méthode interp_embed §4.2/Appendix E.1),
-câblée dans le pipeline (sortie `p1_interesting_correlations.json`). Non revalidée
-par un run complet dans cette session (le run principal `results_v10_emails_main`
-prédate ce changement).
+similarité sémantique des labels faible (méthode interp_embed §4.2/Appendix E.1).
+**Calculée rétroactivement** (`scripts/compute_interesting_correlations_retro.py`,
+`RESULTS_TESTS.md` §16.3) sur `results_v10_emails_main` sans réextraction Gemma-3 :
+seulement 3 paires retenues sur 26 579 arêtes du graphe (3 395 nœuds), et 2 des 3
+impliquent une feature non labellisée — résultat honnête mais peu exploitable en
+l'état (impossible de juger la pertinence d'une corrélation quand un des deux côtés
+n'a pas de label). Piste retenue : élargir la plage de fréquence ou prioriser les
+paires où les deux features sont labellisées.
+
+### Qualité de l'explication document-level (nouveau, testé)
+
+Question distincte de tout ce qui précède (qui évalue une feature isolée ou une
+capacité globale), directement issue d'une demande utilisateur : pour UN document
+donné, l'explication produite (features actives + labels) est-elle bonne ?
+- **Fidélité** (`scripts/explanation_fidelity_test.py`, ablation) : chute de 58 à 100
+  points de probabilité en ablatant les 10 features "explicatives", chute quasi nulle
+  (<0,4 point) en ablatant des features aléatoires ou peu contributives (ratios de
+  250× à 576 000× selon l'intention). Résultat sans ambiguïté : l'explication porte
+  réellement la décision.
+- **Plausibilité** (`scripts/explanation_plausibility_test.py`, choix forcé, juge
+  Gemma-3-12B-it) : 71,7% (43/60) de choix corrects contre 50% au hasard (p < 0,001) —
+  significativement au-dessus du hasard, mais loin d'être parfait (cohérent avec le
+  taux d'interprétabilité résiduel ~45-55%).
+
+Détail complet : `RESULTS_TESTS.md` §16.1-16.2, `report/03_experiences_et_resultats.md`
+§8, dashboard (onglet "Explication (fidélité/plausibilité)").
+
+### Comparaison du backbone d'embedding Pipeline 2 : F2LLM-80M vs -330M (nouveau, testé)
+
+Résultat **mixte** (`RESULTS_TESTS.md` §16.5) : -330M reconstruit légèrement mieux
+(NMSE −7,5%) et sépare un peu mieux le corpus de diffing générique (+2 points), mais
+sépare légèrement MOINS bien les axes email réels (−2,2 points, la métrique la plus
+proche des objectifs métier). Aucun écart n'est de l'ordre d'un problème majeur ; pas
+de justification claire pour préférer l'un à l'autre sur ce projet à ce stade.
 
 ### Facteurs non contrôlés dans le corpus augmenté
 
@@ -164,7 +194,26 @@ investigation.
    (a) une validation croisée de la qualité des labels (le champ `confident`
    auto-rapporté n'est pas fiable), (b) un run de validation à l'échelle comparable
    aux 3 runs de `RESULTS_TESTS.md` §12 avant de remplacer le chiffre 45,3% publié.
-8. Comparer les résultats de `find_interesting_pairs` (corrélations) à des biais/
-   artefacts réels connus du corpus (ex. le biais "Objet :" avant correction, §14.1)
-   pour valider empiriquement la méthode sur ce projet, à la manière de la validation
-   par injection synthétique du papier de référence (§4.2, Appendix E.2).
+8. ~~Calculer `find_interesting_pairs` (corrélations)~~ **FAIT** (rétroactivement,
+   sans réextraction, `RESULTS_TESTS.md` §16.3) — résultat peu concluant (3 paires
+   seulement, 2/3 avec une feature non labellisée). Reste à faire : comparer à des
+   biais/artefacts réels connus du corpus (ex. le biais "Objet :" avant correction,
+   §14.1) pour valider empiriquement la méthode sur ce projet, à la manière de la
+   validation par injection synthétique du papier de référence (§4.2, Appendix E.2) ;
+   élargir la plage de fréquence de `cooccurrence_graph` pour augmenter le rappel.
+9. ~~Mettre en place un test de qualité de l'explication document-level (fidélité +
+   plausibilité)~~ **FAIT** (`RESULTS_TESTS.md` §16.1-16.2) — résultats très positifs
+   sur la fidélité, positifs mais imparfaits sur la plausibilité. Reste à faire :
+   étendre le test de plausibilité au Pipeline 2, et à un échantillon plus large que
+   60 documents pour resserrer l'intervalle de confiance.
+10. ~~Comparer le backbone d'embedding Pipeline 2 (F2LLM-80M vs -330M)~~ **FAIT**
+    (`RESULTS_TESTS.md` §16.5) — résultat mixte, pas de gain net. Reste à faire :
+    tester bge-m3 comme backbone Pipeline 2 (actuellement utilisé seulement pour la
+    similarité de labels), qui a montré une meilleure fiabilité sur des textes courts
+    dans un contexte différent (§15.2) mais n'a jamais été testé comme backbone
+    d'entraînement du `PhraseLevelSAE` lui-même.
+11. ~~Concevoir un protocole de test complet du dépôt sous conditions fixées~~ **FAIT** :
+    `docs/evaluation_protocol.md` + `scripts/consolidate_evaluation_report.py` +
+    onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette
+    passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
+    conditions envisagée par l'utilisateur peut être considérée en suite de stage.

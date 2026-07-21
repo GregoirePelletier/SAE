@@ -831,3 +831,119 @@ production dans cette session** (implique de refaire tourner les 3 runs de
 validation §12 pour un nombre comparable avant de remplacer le chiffre 45,3% déjà
 publié dans le rapport) — documenté ici comme piste well-evidenced pour la suite du
 stage, pas comme correction déjà intégrée.
+
+---
+
+## 16. Qualité de l'explication document-level + protocole de test complet du repo
+
+Suite directe de la question utilisateur "comment tester ma pipeline de bout en bout
+pour estimer la qualité de notre solution d'explication des documents ?". Deux tests
+complémentaires (fidélité causale + plausibilité perçue), puis un protocole
+d'évaluation consolidé couvrant l'ensemble des méthodes du dépôt, sous conditions
+fixées (`docs/evaluation_protocol.md`).
+
+### 16.1. Fidélité de l'explication (ablation)
+
+`scripts/explanation_fidelity_test.py` (CPU uniquement, réutilise les activations déjà
+en cache) : ajuste une sonde logistique finale par intention (urgence, réclamation,
+information, remboursement) sur les mails réels, identifie pour 200 documents
+positifs bien classés (proba > 0.7) les 10 features dont la contribution
+(`coef × activation`) est la plus forte, puis ablate (met à zéro) ce top-10 et mesure
+la chute de probabilité prédite, comparée à l'ablation de 10 features actives
+aléatoires et de 10 features actives les moins contributives (bottom-10).
+
+| Intention | n docs testés | Chute top-10 | Chute random-10 | Chute bottom-10 | Ratio top/random |
+|---|---|---|---|---|---|
+| Réclamation | 200 | 0,576 | ~0,000 | ~0,000 | 576 225× |
+| Remboursement | 200 | 0,9997 | 0,0009 | ~0,000 | 1 058× |
+| Information | 200 | 0,9998 | 0,0040 | ~0,000 | 251× |
+| Urgence | 200 | 0,612 | ~0,000 | ~0,000 | 42 837× |
+
+**Lecture** : l'ablation du top-10 des features "citées" comme explication fait
+s'effondrer la probabilité prédite (58 à 100 points), alors que l'ablation de features
+actives aléatoires ou peu contributives ne change quasiment rien (<0,4 point). Les
+features désignées comme explication ne sont donc pas de simples labels plausibles a
+posteriori : elles portent réellement la décision de la sonde. Résultat sans ambiguïté
+sur cette architecture (sonde linéaire directement sur les codes SAE).
+
+### 16.2. Plausibilité de l'explication (choix forcé, juge LLM)
+
+`scripts/explanation_plausibility_test.py` (GPU, juge Gemma-3-12B-it, réutilise les
+activations déjà en cache) : sur 60 mails réels échantillonnés, présente au juge le
+mail + deux ensembles de labels (le top-8 réel des features les plus actives pour ce
+document, et un décoy de 8 labels tirés au hasard parmi les features labellisées mais
+non actives pour ce document), ordre A/B mélangé aléatoirement, et demande lequel
+explique le mieux le mail.
+
+| Métrique | Valeur |
+|---|---|
+| Taux de succès (choix de l'ensemble réel) | **71,7%** (43/60) |
+| Niveau du hasard | 50% |
+| Signification | z ≈ 3,4 (approximation normale), p < 0,001 |
+
+**Lecture** : le juge préfère l'explication réelle à un décoy aléatoire nettement plus
+souvent que le hasard — l'explication a une valeur perçue réelle pour un lecteur (LLM),
+sans être parfaite (28,3% des cas où le décoy est jugé au moins aussi bon, cohérent
+avec le taux d'interprétabilité ~45% mesuré par ailleurs : une partie substantielle des
+features "expliquant" un document ne sont elles-mêmes pas clairement monosémantiques).
+
+### 16.3. Corrélation "intéressantes" — calculée rétroactivement
+
+`scripts/compute_interesting_correlations_retro.py` (GPU léger, bge-m3 uniquement,
+aucune réextraction Gemma-3) : `find_interesting_pairs` (§15.3) a été ajoutée au
+pipeline principal APRÈS la production de `results_v10_emails_main/` — recalculée ici
+directement depuis `test_doc_acts` déjà en cache. Résultat : seulement **3 paires**
+retenues sur 26 579 arêtes du graphe de cooccurrence (3 395 nœuds), et 2 des 3 paires
+impliquent une feature non labellisée (`F17402`, `F17315`, `F43`) — résultat honnête
+mais peu exploitable en l'état (impossible de juger si la corrélation est un artefact
+réel sans label sur au moins un des deux côtés). Piste de suite : élargir la plage de
+fréquence (`min_freq`/`max_freq` de `cooccurrence_graph`) ou prioriser les paires où
+les deux features sont labellisées.
+
+### 16.4. Protocole d'évaluation complet du dépôt (conditions fixées)
+
+`docs/evaluation_protocol.md` (nouveau) : recense les 16 capacités/méthodes du dépôt,
+leur commande de reproduction, leur artefact de résultat, et l'alternative à laquelle
+chacune est comparée, sous un jeu de conditions **fixé** (Gemma-3-12B-it, GemmaScope
+16k+FrozenCore par défaut, corpus emails-dominant, F2LLM-v2-**330M** pour le backbone
+Pipeline 2 — "assez grand", décision de cette session —, bge-m3 pour la similarité de
+labels). `scripts/consolidate_evaluation_report.py` (nouveau) assemble automatiquement
+tous les artefacts disponibles d'un `SAVE_DIR` donné en un rapport markdown unique
+(`EVALUATION_REPORT.md`) + un résumé JSON, exposés dans le dashboard (nouvel onglet
+"Rapport consolidé"). Nouvel onglet dashboard "Explication (fidélité/plausibilité)"
+pour les résultats §16.1-16.2, avec inspection des exemples individuels (documents,
+features citées, cas où le juge s'est trompé).
+
+### 16.5. Comparaison du backbone Pipeline 2 : F2LLM-v2-80M vs -330M
+
+`run_sae_v10_p2_f2llm330m.slurm` (Pipeline 2 seul, corpus identique à
+`results_v10_emails_main`, aucun réentraînement Gemma-3/GemmaScope nécessaire) :
+MATRYOSHKA_DIM=320 reste une simple troncature des 320 premiers dims de l'embedding
+dernier-token, mécaniquement compatible avec n'importe quelle taille de backbone
+(vérifié : `hidden_size=896` pour F2LLM-330M ≥ 320).
+
+Deux tentatives nécessaires : la première a échoué à la toute dernière étape
+(`MODEL_ID` non défini explicitement pour le juge P2 -- même bug que §16.2 avant son
+premier correctif), mais l'entraînement complet du `PhraseLevelSAE` sur les
+embeddings F2LLM-330M était déjà en cache, la reprise (job 40745) a donc pu sauter
+directement à l'étape manquante (quelques secondes au lieu de ~10 minutes).
+
+| Métrique | F2LLM-v2-80M | F2LLM-v2-330M | Δ |
+|---|---|---|---|
+| NMSE | 0,0745 (`results_v10_emails_main`) | **0,0689** | −7,5% (meilleur) |
+| L0 | 16,14 | 15,94 | ≈ identique |
+| dead% | 0,63% | 0,70% | ≈ identique |
+| ρ_SAE | 0,9597 | 0,9574 | ≈ identique |
+| silhouette | 0,0212 | 0,0183 | légèrement inférieur |
+| clusters | 4 | 4 | identique |
+| acc_SAE (energy/sports, corpus diffing) | 0,6650-0,6717 | **0,6867** | +2 points (meilleur) |
+| acc_SAE (axes email, 14 classes) | 0,7933 (`results_v10_ablation_tok100k`, seul run 80M avec le fix `downstream_classification`) | 0,7717 | **−2,2 points (légèrement moins bon)** |
+
+**Lecture** : résultat **mixte**, pas de gain net et homogène. F2LLM-330M reconstruit
+légèrement mieux (NMSE, cohérent avec un backbone plus grand) et sépare légèrement
+mieux le corpus diffing generic (energy/sports), mais sépare légèrement MOINS bien
+les axes email réels (la métrique la plus directement liée aux objectifs métier du
+projet). Aucun de ces écarts n'est de l'ordre de grandeur d'un problème majeur (tous
+< 3 points ou < 8% relatif) : conclusion retenue pour cette passe -- **pas de
+justification claire pour préférer -330M à -80M sur ce projet** ; le choix n'est pas
+un facteur bloquant avant de considérer une comparaison multi-modèles plus large.

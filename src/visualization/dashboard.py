@@ -234,6 +234,61 @@ def page_urgence_robustesse(run_dir: str) -> None:
             st.info("p1_judge_robustness.json absent (lancer scripts/judge_robustness_check.py).")
 
 
+def page_explanation_quality(run_dir: str) -> None:
+    st.header("Qualité de l'explication document-level")
+    st.caption("cf. scripts/explanation_fidelity_test.py / explanation_plausibility_test.py, RESULTS_TESTS.md")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Fidélité (ablation)")
+        d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "explanation_fidelity_results.json"))
+        if d:
+            rows = [{"intention": k, "n_docs": v["n_docs_tested"],
+                     "chute_top_k": v["mean_drop_top_k"], "chute_random_k": v["mean_drop_random_k"],
+                     "chute_bottom_k": v["mean_drop_bottom_k"],
+                     "ratio_top_vs_random": v["fidelity_ratio_top_vs_random"]}
+                    for k, v in d.items()]
+            st.dataframe(pd.DataFrame(rows), width='stretch')
+            intent_choice = st.selectbox("Voir des exemples pour", list(d.keys()))
+            for ex in d[intent_choice].get("examples", [])[:5]:
+                with st.expander(f"Doc #{ex['doc_idx']} — p_avant={ex['p_before']:.3f}, "
+                                  f"chute top-K={ex['drop_top_k']:.3f}"):
+                    st.write(ex["text_preview"])
+                    st.write("**Features citées comme explication :**")
+                    for feat in ex["top_features"]:
+                        st.markdown(f"- F{feat['f']} — {feat['label']}")
+        else:
+            st.info("explanation_fidelity_results.json absent (lancer scripts/explanation_fidelity_test.py).")
+    with col2:
+        st.subheader("Plausibilité (choix forcé, juge LLM)")
+        d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "explanation_plausibility_results.json"))
+        if d:
+            s = d["summary"]
+            st.metric("Taux de succès (réel vs aléatoire)", f"{100*s['success_rate']:.1f}%",
+                       help=f"{s['n_correct']}/{s['n_tested']} — hasard = 50%")
+            wrong = [e for e in d.get("examples", []) if not e["picked_real"]][:5]
+            if wrong:
+                st.write("**Exemples où le juge a préféré le décoy aléatoire :**")
+                for ex in wrong:
+                    with st.expander(f"Doc #{ex['doc_idx']}"):
+                        st.write("Réel :", ", ".join(ex["real_labels"]))
+                        st.write("Décoy :", ", ".join(ex["decoy_labels"]))
+        else:
+            st.info("explanation_plausibility_results.json absent (lancer scripts/explanation_plausibility_test.py, GPU).")
+
+
+def page_consolidated_report(run_dir: str) -> None:
+    st.header("Rapport consolidé (toutes les méthodes, conditions fixées)")
+    st.caption("cf. docs/evaluation_protocol.md — scripts/consolidate_evaluation_report.py")
+    report_path = os.path.join(REPO_ROOT, run_dir, "EVALUATION_REPORT.md")
+    if os.path.exists(report_path):
+        with open(report_path, encoding="utf-8") as f:
+            st.markdown(f.read())
+    else:
+        st.warning(f"Pas de rapport consolidé pour ce run. Génère-le avec :\n\n"
+                    f"`python scripts/consolidate_evaluation_report.py {run_dir}`")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,7 +307,8 @@ def main() -> None:
 
     page = st.sidebar.radio(
         "Page",
-        ["Vue d'ensemble", "UMAP", "Features", "Diffing", "Recherche", "Urgence/Robustesse"],
+        ["Vue d'ensemble", "UMAP", "Features", "Diffing", "Recherche", "Urgence/Robustesse",
+         "Explication (fidélité/plausibilité)", "Rapport consolidé"],
     )
 
     if page == "Vue d'ensemble":
@@ -261,6 +317,10 @@ def main() -> None:
         page_umap(run_dir)
     elif page == "Features":
         page_features(run_dir)
+    elif page == "Explication (fidélité/plausibilité)":
+        page_explanation_quality(run_dir)
+    elif page == "Rapport consolidé":
+        page_consolidated_report(run_dir)
     elif page == "Diffing":
         page_diffing(run_dir)
     elif page == "Recherche":

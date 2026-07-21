@@ -122,11 +122,13 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
         emb = torch.load(cache_path + ".pt", map_location="cpu")
         return emb, emb.shape[1]
 
-    print(f"  [Phrase] Extraction embeddings avec F2LLM-v2-80M ({len(texts)} phrases)...")
     try:
         from src.config import EMB_MODEL, MATRYOSHKA_DIM   # FIX : plus d'import circulaire vers saev5
     except ImportError:
         from config import EMB_MODEL, MATRYOSHKA_DIM
+    # EMB_MODEL affiché (pas "F2LLM-v2-80M" figé) : le message était trompeur pour
+    # tout run avec un backbone différent (ex. F2LLM-v2-330M, cf. RESULTS_TESTS.md).
+    print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} ({len(texts)} phrases)...")
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
     model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEFAULT_DEVICE).eval()
 

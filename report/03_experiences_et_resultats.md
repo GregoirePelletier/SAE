@@ -218,7 +218,68 @@ comme une limite du label faible par regex pour cette catégorie plutôt que com
 échec du SAE, sans donnée annotée manuellement pour trancher entre les deux
 hypothèses.
 
-## 8. Limites de cette investigation
+## 8. Qualité de l'explication document-level : fidélité et plausibilité
+
+Question distincte des sections précédentes (qui évaluent une feature isolée ou une
+capacité globale du corpus) : pour UN document donné, l'explication produite par le
+pipeline (les features les plus actives et leurs labels) est-elle une bonne
+explication ? Deux propriétés indépendantes ont été testées.
+
+### 8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
+
+Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails réels par
+intention (urgence, réclamation, information, remboursement), correctement classés
+par une sonde logistique, ablation des 10 features les plus contributives à la
+décision vs 10 features actives aléatoires vs les 10 moins contributives.
+
+| Intention | Chute top-10 | Chute random-10 | Ratio top/random |
+|---|---|---|---|
+| Réclamation | 0,576 | ~0,000 | 576 225× |
+| Remboursement | 0,9997 | 0,0009 | 1 058× |
+| Information | 0,9998 | 0,0040 | 251× |
+| Urgence | 0,612 | ~0,000 | 42 837× |
+
+Résultat sans ambiguïté : les features désignées comme explication portent
+réellement la décision (leur ablation fait s'effondrer la prédiction), contrairement
+à des features actives choisies au hasard (effet quasi nul). L'explication n'est pas
+une justification a posteriori déconnectée du mécanisme réel.
+
+### 8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
+
+Test par choix forcé au niveau document (`scripts/explanation_plausibility_test.py`,
+juge Gemma-3-12B-it — un jugement comparatif comme l'odd-one-out plutôt qu'une
+auto-évaluation de confiance isolée, dont la fiabilité limitée a été confirmée par
+ailleurs, cf. §7.1 et `RESULTS_TESTS.md` §15.4) : sur 60 mails
+réels, le juge choisit entre l'ensemble réel des concepts les plus actifs et un
+ensemble de concepts tirés au hasard, sans savoir lequel est réel.
+
+**Résultat : 71,7% de choix corrects (43/60) contre 50% attendu au hasard**
+(z ≈ 3,4, p < 0,001) — l'explication a une valeur perçue réelle, significativement
+au-dessus du hasard, mais loin d'être parfaite : dans 28,3% des cas le juge préfère le
+décoy aléatoire, cohérent avec le taux d'interprétabilité résiduel (~45-55%) mesuré
+par ailleurs.
+
+### 8.3. Protocole d'évaluation complet du dépôt
+
+Ces deux tests s'inscrivent dans un protocole plus large couvrant l'ensemble des
+méthodes du dépôt sous conditions fixées (`docs/evaluation_protocol.md`) : 16
+capacités recensées (reconstruction, labellisation par les deux protocoles,
+robustesse du jugement, séparabilité synthétique et réelle, fidélité/plausibilité de
+l'explication, retrieval, corrélations, diffing, choix du backbone d'embedding), avec
+pour chacune sa commande de reproduction et la méthode alternative à laquelle elle
+est comparée. Un script de consolidation (`scripts/consolidate_evaluation_report.py`)
+assemble automatiquement tous les résultats disponibles d'un run en un rapport
+unique, également exposé dans le dashboard Streamlit.
+
+Un résultat notable de ce passage en revue systématique : la comparaison du backbone
+d'embedding du Pipeline 2 (F2LLM-v2-80M vs -330M, "assez grand") donne un résultat
+**mixte** — le modèle plus grand reconstruit légèrement mieux (NMSE −7,5%) et sépare
+un peu mieux le corpus de diffing générique (+2 points), mais sépare légèrement MOINS
+bien les axes email réels (−2,2 points), la métrique la plus proche des objectifs
+métier. Aucun écart n'est de l'ordre d'un problème majeur ; pas de justification
+claire pour préférer l'un à l'autre sur ce projet.
+
+## 9. Limites de cette investigation
 
 - Le taux d'interprétabilité obtenu après correction (~41-45%) reste loin de 100% :
   environ 55 à 59% des features d'extension restent non interprétables par le juge même
