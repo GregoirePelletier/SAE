@@ -64,6 +64,39 @@ def cooccurrence_graph(
     return G
 
 
+def find_interesting_pairs(
+    G: nx.Graph,
+    label_embeddings: dict[int, np.ndarray],
+    npmi_threshold: float = 0.6,
+    sim_threshold: float = 0.2,
+) -> list[dict]:
+    """
+    Isole, parmi les arêtes du graphe, les paires "intéressantes" au sens d'interp_embed
+    (Jiang, Sun et al. 2025, §4.2/Appendix E.1 — cf. docs/references.md) : NPMI élevé
+    (fortement corrélées) MAIS labels sémantiquement DISSIMILAIRES. Une corrélation entre
+    deux concepts a priori non reliés (ex. "urgence" et "facturation") révèle plus
+    probablement un biais/artefact réel qu'une corrélation entre labels quasi-synonymes
+    (ex. "facturation" et "montant dû", déjà attendus comme corrélés) — `cooccurrence_graph`
+    seul mélange les deux, ce filtre les sépare. `label_embeddings` : {feature_id: vecteur
+    normalisé L2} précalculé par l'appelant (ce module reste agnostique du modèle
+    d'embedding utilisé, cf. src/sae/saev5.py::select_latents_by_similarity pour la
+    réutilisation de F2LLM déjà en place dans le projet).
+    """
+    results = []
+    for u, v, data in G.edges(data=True):
+        npmi = data.get("npmi", 0.0)
+        if npmi < npmi_threshold or u not in label_embeddings or v not in label_embeddings:
+            continue
+        sim = float(np.dot(label_embeddings[u], label_embeddings[v]))
+        if sim < sim_threshold:
+            results.append({
+                "feature_a": u, "label_a": G.nodes[u].get("label", f"F{u}"),
+                "feature_b": v, "label_b": G.nodes[v].get("label", f"F{v}"),
+                "npmi": npmi, "label_similarity": sim,
+            })
+    return sorted(results, key=lambda r: r["npmi"], reverse=True)
+
+
 # ─── Diff statistique entre sous-corpus ───
 
 def corpus_diff_stats(

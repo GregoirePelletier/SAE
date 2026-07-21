@@ -14,6 +14,17 @@ SEED = int(os.environ.get("SEED", "42"))
 # après un premier téléchargement (huggingface_hub.snapshot_download), comme MODEL_ID.
 EMB_MODEL      = os.environ.get("EMB_MODEL", "codefuse-ai/F2LLM-v2-80M")
 MATRYOSHKA_DIM = int(os.environ.get("MATRYOSHKA_DIM", "320"))
+
+# Modèle d'embedding pour select_latents_by_similarity (src/sae/saev5.py) --
+# recherche de latents par similarité de leur label à une requête (Tâches 3/4,
+# clustering ciblé + retrieval par propriétés). Testé empiriquement contre F2LLM
+# (déjà utilisé en Pipeline 2, pooling dernier-token) sur deux requêtes de
+# validation : F2LLM donne de bons résultats sur l'une ("urgence réclamation
+# client") mais des résultats sans rapport sur l'autre ("facturation résiliation
+# panne" -> "fact statement", "unlock loss cash"...). bge-m3 (pooling CLS,
+# multilingue, conçu pour la similarité sémantique/retrieval) donne de bons
+# résultats sur les deux -- cf. RESULTS_TESTS.md pour le détail de la comparaison.
+LATENT_LABEL_EMB_MODEL = os.environ.get("LATENT_LABEL_EMB_MODEL", "./models/bge-m3")
 D_SAE          = int(os.environ.get("D_SAE", "8192"))
 K_SPARSE       = int(os.environ.get("K_SPARSE", "16"))
 EPOCHS         = int(os.environ.get("EPOCHS", "30"))

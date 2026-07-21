@@ -37,6 +37,26 @@ Pistes encore non testées par manque de temps, par ordre de coût croissant :
    grand comme juge (sans nécessairement l'utiliser pour l'extraction d'activations)
    est une piste possible mais coûteuse.
 
+**Mise à jour (testé, session interp_embed)** : une piste supplémentaire, plus
+fondamentale, a été testée (`scripts/contrastive_labeling_test.py`,
+`RESULTS_TESTS.md` §15.4) — le protocole de la référence (interp_embed, Appendix C)
+ne gate JAMAIS la labellisation derrière un test odd-one-out : il génère toujours un
+label par contraste direct (10 positifs + 10 négatifs). Sur les 82 features
+originellement rejetées par notre gate, la génération contrastive directe produit un
+label spécifique et qualitativement plausible pour la totalité d'entre elles après
+correction de deux bugs trouvés en écrivant le test (marqueurs `<<>>` erronés sur les
+négatifs ; un exemple de valeur JSON dans le prompt que le modèle recopiait
+littéralement pour ~59% des features au premier essai). Exemples de labels récupérés :
+`Mise en service énergie`, `Numéro de contrat`, `Demande de résiliation`,
+`Informations bancaires`, `Sentiment d'urgence`. **Limite** : le champ `confident`
+auto-rapporté par le LLM reste à `true` pour 150/150 features dans les deux runs —
+pas un signal de qualité fiable en l'état, il faudrait le remplacer par une
+validation croisée indépendante (ρ_interp déjà implémenté, ou vote majoritaire
+odd-one-out en aval plutôt qu'en amont de la labellisation). **Non intégré au
+pipeline de production dans cette session** — changerait le chiffre central du
+rapport (45,3%), nécessite de refaire tourner une validation à l'échelle comparable
+avant adoption.
+
 ### Comparaisons avec l'état de l'art
 
 `Context.md` (règle n°2) demande une comparaison documentée et systématique avec
@@ -66,6 +86,35 @@ features significatives à l'échelle du corpus complet (0,21% des features
 significatives portaient un label "Subject:"/"Objet:", avant comme après) — son effet
 mesuré est réel mais plus circonscrit que ce que suggérait l'observation initiale sur
 l'échantillon test à 60 mails (§6, où l'artefact dominait 8/13 classements).
+
+### Retrieval par propriétés et clustering ciblé (bug corrigé)
+
+**Corrigé** (`RESULTS_TESTS.md` §15.1-15.2) : `property_based_retrieval` et
+`targeted_clustering_by_axis` sélectionnaient les latents pertinents pour une
+requête par matching de sous-chaîne littérale (`word in label`) plutôt que par
+similarité d'embedding (méthode de la référence, interp_embed §4.4/Appendix F.1) —
+vérifié empiriquement que ça ratait des labels sémantiquement liés mais formulés
+différemment, et retournait des faux positifs (mot partagé sans rapport de sens).
+Bug additionnel dans `property_based_retrieval` : la pondération "température"
+utilisait l'ordre d'itération du dict de labels comme proxy de pertinence, pas un
+rang réel. Fix : nouvelle fonction `select_latents_by_similarity`
+(`src/sae/saev5.py`), embeddings **bge-m3** (pas F2LLM, testé et rejeté : bons
+résultats sur une requête, résultats sans rapport sur une autre — pooling
+dernier-token mal adapté à des labels courts en contexte cross-lingue). Validé
+bout-en-bout sur les activations déjà en cache, non revalidé par un run complet
+(ne change pas la reconstruction des activations elles-mêmes, seulement la
+sélection de latents en aval).
+
+### Corrélations "intéressantes" (gap comblé)
+
+**Corrigé** (`RESULTS_TESTS.md` §15.3) : `cooccurrence_graph` (NPMI + communautés
+Louvain) n'était jamais appelée dans le pipeline principal — seule la matrice NPMI
+brute était calculée et cachée, sans analyse en sortie. Nouvelle fonction
+`find_interesting_pairs` (`src/analysis/cooccurrence.py`), filtre NPMI élevé +
+similarité sémantique des labels faible (méthode interp_embed §4.2/Appendix E.1),
+câblée dans le pipeline (sortie `p1_interesting_correlations.json`). Non revalidée
+par un run complet dans cette session (le run principal `results_v10_emails_main`
+prédate ce changement).
 
 ### Facteurs non contrôlés dans le corpus augmenté
 
@@ -104,3 +153,18 @@ investigation.
    majoritaire. Reste à faire : évaluer sur un jeu de labels d'urgence/intention
    annotés manuellement plutôt que des labels faibles par regex (limite ci-dessous),
    et sur le Pipeline 2 (F2LLM) en plus du Pipeline 1 déjà testé.
+6. ~~Corriger le retrieval/clustering ciblé (matching par sous-chaîne) et brancher
+   les corrélations "intéressantes"~~ **FAIT** (cf. sections ci-dessus,
+   `RESULTS_TESTS.md` §15.1-15.3) — validés sur les activations déjà en cache, pas
+   encore par un run complet à l'échelle (aucun changement des activations
+   elles-mêmes, seulement de la sélection de latents en aval).
+7. Adopter le protocole de labellisation contrastive directe (§15.4) comme
+   alternative/complément au gate odd-one-out — well-evidenced (labels qualitativement
+   plausibles récupérés sur 100% d'un échantillon de features rejetées) mais nécessite
+   (a) une validation croisée de la qualité des labels (le champ `confident`
+   auto-rapporté n'est pas fiable), (b) un run de validation à l'échelle comparable
+   aux 3 runs de `RESULTS_TESTS.md` §12 avant de remplacer le chiffre 45,3% publié.
+8. Comparer les résultats de `find_interesting_pairs` (corrélations) à des biais/
+   artefacts réels connus du corpus (ex. le biais "Objet :" avant correction, §14.1)
+   pour valider empiriquement la méthode sur ce projet, à la manière de la validation
+   par injection synthétique du papier de référence (§4.2, Appendix E.2).

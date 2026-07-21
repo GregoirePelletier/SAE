@@ -711,3 +711,123 @@ désaccord numérique important (0,41 / 0,83 / 1,00 selon la formule) entre notr
 les deux formules de variance expliquée maintenues par `sae_lens.evals`, sur le même
 SAE natif et les mêmes activations réelles -- causé par les activations massives de
 Gemma-3 (une dimension atteint une magnitude ~74752 contre une moyenne ~53).
+
+---
+
+## 15. Relecture du papier de référence (interp_embed) : 4 corrections concrètes
+
+Suite à une relecture détaillée de `pdf/InterpretableSAE_Embeddings.pdf` (Jiang, Sun
+et al. 2025 — référence n°3 de `Context.md`, comparaison "systématique" demandée par
+la règle n°2), comparaison ligne à ligne avec notre code. Quatre écarts concrets
+trouvés et corrigés, au-delà de la comparaison de formule déjà faite pour SAELens
+(§13/docs/references.md).
+
+### 15.1. Bug : `property_based_retrieval`/`targeted_clustering_by_axis` (matching par sous-chaîne)
+
+Le papier (§4.4, Appendix F.1) sélectionne les latents pertinents pour une requête par
+**similarité d'embedding dense** entre le label et la requête. Notre code faisait un
+matching par **sous-chaîne littérale** (`any(word in lbl.lower() for word in
+query_words)`) — vérifié empiriquement : la requête "urgence réclamation client" ne
+retournait quasiment que des labels contenant le mot "client" au sens large, y compris
+des faux positifs absurdes ("client/server architecture", "Client secret",
+"spacecraft client"), en ratant tout label sémantiquement lié mais formulé
+différemment. De plus, dans `property_based_retrieval`, le poids de pondération
+"température" (`exp(-(rank/k)/temperature)`) utilisait `rank = position dans
+matched_latents`, c'est-à-dire l'**ordre d'itération du dict** `feature_labels` — sans
+rapport avec la pertinence réelle à la requête, rendant la pondération arbitraire.
+
+**Fix** : nouvelle fonction `select_latents_by_similarity` (`src/sae/saev5.py`),
+câblée dans les deux fonctions, qui trie les latents par similarité cosinus
+décroissante entre leur label et la requête — le rang de pondération devient donc le
+rang de pertinence réel.
+
+### 15.2. Choix du modèle d'embedding : F2LLM insuffisant sur des labels courts, bge-m3 validé
+
+Premier essai avec F2LLM-v2-80M (déjà utilisé partout ailleurs dans le projet,
+Pipeline 2) : bons résultats sur "urgence réclamation client" (labels pertinents
+remontés : `[EXT] Réclamation Urgente`, `emergency call 911`, `[EXT] Réclamations
+Clients`...) mais résultats **sans rapport** sur "facturation résiliation panne"
+(`fact statement`, `unlock loss cash`, `disclaimersobviousexaggerate`, `end of
+sentence`...) — aucun des labels `[EXT] Résiliation*` pourtant présents dans le jeu
+n'apparaissait dans le top 15. Diagnostic : F2LLM utilise un pooling **dernier-token**
+(optimisé pour des phrases complètes en contexte de recherche documentaire), mal
+adapté à la similarité sémantique de labels courts (2-5 mots) en contexte
+cross-lingue (requête FR, labels mêlés FR/EN).
+
+Testé en alternative : **bge-m3** (pooling `[CLS]`, multilingue, déjà présent
+localement sous `models/bge-m3`, conçu pour la similarité sémantique/retrieval) —
+bons résultats sur les **deux** requêtes :
+
+| Requête | bge-m3 — top résultats |
+|---|---|
+| "urgence réclamation client" | `urgent requests and invoices` (0.745), `[EXT] Réclamation Urgente` (0.743×2), `[EXT] Réclamation Client` (0.705×3), `[EXT] Réclamations Clients` (0.696×4) |
+| "facturation résiliation panne" | `[EXT] Facture contestée` (0.605×2), `[EXT] Résiliation contrat` (0.604), `[EXT] Réclamations Factures` (0.585), `[EXT] Contestation Facture` (0.572×2), `[EXT] Litige Facture` (0.568), `[EXT] Colère Facture` (0.567) |
+
+**Fix retenu** : `select_latents_by_similarity` (et `find_interesting_pairs`, §15.3)
+utilisent bge-m3 (`src/config.py::LATENT_LABEL_EMB_MODEL`), pas F2LLM. Vérifié
+bout-en-bout via `saev5mod.select_latents_by_similarity` directement (pas seulement le
+script de diagnostic autonome) : résultats identiques aux tests isolés.
+
+### 15.3. Corrélations "intéressantes" : filtre manquant + pipeline jamais branché
+
+Constat additionnel en creusant ce point : `cooccurrence_graph` (NPMI + communautés
+Louvain) n'était **même pas appelée** dans `saev5.py` — seule la matrice NPMI brute
+était calculée et cachée (`p1_npmi.pt`), sans aucune analyse en sortie. Le papier
+(§4.2/Appendix E.1) filtre en plus les paires à **NPMI élevé ET similarité sémantique
+des labels faible** pour isoler les corrélations non-triviales (biais/artefacts) des
+évidentes (labels quasi-synonymes). Nouvelle fonction `find_interesting_pairs`
+(`src/analysis/cooccurrence.py`), câblée dans le pipeline principal (sortie
+`p1_interesting_correlations.json`), embeddings bge-m3 pour la similarité des labels.
+
+### 15.4. Protocole de labellisation : gate odd-one-out vs génération contrastive directe
+
+Le papier (Appendix C) ne fait **jamais** de gate avant de labelliser : il présente
+toujours 10 positifs + 10 négatifs à un LLM et demande directement le label par
+contraste, avec des instructions détaillées (contexte avant les marqueurs, ignorer
+les tokens spéciaux, une propriété unifiée). Notre `odd_one_out_judge` ne génère un
+label QUE si le test odd-one-out réussit (déjà mesuré bruyant, §13.1 : 30,7% de
+décisions unanimes seulement sur 5 réordonnancements), et le prompt de labellisation
+n'utilisait que les 9 positifs (aucun négatif).
+
+**Test** (`scripts/contrastive_labeling_test.py`, réutilise les activations/fragments
+déjà en cache, aucune réextraction) sur les mêmes 150 features déjà jugées :
+
+- **Bug trouvé en cours d'écriture** : nos négatifs (comme ceux du protocole
+  existant, `build_feature_examples_with_control`) portent un marqueur `<<...>>` sur
+  un token arbitraire (milieu de document) — le papier est explicite ("NEGATIVE
+  samples... no << >> markers"). Corrigé (marqueurs retirés des négatifs).
+- **1er run** : prompt de labellisation contenant un exemple de valeur JSON
+  plausible (`"phrase courte en français (<=4 mots)"`) — le LLM l'a recopié
+  littéralement comme label pour 48/82 features originellement non-interprétables
+  (bug de prompt, pas un résultat). Taux de récupération apparent avant correction :
+  100% (biaisé par cet artefact).
+- **2e run** (prompt corrigé, placeholders non-ambigus) : plus aucun echo de
+  template. Sur les 82 features originellement non-interprétables (odd-one-out
+  échoué), tous obtiennent un label spécifique et distinct — inspection qualitative
+  d'un large échantillon : labels cohérents et directement pertinents pour le
+  domaine EDF (`Mise en service énergie`, `Numéro de contrat`, `Demande de
+  résiliation`, `Informations bancaires`, `Réclamation de facture`, `Sentiment
+  d'urgence`, `Nom de famille en fin`...), pas de contenu générique ou incohérent
+  détecté par échantillonnage manuel.
+- **Limite méthodologique confirmée** : le champ `confident` auto-rapporté par le
+  LLM (censé permettre de refuser un label quand aucune propriété cohérente n'existe)
+  est resté `true` pour 150/150 features dans les deux runs, y compris pour les
+  quelques cas encore incertains à l'inspection manuelle — l'auto-évaluation de
+  confiance du LLM n'est **pas un signal fiable en l'état** (cohérent avec le biais
+  de complaisance documenté pour les LLM en général, et avec le résultat de §13.1 sur
+  la fiabilité limitée du jugement LLM sur ce protocole).
+
+**Conclusion et recommandation** : la génération de labels ne devrait **pas** être
+gatée par le test odd-one-out — celui-ci est plus fiable comme **score
+d'interprétabilité diagnostique indépendant** (avec vote majoritaire, §13.1) que
+comme filtre de labellisation. Recommandation retenue pour un futur refactor de
+`src/sae/judge.py` : (1) toujours générer un label par contraste direct (10 positifs
++ 10 négatifs non marqués, instructions détaillées façon Appendix C), (2) évaluer
+l'interprétabilité séparément par vote majoritaire odd-one-out (déjà validé, §13.1),
+(3) ne **pas** se fier au champ `confident` auto-rapporté comme filtre de qualité —
+lui substituer soit une validation croisée (ex. ρ_interp, déjà implémenté), soit une
+revue humaine sur échantillon. **Ce changement n'a pas été appliqué au pipeline de
+production dans cette session** (implique de refaire tourner les 3 runs de
+validation §12 pour un nombre comparable avant de remplacer le chiffre 45,3% déjà
+publié dans le rapport) — documenté ici comme piste well-evidenced pour la suite du
+stage, pas comme correction déjà intégrée.

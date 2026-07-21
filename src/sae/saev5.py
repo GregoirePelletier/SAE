@@ -147,9 +147,13 @@ from src.sae.judge import (
 )
 
 try:
-    from src.analysis.cooccurrence import compute_npmi, corpus_diff_stats
+    from src.analysis.cooccurrence import (
+        compute_npmi, corpus_diff_stats, cooccurrence_graph, find_interesting_pairs,
+    )
 except ImportError:
-    from cooccurrence import compute_npmi, corpus_diff_stats
+    from cooccurrence import (
+        compute_npmi, corpus_diff_stats, cooccurrence_graph, find_interesting_pairs,
+    )
 
 # Labels GemmaScope officiels (Neuronpedia) — cache JSON obligatoire (cluster offline)
 try:
@@ -333,6 +337,64 @@ def generate_llm_diff_hypothesis(
     return response.strip()
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SÉLECTION DE LATENTS PAR SIMILARITÉ D'EMBEDDING (Tâches 3 & 4)
+# ══════════════════════════════════════════════════════════════════════════════
+# interp_embed (Jiang, Sun et al. 2025 -- Context.md, référence n°3) sélectionne les
+# latents pertinents pour une requête par SIMILARITÉ D'EMBEDDING DENSE entre le label
+# du latent et la requête (§4.4, Appendix F.1 : "top k latents whose labels' dense
+# embeddings are the most similar to that of a provided keyphrase"), pas par matching
+# de sous-chaîne. `targeted_clustering_by_axis`/`property_based_retrieval` utilisaient
+# un matching littéral (`word in label`), qui rate tout label sémantiquement lié mais
+# formulé différemment (ex. requête "urgence" ne matche pas le label "demande pressante").
+#
+# Modèle d'embedding : bge-m3 (LATENT_LABEL_EMB_MODEL, pooling CLS), PAS F2LLM
+# (utilisé partout ailleurs dans le projet, Pipeline 2) -- comparaison empirique
+# documentée dans src/config.py : F2LLM (pooling dernier-token, optimisé pour des
+# phrases complètes) donne de bons résultats sur certaines requêtes courtes mais des
+# résultats sans rapport sur d'autres (ex. "facturation résiliation panne" ->
+# "fact statement", "unlock loss cash"...) ; bge-m3 (multilingue, conçu pour la
+# similarité sémantique de textes courts) est fiable sur les deux cas testés.
+
+def _embed_bge_m3(texts: list[str], batch_size: int = 64) -> torch.Tensor:
+    """Pooling [CLS] normalisé -- convention du model card bge-m3."""
+    from src.config import LATENT_LABEL_EMB_MODEL
+    tok = AutoTokenizer.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True)
+    mdl = AutoModel.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True).to(DEVICE).eval()
+    embs = []
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            enc = tok(texts[i:i + batch_size], padding=True, truncation=True,
+                      max_length=64, return_tensors="pt").to(DEVICE)
+            cls = mdl(**enc).last_hidden_state[:, 0]
+            embs.append(F.normalize(cls, p=2, dim=-1).cpu())
+    del mdl
+    return torch.cat(embs, dim=0)
+
+
+def select_latents_by_similarity(
+    query: str,
+    feature_labels: dict,
+    top_k: int = 100,
+) -> list[int]:
+    """Retourne les feature_id triés par similarité cosinus décroissante entre leur
+    label et la requête (embeddings bge-m3, cf. note ci-dessus). Filtre les labels
+    bruts non informatifs (F{idx}, [EXT] F{idx}) qui n'apportent aucun signal
+    sémantique."""
+    items = [
+        (f_idx, lbl) for f_idx, lbl in feature_labels.items()
+        if lbl and not re.fullmatch(r"(\[EXT\]\s*)?F\d+", lbl.strip())
+    ]
+    if not items:
+        return []
+    f_ids, labels = zip(*items)
+    embeddings = _embed_bge_m3([query] + list(labels))
+    query_emb, label_embs = embeddings[0], embeddings[1:]
+    sims = (label_embs @ query_emb).numpy()  # embeddings déjà normalisés -> produit scalaire = cosinus
+    order = np.argsort(sims)[::-1][:top_k]
+    return [f_ids[i] for i in order if sims[i] > 0]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TÂCHE 3 : TARGETED CLUSTERING
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -347,11 +409,7 @@ def targeted_clustering_by_axis(
 ) -> dict:
     from sklearn.cluster import SpectralClustering
     print(f"\n  [Task 3] Targeted Clustering axe : '{axis_query}'")
-    query_words = set(axis_query.lower().split())
-    matched_indices = [
-        f_idx for f_idx, lbl in feature_labels.items()
-        if any(word in lbl.lower() for word in query_words)
-    ]
+    matched_indices = select_latents_by_similarity(axis_query, feature_labels, top_k=top_k_features)
     if len(matched_indices) < 5:
         print("  [Task 3] Fallback : latents les plus actifs.")
         matched_indices = sae_acts.float().mean(dim=0).topk(
@@ -384,13 +442,17 @@ def property_based_retrieval(
     feature_labels: dict,
     temperature: float = 0.2,
     top_n_results: int = 5,
+    top_k_latents: int = 100,
 ) -> list:
+    """cf. interp_embed §4.4 : (1) latents candidats par similarité d'embedding
+    label<->requête (select_latents_by_similarity, PAS un matching de sous-chaîne),
+    (2) score documentaire = somme pondérée à température des activations de ces
+    latents, décroissante avec le RANG DE PERTINENCE réel (pas l'ordre du dict --
+    ancien bug : `rank` indexait l'ordre d'itération de `matched_latents`, sans
+    rapport avec la pertinence à la requête, rendant la pondération "température"
+    arbitraire)."""
     print(f"\n  [Task 4] Recherche implicite : '{query_string}'")
-    query_words = set(query_string.lower().split())
-    matched_latents = [
-        f_idx for f_idx, lbl in feature_labels.items()
-        if any(word in lbl.lower() for word in query_words)
-    ]
+    matched_latents = select_latents_by_similarity(query_string, feature_labels, top_k=top_k_latents)
     if not matched_latents:
         print("  [Task 4] Aucun latent matché.")
         return []
@@ -1087,6 +1149,25 @@ def run_llm_max_pool_pipeline(
     keep_npmi = ((freq >= 0.01) & (freq <= 0.5)).nonzero(as_tuple=True)[0][:4000]
     npmi_mat = compute_npmi(test_doc_acts[:, keep_npmi])
     torch.save({"npmi": npmi_mat, "feature_ids": keep_npmi}, os.path.join(CACHE_DIR, "p1_npmi.pt"))
+
+    # ─── Corrélations "intéressantes" (interp_embed §4.2, cf. docs/references.md) ──
+    # NPMI seul (ci-dessus) mélange corrélations triviales (labels quasi-synonymes,
+    # ex. "facturation"/"montant dû") et surprenantes -- on isole les secondes en
+    # filtrant par dissimilarité sémantique des labels (embeddings bge-m3, cf. note
+    # de select_latents_by_similarity -- plus fiable que F2LLM sur des labels courts).
+    print("  [Corrélations] Recherche de paires NPMI intéressantes (NPMI élevé, labels dissimilaires)...")
+    G_cooc = cooccurrence_graph(test_doc_acts, feature_labels=label_map_p1)
+    if G_cooc.number_of_edges() > 0:
+        node_ids = list(G_cooc.nodes)
+        label_embs = _embed_bge_m3([G_cooc.nodes[n]["label"] for n in node_ids])
+        label_embeddings = {n: label_embs[i].numpy() for i, n in enumerate(node_ids)}
+        interesting_pairs = find_interesting_pairs(G_cooc, label_embeddings)
+        with open(os.path.join(SAVE_DIR, "p1_interesting_correlations.json"), "w", encoding="utf-8") as f:
+            json.dump(interesting_pairs[:50], f, indent=2, ensure_ascii=False)
+        print(f"  [Corrélations] {len(interesting_pairs)} paires intéressantes "
+              f"(NPMI>0.6, similarité label<0.2) sur {G_cooc.number_of_edges()} arêtes.")
+    else:
+        print("  [Corrélations] Graphe vide (aucune arête au-dessus du seuil NPMI) -- rien à filtrer.")
 
     # Requêtes retrieval/clustering alignées sur le domaine réel (test_texts =
     # emails+augmentés depuis cette bascule, plus des chunks energy/FineWeb-2) --
