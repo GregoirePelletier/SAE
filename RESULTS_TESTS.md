@@ -1073,3 +1073,19 @@ volume de tokens (§12/§5.1) :
 `results_v10_emails_main`) et `results_v12_ablation_epochs_only` (SAE_ID=16k,
 EPOCHS_EXTRA=40, EPOCHS=100, N_FEATURES_TO_LABEL=150). Cette section sera complétée
 dès la fin de ces deux jobs.]*
+
+### 17.6. Quatrième levier : capacité de l'extension (`D_EXTRA`/`K_EXTRA`)
+
+Dernier levier simple listé comme non testé dans `04_limites_et_perspectives.md`
+("Capacité architecturale de l'extension... non testée dans cette investigation") :
+la capacité (nombre de features, parcimonie) de l'`ExtendedSAE` lui-même, à
+corpus/volume/largeur core IDENTIQUES au run principal
+(`results_v10_emails_main`). Run `results_v12_ablation_capacity_extra` (job 40953) :
+`D_EXTRA` 1024→2048 (×2), `K_EXTRA` 32→64 (×2, ratio K/D=1/32 préservé), SAE_ID=16k
+explicite, `N_FEATURES_TO_LABEL=150`, Pipeline 1 seul (P2 non concerné par ce
+levier).
+
+*[Résultats en cours au moment de la rédaction. Avec cette 3ᵉ ablation isolée
+(largeur, époques, capacité), le stage disposera d'une décomposition à 4 facteurs
+du run v12 combiné (le 4ᵉ étant `N_FEATURES_TO_LABEL`, déjà isolé sans coût GPU au
+§17.2) — la démarche la plus complète menée sur ce projet.]*
