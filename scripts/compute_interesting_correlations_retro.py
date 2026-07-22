@@ -17,11 +17,12 @@ import torch
 
 from src.analysis.cooccurrence import cooccurrence_graph, find_interesting_pairs
 from src.data.preparation import build_email_train_test_corpus
-from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH
+from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH
 
 
 def load_label_map(cache_dir: str) -> dict[int, str]:
-    with open("local_data/neuronpedia_labels/neuronpedia_labels_24-gemmascope-2-res-16k.json") as f:
+    # Dérivé de SAE_ID, pas figé sur 16k (cf. explanation_plausibility_test.py).
+    with open(NEURONPEDIA_LABELS_PATH) as f:
         labels_core = {int(k): v for k, v in json.load(f).items()}
     judge_path = os.path.join(cache_dir, "p1_judge_labels_extended.json")
     label_map = dict(labels_core)

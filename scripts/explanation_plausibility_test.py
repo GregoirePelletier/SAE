@@ -39,6 +39,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
 
 from src.config import (
     LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, MODEL_ID, HF_TOKEN, DTYPE,
+    NEURONPEDIA_LABELS_PATH,
 )
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
@@ -92,7 +93,13 @@ def load_real_emails_and_acts():
 
 
 def load_label_map():
-    with open("local_data/neuronpedia_labels/neuronpedia_labels_24-gemmascope-2-res-16k.json") as f:
+    # Chemin dérivé de SAE_ID (src/config.py), PAS figé sur 16k : un run utilisant
+    # une autre largeur de SAE core (ex. 65k, cf. results_v12_scaled_65k) chargerait
+    # sinon des labels d'un dictionnaire de features totalement différent, associant
+    # silencieusement un label "réel" à la mauvaise feature pour tout index < 16384
+    # (bug trouvé lors de l'analyse du run v12 : chute du taux de plausibilité
+    # 71,7%->56,7% due à ce désalignement, pas à une régression du pipeline).
+    with open(NEURONPEDIA_LABELS_PATH) as f:
         labels_core = {int(k): v for k, v in json.load(f).items()}
     judge_path = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
     label_map = dict(labels_core)

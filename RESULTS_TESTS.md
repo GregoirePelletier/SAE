@@ -947,3 +947,129 @@ projet). Aucun de ces écarts n'est de l'ordre de grandeur d'un problème majeur
 < 3 points ou < 8% relatif) : conclusion retenue pour cette passe -- **pas de
 justification claire pour préférer -330M à -80M sur ce projet** ; le choix n'est pas
 un facteur bloquant avant de considérer une comparaison multi-modèles plus large.
+
+## 17. Ablation de mise à l'échelle (v12) : largeur du SAE core, époques, N_FEATURES_TO_LABEL
+
+### 17.0. Correction préalable des largeurs de SAE disponibles pour 12b
+
+Couverture Neuronpedia mesurée empiriquement pour `gemma-3-12b-it`/layer 24, sur les
+4 largeurs de SAE core disponibles (`sae_lens.loading.pretrained_saes_directory`) :
+
+| Largeur | Features labellisées | Total | Couverture |
+|---|---|---|---|
+| 16k (choix initial du projet) | 13 535 | 16 384 | 82,6% |
+| **65k** | **57 551** | 65 536 | **87,8%** |
+| 262k | 13 851 | 262 144 | 5,3% (confirme le ~10 000 estimé manuellement) |
+| 1m | — | — | absent côté Neuronpedia (HTTP 404) |
+
+65k est donc la largeur retenue (meilleure couverture proportionnelle ET ~4,3x plus
+de features labellisées en absolu que 16k) — jamais vérifiée spécifiquement pour ce
+modèle avant cette passe (seule une couverture ~98% pour 65k était documentée, mais
+mesurée sur `gemma-3-270m-it`, un modèle différent). Poids SAE 65k téléchargés via
+`download_sae.py --sae-only` (`SAE_ID=layer_24_width_65k_l0_medium`) : absents du
+premier essai de lancement du run v12 (jobs 40833/40827 en échec, poids jamais
+téléchargés — seuls les LABELS avaient été vérifiés, pas les poids du SAE
+lui-même), corrigé avant resoumission (jobs 40844/40845).
+
+### 17.1. Run combiné (`results_v12_scaled_65k`, job 40844+40845+40846-40850)
+
+Trois leviers augmentés SIMULTANÉMENT par rapport au run principal (`results_v10_emails_main`) :
+
+| Paramètre | Run principal | Run v12 | Facteur |
+|---|---|---|---|
+| Largeur SAE core | 16k | 65k | — |
+| `EPOCHS_EXTRA` | 10 | 40 | ×4 |
+| `EPOCHS` (P2) | 30 | 100 | ×3,3 |
+| `N_FEATURES_TO_LABEL` | 150 | 600 | ×4 |
+| Backbone P2 | F2LLM-v2-80M | F2LLM-v2-330M | — |
+
+**Résultats** :
+
+| Métrique | Run principal (16k) | Run v12 (65k, échelle) |
+|---|---|---|
+| Taux d'interprétabilité (odd-one-out, n features jugées) | 45,3% (68/150) | **53,7% (322/600)** |
+| Taux d'interprétabilité, vote majoritaire 5 répétitions | 48,7% | 55,5% |
+| Accord moyen entre 5 répétitions (robustesse du juge) | 80,3% | 79,3% (stable) |
+| `clf_acc_email_axes` (P1, 14 classes) | 93,5% (`results_v10_ablation_tok100k`) | 91,9% |
+| `clf_acc_email_axes` (P2, 14 classes) | 79,3%/77,2% (80M/330M) | 76,7% |
+| NMSE P2 | 0,0745 (80M) / 0,0689 (330M) | 0,0667 |
+| `fve_pretrained` (P1 core, reconstruction GemmaScope) | non mesuré à ce niveau de détail avant | 0,823 |
+| `dead_pct` extension P1 | 0% (3 runs précédents) | 55,9% *(voir §17.4 -- lecture nuancée)* |
+
+### 17.2. Analyse gratuite : le rang par magnitude n'est PAS un bon proxy de l'interprétabilité
+
+Question posée par la hausse du taux global (45,3%→53,7%) avec `N_FEATURES_TO_LABEL`
+relevé à 600 : les 450 features supplémentaires jugées sont-elles simplement du
+"bruit" qui dilue une statistique, ou apportent-elles un signal réel ? Analyse
+gratuite (aucun calcul GPU, relecture de `p1_judge_labels_extended.json`, l'ordre
+d'insertion du dict préservant l'ordre de sélection par magnitude décroissante,
+`feature_selection_by_magnitude`) :
+
+| Sous-ensemble (rang par magnitude) | n | Interprétables | Taux |
+|---|---|---|---|
+| Rang 1-150 (équivalent au budget du run principal) | 150 | 66 | **44,0%** |
+| Rang 151-600 (features supplémentaires apportées par le scale-up) | 450 | 256 | **56,9%** |
+| Total | 600 | 322 | 53,7% |
+
+**Résultat contre-intuitif et important** : le sous-ensemble rang 1-150 obtient un
+taux (44,0%) statistiquement indistinguable du run principal à 16k (45,3%, écart
+1,3pt << écart-type binomial ≈4,1pt à n=150) — cohérent avec un contrôle correct
+(même feature de tête, largeur différente, effet nul comme attendu). Mais les
+features de rang 151-600, plus faibles en magnitude, sont en réalité **plus**
+interprétables (56,9%) que les features de tête (44,0%). **La magnitude d'activation
+moyenne n'est donc pas un proxy fiable de l'interprétabilité** : un budget de
+labellisation restreint au sommet du classement par magnitude exclut
+systématiquement des features au moins aussi (ici plus) interprétables plus bas dans
+le classement. Élargir `N_FEATURES_TO_LABEL` n'est donc pas qu'un gain de puissance
+statistique : cela change la composition qualitative de l'échantillon labellisé.
+
+### 17.3. Bug trouvé lors de l'analyse du run v12 : chemin de labels figé sur 16k
+
+Le test de plausibilité (`scripts/explanation_plausibility_test.py`) donnait un
+résultat très dégradé sur ce run : **56,7% (34/60)** contre 71,7% (43/60) sur
+`results_v10_emails_main` -- une chute surprenante alors que le taux
+d'interprétabilité sous-jacent s'améliore (§17.1). Inspection des exemples
+sauvegardés (`cache/explanation_plausibility_results.json`) : certains "vrais"
+labels affichés au juge comme référence étaient en réalité des transcriptions
+BRUTES de raisonnement d'auto-interprétation (plusieurs milliers de caractères,
+"**Analysis:** 1. `MAX_ACTIVATING_TOKENS`...") au lieu d'un label court. Cause
+racine : `load_label_map()` dans CE script (et 3 autres :
+`explanation_fidelity_test.py`, `embedding_model_comparison_test.py`,
+`compute_interesting_correlations_retro.py`) charge le fichier de labels Neuronpedia
+**16k en dur**, indépendamment du SAE réellement utilisé par le run (ici 65k). Pour
+tout index de feature < 16 384, le script associait donc silencieusement le label
+d'une feature **16k totalement différente** (le core 65k et le core 16k sont deux
+dictionnaires de features indépendants), parfois une des 47 entrées Neuronpedia 16k
+elles-mêmes corrompues (0,35% du fichier 16k, contre 0,02% pour le fichier 65k --
+un défaut de qualité connu du jeu de données Neuronpedia source, présent aux deux
+largeurs). **Corrigé** : les 4 scripts utilisent désormais `NEURONPEDIA_LABELS_PATH`
+(dérivé de `SAE_ID`, `src/config.py`) au lieu du chemin figé. Le test de fidélité
+n'était affecté que de façon cosmétique (le calcul d'ablation opère par index, pas
+par texte de label) ; le test de plausibilité, lui, juge directement le texte du
+label -- son résultat a donc été invalidé et recalculé après correction (jobs 40946
+plausibilité, 40947 fidélité -- résultat définitif en §17.5).
+
+### 17.4. `dead_pct` P1 à 55,9% : lecture
+
+Métrique brute inquiétante en apparence (0% sur les 3 runs de validation
+précédents). Ce chiffre porte sur la plage CORE (65 536 features GemmaScope, jamais
+réentraînées) et non sur l'extension (`ExtendedSAE`, la seule dont le taux de mort
+est un signal de qualité d'entraînement pertinent -- cf. §5.1, toujours 0% sur ce
+run). Un SAE core pré-entraîné généraliste (GemmaScope) a une proportion normale et
+attendue de features jamais ou très rarement activées sur un corpus spécifique et
+plus restreint (emails EDF) que son corpus d'entraînement d'origine ; ce chiffre
+n'était simplement jamais mesuré/reporté à ce grain avant ce run. Non comparable
+directement au 0% historique (qui ne concernait que l'extension).
+
+### 17.5. Ablations isolées : attribuer l'effet à la largeur vs aux époques
+
+Le run combiné (§17.1) fait varier 3 leviers à la fois. Deux runs complémentaires à
+facteur UNIQUE, isolant chacun un levier (jobs 40952 largeur seule, 40950 époques
+seules), permettent une décomposition additive -- même démarche que l'ablation de
+volume de tokens (§12/§5.1) :
+
+*[Résultats en cours au moment de la rédaction -- `results_v12_ablation_width65k_only`
+(SAE_ID=65k, EPOCHS_EXTRA=10, EPOCHS=30, N_FEATURES_TO_LABEL=150, sinon identique à
+`results_v10_emails_main`) et `results_v12_ablation_epochs_only` (SAE_ID=16k,
+EPOCHS_EXTRA=40, EPOCHS=100, N_FEATURES_TO_LABEL=150). Cette section sera complétée
+dès la fin de ces deux jobs.]*

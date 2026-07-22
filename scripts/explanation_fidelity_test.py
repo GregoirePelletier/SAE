@@ -37,7 +37,7 @@ import pandas as pd
 import torch
 from sklearn.linear_model import LogisticRegression
 
-from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR
+from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, NEURONPEDIA_LABELS_PATH
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
 
@@ -92,7 +92,12 @@ def load_real_email_acts_and_intents():
 
 
 def load_label_map():
-    with open("local_data/neuronpedia_labels/neuronpedia_labels_24-gemmascope-2-res-16k.json") as f:
+    # Dérivé de SAE_ID (cf. commentaire équivalent dans explanation_plausibility_test.py) :
+    # ici les labels ne servent qu'à l'annotation cosmétique des features dans les
+    # exemples exportés (le calcul de fidélité ablate par INDEX, indépendant du texte
+    # du label), mais un mauvais mapping produirait quand même des labels d'exemple
+    # trompeurs pour un run n'utilisant pas la largeur 16k.
+    with open(NEURONPEDIA_LABELS_PATH) as f:
         labels_core = {int(k): v for k, v in json.load(f).items()}
     judge_path = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
     label_map = dict(labels_core)

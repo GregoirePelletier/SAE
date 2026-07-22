@@ -319,10 +319,68 @@ d'évaluation, §8.3) :
 | `N_TOKENS_EXTRA_TRAIN` | 500 000 | 500 000 (inchangé) | — (déjà démontré non limitant, §5.2) |
 | Backbone Pipeline 2 | F2LLM-v2-80M | F2LLM-v2-330M | (condition fixée du protocole d'évaluation, §8.3) |
 
-*[Résultats en cours de calcul au moment de la rédaction de cette version du
-rapport — jobs SLURM chaînés par dépendance (run principal → diffing par axe →
-robustesse du juge, sonde intention/urgence, fidélité, plausibilité, labellisation
-contrastive → consolidation). Cette section sera complétée avec le taux
-d'interprétabilité obtenu, le NMSE de reconstruction des deux pipelines, et la
-comparaison avec le run principal dès la fin de la chaîne de jobs — cf.
-`RESULTS_TESTS.md` pour le suivi détaillé et à jour de cette expérience.]*
+### 10.1. Résultats du run combiné
+
+| Métrique | Run principal (16k) | Run v12 (65k, échelle) |
+|---|---|---|
+| Taux d'interprétabilité (odd-one-out) | 45,3% (68/150) | **53,7% (322/600)** |
+| Taux d'interprétabilité, vote majoritaire (5 répétitions) | 48,7% | 55,5% |
+| Accord moyen entre 5 répétitions du juge | 80,3% | 79,3% (stable) |
+| `clf_acc_email_axes` (Pipeline 1, 14 classes) | 93,5% | 91,9% |
+| `clf_acc_email_axes` (Pipeline 2, 14 classes) | 79,3%/77,2% (80M/330M) | 76,7% |
+| NMSE Pipeline 2 | 0,0745 (80M) / 0,0689 (330M) | 0,0667 |
+
+Le taux d'interprétabilité global progresse nettement (45,3%→53,7%), mais ce run
+combine trois leviers à la fois (largeur, époques, nombre de features jugées) — cf.
+§10.3 pour leur décomposition. Les scores de classification/séparabilité (déjà très
+élevés, >90% pour Pipeline 1) ne progressent pas et reculent même très légèrement,
+cohérent avec un plafond déjà proche pour cette tâche plutôt qu'un signal de
+dégradation.
+
+### 10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
+
+Analyse à coût nul (aucun calcul GPU, relecture de l'ordre de sélection déjà en
+cache) pour savoir si les 450 features supplémentaires labellisées par le scale-up
+diluent la statistique ou apportent un signal réel :
+
+| Sous-ensemble (rang par magnitude d'activation) | n | Taux d'interprétabilité |
+|---|---|---|
+| Rang 1-150 (budget du run principal) | 150 | 44,0% |
+| Rang 151-600 (apport du scale-up) | 450 | **56,9%** |
+
+Résultat notable : le sous-ensemble de tête (rang 1-150) donne un taux
+statistiquement indiscernable du run principal à 16k (44,0% vs 45,3%, écart bien en
+deçà de l'incertitude binomiale à n=150) — un bon signe de cohérence entre les deux
+runs. Mais les features de rang inférieur (151-600), moins actives en moyenne, sont
+en réalité **plus** interprétables que celles de tête. La magnitude d'activation
+moyenne n'est donc pas un proxy fiable de l'interprétabilité potentielle d'une
+feature : restreindre la labellisation aux features de plus forte magnitude exclut
+systématiquement des candidates au moins aussi bonnes, voire meilleures.
+
+### 10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
+
+Le test de plausibilité (§8.2) donnait un résultat fortement dégradé sur ce run
+(56,7% contre 71,7% sur le run principal), en contradiction apparente avec la hausse
+du taux d'interprétabilité (§10.1). Diagnostic : `explanation_plausibility_test.py`
+(et 3 scripts analogues) chargeait un chemin de labels Neuronpedia **figé sur la
+largeur 16k**, indépendamment de la largeur réellement utilisée par le run (ici
+65k) — pour toute feature d'index < 16 384, le label affiché au juge comme "réel"
+appartenait en fait à une feature totalement différente du dictionnaire 16k
+(certaines de ces entrées 16k étant elles-mêmes des transcriptions de raisonnement
+non nettoyées côté Neuronpedia, 0,35% du fichier). Corrigé (chemin dérivé de
+`SAE_ID` comme partout ailleurs dans le dépôt) et test recalculé — détail complet et
+chiffre corrigé dans `RESULTS_TESTS.md` §17.3/17.5. Ce bug n'affectait que ce test
+(qui juge directement le texte du label) ; le test de fidélité, qui ablate par index
+et n'utilise le label que pour l'annotation cosmétique des exemples exportés,
+restait numériquement valide.
+
+### 10.4. Décomposition largeur vs époques (ablations isolées)
+
+Deux runs à facteur unique, isolant respectivement la largeur du SAE core et le
+nombre d'époques (toutes choses égales par ailleurs, `N_FEATURES_TO_LABEL=150` dans
+les deux cas), permettent d'attribuer la hausse du §10.1 à sa cause plutôt qu'à leur
+effet combiné — même démarche que l'ablation de volume de tokens du §5 :
+
+*[Résultats en cours au moment de la rédaction — `results_v12_ablation_width65k_only`
+et `results_v12_ablation_epochs_only`, cf. `RESULTS_TESTS.md` §17.5 pour le suivi à
+jour et les chiffres définitifs dès la fin de ces deux jobs.]*
