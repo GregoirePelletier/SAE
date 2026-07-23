@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=00:30:00
-#SBATCH --output=explanation_fidelity_v12_%j.log
+#SBATCH --output=logs/analysis/explanation_fidelity_v12_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

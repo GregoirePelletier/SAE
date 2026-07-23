@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=150G
 #SBATCH --time=1:30:00
-#SBATCH --output=logs/augmentation_test_%j.log
+#SBATCH --output=logs/augmentation/augmentation_test_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

@@ -23,7 +23,7 @@ wheels/
 *.egg-info/
 
 # ============================================================
-# Large generated data
+# Large generated / downloaded data
 # ============================================================
 Mails.tsv
 models/
@@ -33,6 +33,11 @@ saes/
 # synthétiques générés à la volée — régénérables via download_sae.py /
 # neuronpedia_labels.fetch_neuronpedia_labels / scripts/retrieval_demo.py)
 local_data/
+
+# Documents de référence (papiers, offre de stage) : volumineux, pas du code,
+# pas destinés à être versionnés (droits d'auteur / contenu personnel pour
+# l'offre de stage). Toujours disponibles en local sous pdf/.
+pdf/
 
 # Future-proofing
 outputs/
@@ -69,23 +74,12 @@ uv.lock
 !README.md
 !Context.md
 !pyproject.toml
-!run_sae.slurm
 
 # ============================================================
 # KEEP SOURCE TREE
 # ============================================================
 !src/
 !src/**
-
-# ============================================================
-# KEEP MAIN SCRIPTS
-# ============================================================
-!main.py
-!saev5.py
-!sae_shared.py
-!download_sae.py
-!baseline_gemmascope.py
-!test_chargement_sae.py
 
 # ============================================================
 # CRITICAL OVERRIDES (Must be at the very bottom)
@@ -95,8 +89,10 @@ uv.lock
 *.pyc
 *.py[cod]
 *.so
+.pytest_cache/
 
-# Force l'exclusion des logs et SLURM partout
+# Force l'exclusion des logs et SLURM partout (les scripts .slurm eux-mêmes
+# restent versionnés sous slurm/ — seule leur SORTIE ne l'est pas, cf. logs/)
 *.log
 *.out
 *.err

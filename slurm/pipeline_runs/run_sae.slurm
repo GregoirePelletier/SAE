@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=200G
 #SBATCH --time=4:00:00
-#SBATCH --output=sae_v9_test_%j.log
+#SBATCH --output=logs/pipeline_runs/sae_v9_test_%j.log
 
 # ── Isolation réseau ──
 export HF_HUB_OFFLINE=1

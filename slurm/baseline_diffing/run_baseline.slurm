@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=120G
 #SBATCH --time=03:00:00
-#SBATCH --output=logs/baseline_test_%j.log
+#SBATCH --output=logs/baseline_diffing/baseline_test_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

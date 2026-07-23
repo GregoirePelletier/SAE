@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --time=01:30:00
-#SBATCH --output=explanation_plausibility_v12_%j.log
+#SBATCH --output=logs/analysis/explanation_plausibility_v12_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

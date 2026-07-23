@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=180G
 #SBATCH --time=24:00:00
-#SBATCH --output=sae_v10_emails_%j.log
+#SBATCH --output=logs/pipeline_runs/sae_v10_emails_%j.log
 
 # ── Isolation réseau ──
 export HF_HUB_OFFLINE=1

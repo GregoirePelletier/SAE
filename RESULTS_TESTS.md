@@ -17,7 +17,7 @@ pour ne pas contaminer le run complet.
 aurait pris ~63h GPU en séquentiel (extrapolé du rythme observé sur les jobs
 38949/38987). Ajout d'un mode sharding à `scripts/run_augmentation.py`
 (`AUGMENT_NUM_SHARDS`/`AUGMENT_SHARD_IDX`, découpage entrelacé `df.iloc[idx::N]`) et
-d'un nouveau `run_augmentation_full.slurm` en **array Slurm 8 tâches** (`--array=0-7`),
+d'un nouveau `slurm/augmentation/run_augmentation_full.slurm` en **array Slurm 8 tâches** (`--array=0-7`),
 toutes lancées en parallèle sur les 8 GPUs du nœud a100 (idle au moment du
 lancement) — ~7h15-7h30 de mur au lieu de 63h.
 
@@ -37,7 +37,7 @@ traceback/OOM dans les 8 logs (`logs/augmentation_full_39017_{0..7}.log`) :
 | **Total** | **~7h27 (mur)** | **45 240** | **39 949 (88,3%)** |
 
 Vérifié : 45 240 `aug_id` tous uniques entre shards (aucune collision), fusion via
-`merge_augmentation_shards.sh` → `results_v9_test/augmented_mails.jsonl` (45 240 lignes,
+`slurm/augmentation/merge_augmentation_shards.sh` → `results_v9_test/augmented_mails.jsonl` (45 240 lignes,
 39 949 acceptées).
 
 **Biais "Objet :" résiduel après correction du prompt** : réduit de 25,6% → **17,5%**
@@ -70,7 +70,7 @@ sans réallocation ni parcours complet à chaque batch — la conversion finale
 `sae_shared.py`/`phrase_sae.py`, qui ne bouclent pas dessus par batch). Tests
 `pytest` re-passés (8/8 OK).
 
-**Job 39492** : `run_baseline_full.slurm` resoumis avec le fix → ✅ **COMPLETED en
+**Job 39492** : `slurm/baseline_diffing/run_baseline_full.slurm` resoumis avec le fix → ✅ **COMPLETED en
 1h11min20s** (contre >4h de TIMEOUT sans rien produire avant le fix). Corpus complet
 traité : 3474 mails originaux + 39 949 augmentés acceptés = 43 423 textes encodés.
 
@@ -102,10 +102,10 @@ l'interprétabilité immédiate des résultats — labels à générer hors-clus
 
 ---
 
-## 10. Run à l'échelle complète du pipeline principal (`run_sae_full.slurm`)
+## 10. Run à l'échelle complète du pipeline principal (`slurm/pipeline_runs/run_sae_full.slurm`)
 
 Après validation que la chaîne augmentation → baseline fonctionnait, question posée :
-le smoketest `run_sae.slurm` (volumes réduits ~×12) suffit-il, ou faut-il investiguer
+le smoketest `slurm/pipeline_runs/run_sae.slurm` (volumes réduits ~×12) suffit-il, ou faut-il investiguer
 avant un run à pleine échelle ? Vérification faite :
 
 - **`saev5.py` (pipeline P1/P2) n'est PAS vulnérable au bug quadratique de `maxpool_sae_docs`** :
@@ -120,7 +120,7 @@ avant un run à pleine échelle ? Vérification faite :
   un run complet (plus de documents, éventuellement sur a100). **Fix préventif
   appliqué** : `logits_to_keep=1` ajouté à cet appel. Tests `pytest` re-passés (8/8 OK).
 
-**Nouveau `run_sae_full.slurm`** (le smoketest `run_sae.slurm` reste inchangé, gardé
+**Nouveau `slurm/pipeline_runs/run_sae_full.slurm`** (le smoketest `slurm/pipeline_runs/run_sae.slurm` reste inchangé, gardé
 comme référence validée) :
 - Toutes les réductions de volume retirées → valeurs par défaut de `src/config.py`/
   `saev5.py` appliquées : `N_TOTAL_ENERGY/SPORTS/SUPPORT=2000` (vs 400 en smoketest),
@@ -182,11 +182,11 @@ pleine échelle exécutés avec succès :
 
 | Pipeline | Statut final |
 |---|---|
-| `run_sae.slurm` (smoketest v9) | ✅ déjà validé (inchangé) |
-| `run_sae_full.slurm` (échelle complète) | ✅ COMPLETED (job 39531, 37min32s) |
-| `run_test_massive.slurm` | ✅ COMPLETED (job 38948) |
-| `run_augmentation_full.slurm` (8 shards parallèles) | ✅ COMPLETED (job 39017, 45 240 générations) |
-| `run_baseline_full.slurm` | ✅ COMPLETED (job 39492, 1h11min, après fix perf) |
+| `slurm/pipeline_runs/run_sae.slurm` (smoketest v9) | ✅ déjà validé (inchangé) |
+| `slurm/pipeline_runs/run_sae_full.slurm` (échelle complète) | ✅ COMPLETED (job 39531, 37min32s) |
+| `slurm/validation/run_test_massive.slurm` | ✅ COMPLETED (job 38948) |
+| `slurm/augmentation/run_augmentation_full.slurm` (8 shards parallèles) | ✅ COMPLETED (job 39017, 45 240 générations) |
+| `slurm/baseline_diffing/run_baseline_full.slurm` | ✅ COMPLETED (job 39492, 1h11min, après fix perf) |
 | Tests `pytest` | ✅ 8/8 (après chaque correctif) |
 
 Bugs de code corrigés (persistants, indépendants des jobs individuels) :
@@ -215,7 +215,7 @@ Tous les scripts `.slurm` du repo ont été relus, comparés aux scripts Python 
 appellent, et testés (localement en syntaxe/imports, puis réellement soumis sur le
 cluster quand c'était possible). Détail par script ci-dessous.
 
-## 2. `run_sae.slurm` (pipeline principal v9, smoketest) — ✅ déjà validé, inchangé
+## 2. `slurm/pipeline_runs/run_sae.slurm` (pipeline principal v9, smoketest) — ✅ déjà validé, inchangé
 
 Aucune modification : ce script fonctionne déjà de façon reproductible. Historique des
 runs (`sae_v9_test_*.log`) :
@@ -250,7 +250,7 @@ dans les commentaires du script.
   d'autres runs comparables).
 - Entraînement stable sur 15 epochs, NMSE décroît de 0.676 → 0.298 sans divergence.
 
-**Conclusion : le pipeline v9 (`run_sae.slurm`) est fonctionnel et reproductible. Pas
+**Conclusion : le pipeline v9 (`slurm/pipeline_runs/run_sae.slurm`) est fonctionnel et reproductible. Pas
 besoin de le relancer pour ce tour de validation.**
 
 ## 3. Tests unitaires (`pytest`, CPU seulement) — ✅ passent tous
@@ -272,11 +272,11 @@ Ces trois scripts n'avaient **jamais réussi à s'exécuter** (logs `augmentatio
 Le nœud de calcul n'a pas d'accès Internet direct (proxy EDF bloquant). `uv run`
 tente de re-résoudre/valider l'environnement contre le lockfile et essaie de
 télécharger torch depuis `download.pytorch.org` → timeout après 3 retries, échec
-systématique. `run_sae.slurm` (le seul qui marchait) contournait déjà ce problème en
+systématique. `slurm/pipeline_runs/run_sae.slurm` (le seul qui marchait) contournait déjà ce problème en
 appelant directement `.venv/bin/python` (l'environnement est déjà provisionné sur
 disque). **Fix appliqué aux 3 scripts : `uv run python X` → `.venv/bin/python X`.**
 
-### `run_test_massive.slurm`
+### `slurm/validation/run_test_massive.slurm`
 - Chemin faux : `test_massive_acts.py` n'existe qu'à `scripts/test_massive_acts.py`.
 - `LOCAL_SAE_DIR` par défaut (`./local_data/saes/gemma-scope-2-12b-it`) pointe vers un
   répertoire **vide** — les poids réels sont dans
@@ -286,20 +286,20 @@ disque). **Fix appliqué aux 3 scripts : `uv run python X` → `.venv/bin/python
   `p1_raw_residuals.pt` sont bien lisibles et que le diagnostic de corrélation
   Pearson(activation extra, ||token||) s'exécute sans erreur.
 
-### `run_augmentation.slurm`
+### `slurm/augmentation/run_augmentation.slurm`
 - Chemin faux : `run_augmentation.py` n'existe qu'à `scripts/run_augmentation.py`.
 - `SAVE_DIR` non défini → tombait sur le défaut `./results/` au lieu de
   `./results_v9_test/`, incohérent avec le reste du pipeline v9. Fixé.
 - **Statut : job 38949 soumis, EN COURS** (budget 2h, génère les variantes augmentées
   du vrai `Mails.tsv` via Gemma-3-12B-it — chargement modèle confirmé OK dans le log).
 
-### `run_baseline.slurm`
+### `slurm/baseline_diffing/run_baseline.slurm`
 - **Bug bloquant** : `scripts/baseline_gemmascope.py` a une fonction `main(mails_tsv,
   augmented_jsonl)` qui exige 2 arguments positionnels — le script slurm ne passait
   **aucun argument** → `IndexError` immédiat garanti. Fixé en passant
   `"$LOCAL_MAILS_PATH"` et `"${SAVE_DIR}augmented_mails.jsonl"`.
-- Même bug `LOCAL_SAE_DIR` vide que `run_test_massive.slurm` — fixé pareil.
-- `SAVE_DIR`/`CACHE_DIR` non alignés avec `run_augmentation.slurm` (le fichier
+- Même bug `LOCAL_SAE_DIR` vide que `slurm/validation/run_test_massive.slurm` — fixé pareil.
+- `SAVE_DIR`/`CACHE_DIR` non alignés avec `slurm/augmentation/run_augmentation.slurm` (le fichier
   `augmented_mails.jsonl` que ce script consomme est produit par l'augmentation) — les
   deux scripts utilisent maintenant le même `SAVE_DIR="./results_v9_test/"`.
 - **Statut : job 38950 soumis avec `--dependency=afterok:38949`** — démarrera
@@ -325,12 +325,12 @@ sous-échantillon rapide**, avant de décider si l'augmentation complète (63h G
 le coût. Implémenté :
 - `scripts/run_augmentation.py` : nouvelle option `AUGMENT_SAMPLE_N` (sous-échantillonnage
   déterministe, `random_state=SEED`) et `AUGMENT_OUT_NAME` (fichier de sortie séparé).
-- `run_augmentation.slurm` : run de test sur **60 mails** (`AUGMENT_SAMPLE_N=60`),
+- `slurm/augmentation/run_augmentation.slurm` : run de test sur **60 mails** (`AUGMENT_SAMPLE_N=60`),
   sortie dans `augmented_mails_test.jsonl`, `--time=1:30:00`.
-- `run_baseline.slurm` : pointe sur `augmented_mails_test.jsonl` pour ce test (à
+- `slurm/baseline_diffing/run_baseline.slurm` : pointe sur `augmented_mails_test.jsonl` pour ce test (à
   remplacer par `augmented_mails.jsonl` une fois le corpus complet généré).
 
-## 6. Bug supplémentaire trouvé et corrigé : OOM CUDA dans `run_baseline.slurm`
+## 6. Bug supplémentaire trouvé et corrigé : OOM CUDA dans `slurm/baseline_diffing/run_baseline.slurm`
 
 **Job 38987** (augmentation test, 60 mails × 13 = 780 générations) → ✅ **COMPLETED**.
 780/780 générations produites, 694 acceptées (89%), en ~1h.
@@ -345,8 +345,8 @@ l'appel `model(..., output_hidden_states=True)` sur un `AutoModelForCausalLM` ca
 par défaut (`logits_to_keep=0`) les **logits sur toute la séquence et tout le
 vocabulaire** (Gemma-3 : ~262k tokens), alors que seul `hidden_states` est utilisé en
 aval — rien qu'un batch de 8 × 512 tokens alloue ~2 GiB de logits totalement inutiles.
-Ça passait inaperçu sur le run principal (`run_sae.slurm`, nœud H100 85 GB VRAM) mais
-sature un A100 40 GB (`run_baseline.slurm`/`run_augmentation.slurm` tournent sur la
+Ça passait inaperçu sur le run principal (`slurm/pipeline_runs/run_sae.slurm`, nœud H100 85 GB VRAM) mais
+sature un A100 40 GB (`slurm/baseline_diffing/run_baseline.slurm`/`slurm/augmentation/run_augmentation.slurm` tournent sur la
 partition `a100`).
 
 **Fix appliqué** : `logits_to_keep=1` ajouté à l'appel du modèle (ne calcule les
@@ -378,7 +378,7 @@ batch dont le contenu (mails les plus longs) fait dépasser la capacité de la c
 boucle (au lieu du décorateur), qui couvre bien toutes les itérations du générateur.
 Bénéficie aussi à `src/sae/compare/pipeline.py` (même fonction réutilisée).
 
-**Job 39003** : `run_baseline.slurm` resoumis avec le vrai correctif → ✅ **COMPLETED**
+**Job 39003** : `slurm/baseline_diffing/run_baseline.slurm` resoumis avec le vrai correctif → ✅ **COMPLETED**
 en 11min24s (contre 3 échecs OOM successifs). Pipeline baseline validé de bout en bout
 sur l'échantillon de 60 mails augmentés :
 
@@ -417,24 +417,24 @@ générations.
 
 | Job ID | Script | But | Résultat |
 |---|---|---|---|
-| 38948 | `run_test_massive.slurm` | Diagnostic massive activations | ✅ COMPLETED |
-| 38949 | `run_augmentation.slurm` (corpus complet) | Génère `augmented_mails.jsonl` | ⏱ TIMEOUT (2h) — 1440/45240 générations, reprise possible |
-| 38950 | `run_baseline.slurm` (dépendait de 38949) | Baseline SAE natif | ⛔ annulé (dépendance jamais satisfaite) |
-| 38987 | `run_augmentation.slurm` (test, 60 mails) | Génère `augmented_mails_test.jsonl` | ✅ COMPLETED (780/780, 694 acceptées) |
-| 38988 | `run_baseline.slurm` (test) | Baseline SAE natif sur échantillon test | ❌ FAILED (OOM, `lm_head` sur tout le vocab) |
-| 38999 | `run_baseline.slurm` (test, retry 1) | Idem, avec fix `logits_to_keep=1` | ❌ FAILED (OOM plus tardif) |
-| 39000 | `run_baseline.slurm` (test, retry 2) | Idem, avec fix fragmentation (`expandable_segments`) | ❌ FAILED (pas de la fragmentation) |
-| 39003 | `run_baseline.slurm` (test, retry 3) | Idem, avec le vrai fix (`no_grad` sur générateur) | ✅ **COMPLETED** (11min24s) |
+| 38948 | `slurm/validation/run_test_massive.slurm` | Diagnostic massive activations | ✅ COMPLETED |
+| 38949 | `slurm/augmentation/run_augmentation.slurm` (corpus complet) | Génère `augmented_mails.jsonl` | ⏱ TIMEOUT (2h) — 1440/45240 générations, reprise possible |
+| 38950 | `slurm/baseline_diffing/run_baseline.slurm` (dépendait de 38949) | Baseline SAE natif | ⛔ annulé (dépendance jamais satisfaite) |
+| 38987 | `slurm/augmentation/run_augmentation.slurm` (test, 60 mails) | Génère `augmented_mails_test.jsonl` | ✅ COMPLETED (780/780, 694 acceptées) |
+| 38988 | `slurm/baseline_diffing/run_baseline.slurm` (test) | Baseline SAE natif sur échantillon test | ❌ FAILED (OOM, `lm_head` sur tout le vocab) |
+| 38999 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 1) | Idem, avec fix `logits_to_keep=1` | ❌ FAILED (OOM plus tardif) |
+| 39000 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 2) | Idem, avec fix fragmentation (`expandable_segments`) | ❌ FAILED (pas de la fragmentation) |
+| 39003 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 3) | Idem, avec le vrai fix (`no_grad` sur générateur) | ✅ **COMPLETED** (11min24s) |
 
 ## 8. Bilan des correctifs de code appliqués (persistants, indépendants des jobs)
 
 - `scripts/test_massive_acts.py` / `scripts/run_augmentation.py` / `scripts/baseline_gemmascope.py`
   appelés via `.venv/bin/python` au lieu de `uv run python` dans les 3 `.slurm`
   (contournement réseau bloqué sur le cluster).
-- Chemins corrigés (`scripts/` manquant) dans `run_augmentation.slurm` et `run_test_massive.slurm`.
+- Chemins corrigés (`scripts/` manquant) dans `slurm/augmentation/run_augmentation.slurm` et `slurm/validation/run_test_massive.slurm`.
 - `LOCAL_SAE_DIR` explicite (le défaut `local_data/saes/...` est vide) dans
-  `run_test_massive.slurm` et `run_baseline.slurm`.
-- `run_baseline.slurm` : arguments positionnels manquants (`IndexError` garanti) ajoutés.
+  `slurm/validation/run_test_massive.slurm` et `slurm/baseline_diffing/run_baseline.slurm`.
+- `slurm/baseline_diffing/run_baseline.slurm` : arguments positionnels manquants (`IndexError` garanti) ajoutés.
 - `scripts/run_augmentation.py` : ajout `AUGMENT_SAMPLE_N` / `AUGMENT_OUT_NAME` pour
   permettre un run de validation sous-échantillonné.
 - `src/analysis/activations.py::extract_residual_acts` :
@@ -452,8 +452,8 @@ décisions restent à prendre avec vous :
 1. **Lancer l'augmentation complète ?** (3480 mails × 13 axes ≈ 45 240 générations,
    ~63h GPU cumulées d'après le rythme observé). À faire en plusieurs jobs successifs
    (le script reprend automatiquement grâce au skip des `aug_id` déjà écrits) : relancer
-   `run_augmentation.slurm` avec `AUGMENT_SAMPLE_N` retiré (ou mis à 0) et `--time`
-   augmenté (ex. 8h par job, relancer ~8 fois), puis repointer `run_baseline.slurm`
+   `slurm/augmentation/run_augmentation.slurm` avec `AUGMENT_SAMPLE_N` retiré (ou mis à 0) et `--time`
+   augmenté (ex. 8h par job, relancer ~8 fois), puis repointer `slurm/baseline_diffing/run_baseline.slurm`
    sur `${SAVE_DIR}augmented_mails.jsonl` (au lieu de `..._test.jsonl`).
 2. **Vérifier le biais de formatage observé** (§7) sur `augmented_mails_test.jsonl`
    avant d'engager le calcul complet — si confirmé, envisager de retirer les
@@ -526,9 +526,9 @@ faisant varier `N_TOKENS_EXTRA_TRAIN` à corpus strictement identique.
 | Run (SLURM job) | `N_TOKENS_EXTRA_TRAIN` | Durée | dead_feature | Taux interp. (odd-one-out) | ρ_interp moyen (interp=1) |
 |---|---|---|---|---|---|
 | **Baseline (avant fix)** — `results_v9_full`, job 39531 | 500 000 (corpus generic) | 37min32s | 0/10 | **2/10 = 20,0%** | n/a |
-| `run_sae_v10_ablation_tok100k.slurm`, job 39661 | 100 000 | 3h11min37s | 0/150 | **61/150 = 40,7%** | 0,362 |
-| `run_sae_v10_emails.slurm`, job 39660 (**run principal**) | 500 000 (défaut) | 3h01min53s | 0/150 | **68/150 = 45,3%** | 0,241 |
-| `run_sae_v10_ablation_tok2M.slurm`, job 39662 | 2 000 000 | 2h21min01s | 0/150 | **67/150 = 44,7%** | 0,336 |
+| `slurm/pipeline_runs/run_sae_v10_ablation_tok100k.slurm`, job 39661 | 100 000 | 3h11min37s | 0/150 | **61/150 = 40,7%** | 0,362 |
+| `slurm/pipeline_runs/run_sae_v10_emails.slurm`, job 39660 (**run principal**) | 500 000 (défaut) | 3h01min53s | 0/150 | **68/150 = 45,3%** | 0,241 |
+| `slurm/pipeline_runs/run_sae_v10_ablation_tok2M.slurm`, job 39662 | 2 000 000 | 2h21min01s | 0/150 | **67/150 = 44,7%** | 0,336 |
 
 **Lecture** : corriger le domaine du corpus (emails dominants au lieu de
 Wikipedia générique) **plus que double le taux d'interprétabilité** (20% → ~41-45%),
@@ -585,7 +585,7 @@ features non interprétées.
 
 ### 13.1. Le résidu non-interprété est-il dû au biais de position du protocole de jugement ?
 
-`scripts/judge_robustness_check.py` (nouveau) + `run_judge_robustness.slurm`, job
+`scripts/judge_robustness_check.py` (nouveau) + `slurm/analysis/run_judge_robustness.slurm`, job
 40672 — **aucune réextraction Gemma-3** : réutilise les activations et fragments déjà
 en cache (`results_v10_emails_main/`), recharge seulement le modèle comme juge.
 Pour chacune des 150 features déjà jugées, répète la question odd-one-out **5 fois**
@@ -648,7 +648,7 @@ cas précis.
 ### 14.1. Effet mesuré du fix Objet:/Subject: sur le diffing complet
 
 Suite au fix `load_augmented` (commit "Corrige le biais résiduel Objet:/Subject:..."),
-`run_baseline_full_v2.slurm` (job 40674, ✅ COMPLETED en 1h06min05s) relance
+`slurm/baseline_diffing/run_baseline_full_v2.slurm` (job 40674, ✅ COMPLETED en 1h06min05s) relance
 `scripts/baseline_gemmascope.py` sur le corpus complet (43 423 textes) avec le texte
 augmenté nettoyé, dans un nouveau répertoire (`results_v11_baseline_objetfix/`, pas de
 partage de cache avec `results_v9_test/cache_baseline_full` pour éviter toute
@@ -916,7 +916,7 @@ features citées, cas où le juge s'est trompé).
 
 ### 16.5. Comparaison du backbone Pipeline 2 : F2LLM-v2-80M vs -330M
 
-`run_sae_v10_p2_f2llm330m.slurm` (Pipeline 2 seul, corpus identique à
+`slurm/pipeline_runs/run_sae_v10_p2_f2llm330m.slurm` (Pipeline 2 seul, corpus identique à
 `results_v10_emails_main`, aucun réentraînement Gemma-3/GemmaScope nécessaire) :
 MATRYOSHKA_DIM=320 reste une simple troncature des 320 premiers dims de l'embedding
 dernier-token, mécaniquement compatible avec n'importe quelle taille de backbone
@@ -1061,31 +1061,60 @@ plus restreint (emails EDF) que son corpus d'entraînement d'origine ; ce chiffr
 n'était simplement jamais mesuré/reporté à ce grain avant ce run. Non comparable
 directement au 0% historique (qui ne concernait que l'extension).
 
-### 17.5. Ablations isolées : attribuer l'effet à la largeur vs aux époques
+### 17.5. Ablations isolées : décomposition largeur / époques / capacité / N_FEATURES_TO_LABEL
 
-Le run combiné (§17.1) fait varier 3 leviers à la fois. Deux runs complémentaires à
-facteur UNIQUE, isolant chacun un levier (jobs 40952 largeur seule, 40950 époques
-seules), permettent une décomposition additive -- même démarche que l'ablation de
-volume de tokens (§12/§5.1) :
+Le run combiné (§17.1) fait varier 4 leviers à la fois (largeur, époques, capacité
+implicitement inchangée, `N_FEATURES_TO_LABEL`). Trois runs à facteur UNIQUE
+(jobs 40952 largeur seule, 40950 époques seules, 40953 capacité seule), chacun
+comparé au run principal (`results_v10_emails_main`, 45,3%) et à la tranche
+rang 1-150 du run combiné (44,0%, §17.2) :
 
-*[Résultats en cours au moment de la rédaction -- `results_v12_ablation_width65k_only`
-(SAE_ID=65k, EPOCHS_EXTRA=10, EPOCHS=30, N_FEATURES_TO_LABEL=150, sinon identique à
-`results_v10_emails_main`) et `results_v12_ablation_epochs_only` (SAE_ID=16k,
-EPOCHS_EXTRA=40, EPOCHS=100, N_FEATURES_TO_LABEL=150). Cette section sera complétée
-dès la fin de ces deux jobs.]*
+| Run | Largeur | Époques (extra/P2) | `D_EXTRA`/`K_EXTRA` | `N_FEAT` | Interprétabilité |
+|---|---|---|---|---|---|
+| **Run principal** (référence) | 16k | 10/30 | 1024/32 | 150 | **45,3%** (68/150) |
+| Largeur seule (job 40952) | 65k | 10/30 | 1024/32 | 150 | 43,3% (65/150) |
+| Époques seules (job 40950) | 16k | 40/100 | 1024/32 | 150 | 41,3% (62/150) |
+| Capacité seule (job 40953) | 16k | 10 (P1 seul) | 2048/64 | 150 | 40,0% (60/150) |
+| Combiné, tranche rang 1-150 (§17.2) | 65k | 40/100 | 1024/32 | 600 (dont 150 analysés) | 44,0% (66/150) |
+| **Combiné, total** (§17.1) | 65k | 40/100 | 1024/32 | 600 | **53,7%** (322/600) |
 
-### 17.6. Quatrième levier : capacité de l'extension (`D_EXTRA`/`K_EXTRA`)
+**Lecture** : les trois ablations à facteur unique donnent des taux (43,3% / 41,3% /
+40,0%) tous statistiquement indistinguables du run principal (45,3%) compte tenu de
+l'écart-type binomial attendu à n=150 (≈4,1 points) -- **aucun des trois leviers pris
+isolément (largeur du SAE core, nombre d'époques, capacité de l'extension) n'améliore
+le taux d'interprétabilité**, cohérent avec le résultat déjà établi pour le volume de
+tokens (§5.2) : une fois le corpus corrigé, ce protocole d'évaluation semble plafonné
+par autre chose que ces paramètres d'échelle. La hausse observée sur le run combiné
+(53,7%) s'explique donc presque entièrement par l'effet de composition déjà identifié
+au §17.2 (les features de rang 151-600 sont mieux interprétées que celles de rang
+1-150), **pas** par une meilleure qualité d'entraînement du SAE due à la largeur, aux
+époques ou à la capacité. Conclusion pour la question posée en tête de ce chapitre
+("scaler la pipeline améliore-t-il les résultats ?") : **oui pour la plausibilité de
+l'explication (§17.3, +16,6 points après correction du bug) et pour le volume/la
+richesse du catalogue de features labellisées, mais pas pour le taux brut
+d'interprétabilité odd-one-out**, qui reste gouverné par le domaine du corpus (§3-5)
+et par le protocole de jugement lui-même (§7.1), pas par le volume d'aucun des
+paramètres testés à ce jour (tokens, largeur, époques, capacité).
 
-Dernier levier simple listé comme non testé dans `04_limites_et_perspectives.md`
-("Capacité architecturale de l'extension... non testée dans cette investigation") :
-la capacité (nombre de features, parcimonie) de l'`ExtendedSAE` lui-même, à
-corpus/volume/largeur core IDENTIQUES au run principal
-(`results_v10_emails_main`). Run `results_v12_ablation_capacity_extra` (job 40953) :
-`D_EXTRA` 1024→2048 (×2), `K_EXTRA` 32→64 (×2, ratio K/D=1/32 préservé), SAE_ID=16k
-explicite, `N_FEATURES_TO_LABEL=150`, Pipeline 1 seul (P2 non concerné par ce
-levier).
+### 17.6. Résultat définitif : plausibilité après correction du bug de labels
 
-*[Résultats en cours au moment de la rédaction. Avec cette 3ᵉ ablation isolée
-(largeur, époques, capacité), le stage disposera d'une décomposition à 4 facteurs
-du run v12 combiné (le 4ᵉ étant `N_FEATURES_TO_LABEL`, déjà isolé sans coût GPU au
-§17.2) — la démarche la plus complète menée sur ce projet.]*
+Une fois le bug §17.3 corrigé (labels dérivés de `SAE_ID` au lieu du chemin 16k figé),
+les tests de fidélité et de plausibilité ont été recalculés sur `results_v12_scaled_65k`
+(jobs 40947 fidélité, 40946 plausibilité) :
+
+| Métrique | Run principal (v10, 16k) | Run v12 buggé (16k chargé à tort) | **Run v12 corrigé (65k)** |
+|---|---|---|---|
+| Plausibilité (choix forcé, 60 documents) | 71,7% (43/60) | 56,7% (34/60) | **88,3% (53/60)** |
+| Fidélité (ratio top/random, moyenne 4 intentions) | 250×-576 000× | *(non affecté, cosmétique)* | 251×-32 992× (même ordre de grandeur) |
+
+**La plausibilité progresse réellement et fortement** une fois le bug corrigé
+(71,7%→88,3%, +16,6 points) — contrairement au taux d'interprétabilité odd-one-out
+(§17.5, stable), la plausibilité bénéficie directement d'un catalogue de features
+labellisées beaucoup plus riche pour construire les ensembles "réels" présentés au
+juge (65k core à 87,8% de couverture + 600 features d'extension jugées, contre 16k à
+82,6% + 150 seulement) : la feature réellement la plus active d'un document a
+beaucoup plus de chances de disposer d'un label exploitable, donc d'un ensemble
+"réel" complet et cohérent à opposer au leurre. La fidélité, elle, reste dans le même
+ordre de grandeur (aucune conclusion de changement, les deux mesures restant très
+supérieures au hasard) : cohérent avec le fait qu'elle mesure une propriété causale
+du classifieur indépendante du volume de labels disponibles.

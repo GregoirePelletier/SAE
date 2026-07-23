@@ -744,22 +744,47 @@ largeur 16k**, indépendamment de la largeur réellement utilisée par le run (i
 appartenait en fait à une feature totalement différente du dictionnaire 16k
 (certaines de ces entrées 16k étant elles-mêmes des transcriptions de raisonnement
 non nettoyées côté Neuronpedia, 0,35% du fichier). Corrigé (chemin dérivé de
-`SAE_ID` comme partout ailleurs dans le dépôt) et test recalculé — détail complet et
-chiffre corrigé dans `RESULTS_TESTS.md` §17.3/17.5. Ce bug n'affectait que ce test
-(qui juge directement le texte du label) ; le test de fidélité, qui ablate par index
-et n'utilise le label que pour l'annotation cosmétique des exemples exportés,
-restait numériquement valide.
+`SAE_ID` comme partout ailleurs dans le dépôt) et test recalculé : **88,3% (53/60)**
+une fois corrigé, contre 71,7% sur le run principal — une réelle et forte
+amélioration (+16,6 points), cohérente avec un catalogue de features labellisées
+bien plus riche (65k core à 87,8% de couverture + 600 features d'extension jugées,
+contre 16k à 82,6% + 150 seulement) pour construire l'ensemble "réel" présenté au
+juge. Ce bug n'affectait que ce test (qui juge directement le texte du label) ; le
+test de fidélité, qui ablate par index et n'utilise le label que pour l'annotation
+cosmétique des exemples exportés, restait numériquement valide (recalculé par
+prudence, résultat dans le même ordre de grandeur). Détail complet dans
+`RESULTS_TESTS.md` §17.3/17.6.
 
-### 3.10.4. Décomposition largeur vs époques (ablations isolées)
+### 3.10.4. Décomposition largeur / époques / capacité (ablations isolées)
 
-Deux runs à facteur unique, isolant respectivement la largeur du SAE core et le
-nombre d'époques (toutes choses égales par ailleurs, `N_FEATURES_TO_LABEL=150` dans
-les deux cas), permettent d'attribuer la hausse du §10.1 à sa cause plutôt qu'à leur
-effet combiné — même démarche que l'ablation de volume de tokens du §5 :
+Trois runs à facteur unique, isolant respectivement la largeur du SAE core, le
+nombre d'époques et la capacité de l'extension (`D_EXTRA`/`K_EXTRA`, toutes choses
+égales par ailleurs, `N_FEATURES_TO_LABEL=150` dans les trois cas), permettent
+d'attribuer la hausse du §10.1 à sa cause plutôt qu'à l'effet combiné des quatre
+leviers — même démarche que l'ablation de volume de tokens du §5 :
 
-*[Résultats en cours au moment de la rédaction — `results_v12_ablation_width65k_only`
-et `results_v12_ablation_epochs_only`, cf. `RESULTS_TESTS.md` §17.5 pour le suivi à
-jour et les chiffres définitifs dès la fin de ces deux jobs.]*
+| Run | Largeur | Époques | Capacité extension | Interprétabilité |
+|---|---|---|---|---|
+| Run principal (référence) | 16k | 10/30 | 1024/32 | 45,3% (68/150) |
+| Largeur seule | 65k | 10/30 | 1024/32 | 43,3% (65/150) |
+| Époques seules | 16k | 40/100 | 1024/32 | 41,3% (62/150) |
+| Capacité seule | 16k | 10 | 2048/64 | 40,0% (60/150) |
+| Combiné (tranche rang 1-150, §10.2) | 65k | 40/100 | 1024/32 | 44,0% (66/150) |
+
+Les trois ablations isolées donnent des taux statistiquement indistinguables du run
+principal (écart-type binomial attendu ≈4,1 points à n=150) : **aucun des trois
+leviers pris isolément n'améliore le taux d'interprétabilité odd-one-out**, un
+résultat qui rejoint celui déjà établi pour le volume de tokens (§5.2). La hausse
+observée sur le run combiné (45,3%→53,7%, §10.1) s'explique donc presque entièrement
+par l'effet de composition du §10.2 (les features de rang inférieur sont mieux
+interprétées), pas par une meilleure qualité d'entraînement due à la largeur, aux
+époques ou à la capacité. **Conclusion sur la question posée en tête de ce
+chapitre** : scaler la pipeline améliore réellement la plausibilité de l'explication
+(§10.3) et la richesse du catalogue de features labellisées disponibles, mais pas le
+taux brut d'interprétabilité odd-one-out — celui-ci reste gouverné par le domaine du
+corpus (§3-5) et par le protocole de jugement lui-même (§7.1), pas par le volume
+d'aucun des quatre paramètres d'échelle testés à ce jour (tokens, largeur, époques,
+capacité).
 
 
 \newpage

@@ -90,7 +90,7 @@ PYTHONPATH=. python src/sae/saev5.py
 ```
 
 **Important** : `saev5.py` doit être lancé depuis la **racine du dépôt** (pas depuis
-`src/sae/`), avec `PYTHONPATH=.` — c'est ce que fait `run_sae.slurm`. Le script mélange
+`src/sae/`), avec `PYTHONPATH=.` — c'est ce que fait `slurm/pipeline_runs/run_sae.slurm`. Le script mélange
 volontairement imports absolus (`from src.analysis...`) et imports relatifs "à plat"
 (`from sae_shared import ...`, résolus car le dossier du script est ajouté
 automatiquement à `sys.path`).
@@ -126,11 +126,11 @@ avec un profil `12b` (principal) et un profil `270m` (validation rapide, comment
 ### Choix du SAE GemmaScope-2 (largeur)
 
 Le preset `12b` cible **`layer_24_width_16k_l0_medium`** (16 384 features), pas la
-largeur 262k utilisée historiquement par `run_sae.slurm` : la couverture des labels
+largeur 262k utilisée historiquement par `slurm/pipeline_runs/run_sae.slurm` : la couverture des labels
 Neuronpedia sur `24-gemmascope-2-res-262k` est faible (~10 000 features labellisées sur
 262 144, constaté manuellement), alors que 16k a une couverture bien plus dense en
 proportion (comparable à la couverture ~98% mesurée empiriquement sur `270m`/65k lors de
-la validation locale). `run_sae.slurm` a été mis à jour en conséquence.
+la validation locale). `slurm/pipeline_runs/run_sae.slurm` a été mis à jour en conséquence.
 
 ---
 
@@ -286,6 +286,35 @@ vendorisé — cf. `Context.md`).
 
 ---
 
+## Jobs SLURM et logs
+
+Tous les scripts de soumission (`.slurm`) vivent sous `slurm/`, classés par
+catégorie ; leur sortie (`--output`) est configurée pour atterrir dans le
+sous-dossier `logs/` de même nom — jamais à la racine du dépôt, jamais mélangée
+entre catégories :
+
+| Catégorie | `slurm/<catégorie>/` | `logs/<catégorie>/` | Contenu |
+|---|---|---|---|
+| **pipeline_runs** | runs `saev5.py` (Pipeline 1/2) | idem | run principal, ablations volume/largeur/époques/capacité |
+| **baseline_diffing** | `scripts/baseline_gemmascope.py` | idem | diffing SAE natif originaux vs augmentés (par axe) |
+| **augmentation** | `scripts/run_augmentation.py` | idem | génération des variantes de mails augmentées |
+| **analysis** | tests post-hoc sur activations déjà en cache | idem | robustesse du juge, fidélité/plausibilité, labellisation contrastive, sondes intention/urgence, corrélations, comparaison d'embeddings |
+| **validation** | smoke-tests ad hoc | idem | vérifications ponctuelles (ex. `run_test_massive.slurm`) |
+
+Soumettre un job :
+
+```bash
+sbatch slurm/pipeline_runs/run_sae_v12_scaled.slurm
+squeue -u $USER
+tail -f logs/pipeline_runs/sae_v12_scaled_<jobid>.log
+```
+
+`logs/` est gitignoré (`*.log`) — seuls les scripts `.slurm` eux-mêmes sont
+versionnés. Le suivi chronologique de chaque run (paramètres, durée, résultats) est
+documenté dans `RESULTS_TESTS.md`, pas dans les logs bruts.
+
+---
+
 ## Architecture du code
 
 ```
@@ -317,6 +346,8 @@ src/
   storage/
     fragment_store.py       # Stockage CSR (torch) des activations token-level
     shards.py                # Sharding/mmap d'activations denses
+  visualization/
+    dashboard.py             # Dashboard interactif Streamlit (cf. section Scripts)
 scripts/                   # Points d'entrée secondaires (cf. section Scripts)
 tests/                     # Suite pytest
 external/sae-lens/         # Submodule SAELens (comparaison d'implémentation)
@@ -326,7 +357,19 @@ local_data/
   neuronpedia_labels/      # Cache labels Neuronpedia, partagé par tous les runs
   saes/                    # Poids SAE téléchargés (download_sae.py)
 docs/                      # architecture.md / experiments.md / references.md
-report/                    # Matériel de rapport de stage (état de l'art, résultats...)
+report/                    # Rapport de stage M2 (RAPPORT_DE_STAGE.md + sources)
+slurm/                     # Scripts de soumission SLURM (cf. section suivante)
+  pipeline_runs/            #   Pipeline 1/2 (saev5.py) + ablations volume/largeur/
+                            #   époques/capacité
+  baseline_diffing/         #   baseline_gemmascope.py (diffing SAE natif par axe)
+  augmentation/              #   génération du corpus de mails augmentés
+  analysis/                  #   robustesse juge, fidélité/plausibilité, sondes, etc.
+  validation/                #   smoke-tests ad hoc
+logs/                      # Sorties SLURM (*.log, gitignoré), même arborescence que
+                            #   slurm/ (un sous-dossier logs/<catégorie>/ par
+                            #   sous-dossier slurm/<catégorie>/)
+results_v*/                # Répertoires de résultats par run (gitignorés) — un par
+                            #   expérience nommée, cf. RESULTS_TESTS.md pour l'index
 ```
 
 ---

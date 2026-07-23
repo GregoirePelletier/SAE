@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=120G
 #SBATCH --time=06:00:00
-#SBATCH --output=sae_v10_p2_f2llm330m_%j.log
+#SBATCH --output=logs/pipeline_runs/sae_v10_p2_f2llm330m_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

@@ -34,7 +34,7 @@ quoi la comparer.
 
 | # | Capacité | Commande | Résultat | Comparaison |
 |---|---|---|---|---|
-| 1 | Reconstruction SAE (P1 core+ext, P2) | *(déjà produit)* `run_sae_v10_emails.slurm` | `results_v10_emails_main/results.json` | P1 vs P2 (NMSE/L0/dead%/ρ_SAE/silhouette côte à côte, table "Bilan comparatif") |
+| 1 | Reconstruction SAE (P1 core+ext, P2) | *(déjà produit)* `slurm/pipeline_runs/run_sae_v10_emails.slurm` | `results_v10_emails_main/results.json` | P1 vs P2 (NMSE/L0/dead%/ρ_SAE/silhouette côte à côte, table "Bilan comparatif") |
 | 2 | Cohérence métrique FVE avec SAELens | `scripts/saelens_numeric_comparison.py` | `.../cache/saelens_numeric_comparison.json` | Notre formule vs 2 formules natives sae_lens (§13/`docs/references.md`) |
 | 3 | Labellisation core | *(déjà produit, cache Neuronpedia)* | `p1_top_core_features.json` | vs labellisation extension (juge) — couverture/densité différente par construction |
 | 4 | Labellisation extension (gate odd-one-out) | *(déjà produit)* | `.../cache/p1_judge_labels_extended.json` | vs labellisation contrastive directe (méthode #5) |
@@ -46,8 +46,8 @@ quoi la comparer.
 | 10 | **Plausibilité de l'explication document-level (nouveau)** | `scripts/explanation_plausibility_test.py` (GPU, juge) | `.../cache/explanation_plausibility_results.json` | choix forcé réel vs décoy aléatoire, vs hasard (50%) |
 | 11 | Retrieval par propriétés / clustering ciblé | *(dans results.json, section P1)* — `select_latents_by_similarity` | `p1_diff_energy_sports.csv`, sortie console "Task 3/4" | bge-m3 vs F2LLM vs (ancien) matching substring, §15.1-15.2 |
 | 12 | Corrélations "intéressantes" (NPMI + dissimilarité) | *(dans results.json, section P1)* — `find_interesting_pairs` | `p1_interesting_correlations.json` | vs matrice NPMI brute seule (`p1_npmi.pt`, sans filtre) |
-| 13 | Diffing cross-domaine (SAE natif, mails originaux vs augmentés) | *(déjà produit)* `run_baseline_full_v2.slurm` | `results_v11_baseline_objetfix/cache_baseline_full/diff_*.csv` | avant/après fix biais "Objet :" (§14.1) ; vs diffing energy/sports (P1, générique) |
-| 14 | **Embedding backbone Pipeline 2 : F2LLM-80M vs F2LLM-330M (nouveau)** | `run_sae_v10_p2_f2llm330m.slurm` | `results_v10_p2_f2llm330m/results.json` | comparer NMSE/L0/`clf_acc_email_axes` contre `results_v10_emails_main/results.json` (section P2) |
+| 13 | Diffing cross-domaine (SAE natif, mails originaux vs augmentés) | *(déjà produit)* `slurm/baseline_diffing/run_baseline_full_v2.slurm` | `results_v11_baseline_objetfix/cache_baseline_full/diff_*.csv` | avant/après fix biais "Objet :" (§14.1) ; vs diffing energy/sports (P1, générique) |
+| 14 | **Embedding backbone Pipeline 2 : F2LLM-80M vs F2LLM-330M (nouveau)** | `slurm/pipeline_runs/run_sae_v10_p2_f2llm330m.slurm` | `results_v10_p2_f2llm330m/results.json` | comparer NMSE/L0/`clf_acc_email_axes` contre `results_v10_emails_main/results.json` (section P2) |
 | 15 | Retrieval BM25 sur vocabulaire latent (Latent Terms) | `scripts/retrieval_demo.py` / `src/sae/retrieval/latent_terms.py --mails ...` | résultats console | non comparé formellement à ce jour à `select_latents_by_similarity` (piste de suite) |
 | 16 | Robustesse au biais de formatage du corpus augmenté | *(déjà produit)* fix `load_augmented` + rerun #13 | cf. §14.1 | avant/après, par axe/niveau |
 

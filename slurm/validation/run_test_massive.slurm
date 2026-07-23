@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=60G
 #SBATCH --time=00:30:00
-#SBATCH --output=logs/test_massive_%j.log
+#SBATCH --output=logs/validation/test_massive_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

@@ -64,7 +64,7 @@ n'existent pas.
 
 **Gemma-3-12B-it** + GemmaScope-2 (`layer_24_width_16k_l0_medium`, residual stream) est
 la cible principale (`MODEL_SIZE=12b`, défaut de `src/config.py`). Largeur **16k** choisie
-plutôt que la 262k utilisée historiquement par `run_sae.slurm` : la couverture des labels
+plutôt que la 262k utilisée historiquement par `slurm/pipeline_runs/run_sae.slurm` : la couverture des labels
 Neuronpedia sur `24-gemmascope-2-res-262k` est faible (~10 000 features labellisées sur
 262 144, constaté manuellement) ; 16k est bien plus dense en proportion.
 

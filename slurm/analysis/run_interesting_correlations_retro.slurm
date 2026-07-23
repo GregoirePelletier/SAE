@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --time=00:20:00
-#SBATCH --output=retro_corr_%j.log
+#SBATCH --output=logs/analysis/retro_corr_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

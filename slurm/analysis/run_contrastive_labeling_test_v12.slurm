@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=08:00:00
-#SBATCH --output=contrastive_labeling_v12_%j.log
+#SBATCH --output=logs/analysis/contrastive_labeling_v12_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

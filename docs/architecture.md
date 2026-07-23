@@ -97,9 +97,9 @@ chacune) n'a pas d'accès réseau direct sur les nœuds de calcul (`HF_HUB_OFFLI
 systématique dans les scripts `.slurm`, `.venv/bin/python` plutôt que `uv run` qui
 tenterait de re-résoudre l'environnement). Scripts principaux :
 
-- `run_sae.slurm` : smoketest volumes réduits (référence stable, ne pas modifier).
-- `run_sae_full.slurm` : run à l'échelle complète, corpus historique (pré-v10).
-- `run_sae_v10_emails.slurm` / `run_sae_v10_ablation_tok{100k,2M}.slurm` : runs de
+- `slurm/pipeline_runs/run_sae.slurm` : smoketest volumes réduits (référence stable, ne pas modifier).
+- `slurm/pipeline_runs/run_sae_full.slurm` : run à l'échelle complète, corpus historique (pré-v10).
+- `slurm/pipeline_runs/run_sae_v10_emails.slurm` / `slurm/pipeline_runs/run_sae_v10_ablation_tok{100k,2M}.slurm` : runs de
   validation du corpus emails-dominant (cf. `docs/experiments.md`).
-- `run_augmentation(_full).slurm`, `run_baseline(_full).slurm` : génération du corpus
+- `slurm/augmentation/run_augmentation(_full).slurm`, `slurm/baseline_diffing/run_baseline(_full).slurm` : génération du corpus
   augmenté et baseline SAE natif originaux-vs-augmentés.

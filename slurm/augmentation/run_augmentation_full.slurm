@@ -7,7 +7,7 @@
 #SBATCH --mem=64G
 #SBATCH --time=10:00:00
 #SBATCH --array=0-7
-#SBATCH --output=logs/augmentation_full_%A_%a.log
+#SBATCH --output=logs/augmentation/augmentation_full_%A_%a.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -32,7 +32,7 @@ export SAVE_DIR="./local_data/emails/"
 # séquentielles. Chaque tâche de l'array traite 1/8 des mails (découpage entrelacé
 # df.iloc[idx::8], cf. scripts/run_augmentation.py) et écrit
 # local_data/emails/augmented_mails_shard{idx}of8.jsonl -- à fusionner avec
-# merge_augmentation_shards.sh une fois les 8 tâches terminées.
+# slurm/augmentation/merge_augmentation_shards.sh une fois les 8 tâches terminées.
 export AUGMENT_NUM_SHARDS=8
 export AUGMENT_SHARD_IDX=$SLURM_ARRAY_TASK_ID
 export AUGMENT_OUT_NAME="augmented_mails.jsonl"

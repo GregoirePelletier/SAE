@@ -9,7 +9,7 @@ dans `RESULTS_TESTS.md` — ce document y renvoie systématiquement.
 **Oui**, validé à deux échelles :
 - Smoketest local (`Gemma-3-270M-it`, 6 Go VRAM) — cf. `Context.md` "Validation
   empirique". 8/8 tests `pytest` passants.
-- Échelle complète (`Gemma-3-12B-it`, cluster GPU) — `run_sae.slurm`/`run_sae_full.slurm`,
+- Échelle complète (`Gemma-3-12B-it`, cluster GPU) — `slurm/pipeline_runs/run_sae.slurm`/`slurm/pipeline_runs/run_sae_full.slurm`,
   cf. `RESULTS_TESTS.md` §2, §10.
 
 ## 2. Le corpus complet peut-il être augmenté et traité dans un budget de calcul raisonnable ?
