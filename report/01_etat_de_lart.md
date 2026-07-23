@@ -121,8 +121,11 @@ utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
 apprentissage de features significatives, ou un décodeur figé à l'initialisation
 obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sanity
 check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
-`src/sae/frozen_core.py`) — méthode et résultats détaillés en
-`RESULTS_TESTS.md` §19.
+`src/sae/frozen_core.py`) — résultat **nuancé** : l'interprétabilité odd-one-out
+résiste bien (45,3% entraîné vs 29,3% décodeur figé aléatoire, écart significatif)
+mais la classification en aval y résiste beaucoup moins (93,5% vs 91,2%),
+répliquant partiellement le constat du papier. Méthode et résultats détaillés en
+`RESULTS_TESTS.md` §19, `report/03_experiences_et_resultats.md` §11.
 
 ## Taxonomie des méthodes d'explication et d'évaluation
 

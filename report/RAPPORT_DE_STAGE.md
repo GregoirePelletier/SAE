@@ -314,8 +314,11 @@ utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
 apprentissage de features significatives, ou un décodeur figé à l'initialisation
 obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sanity
 check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
-`src/sae/frozen_core.py`) — méthode et résultats détaillés en
-`RESULTS_TESTS.md` §19.
+`src/sae/frozen_core.py`) — résultat **nuancé** : l'interprétabilité odd-one-out
+résiste bien (45,3% entraîné vs 29,3% décodeur figé aléatoire, écart significatif)
+mais la classification en aval y résiste beaucoup moins (93,5% vs 91,2%),
+répliquant partiellement le constat du papier. Méthode et résultats détaillés en
+`RESULTS_TESTS.md` §19, `report/03_experiences_et_resultats.md` §11.
 
 ## Taxonomie des méthodes d'explication et d'évaluation
 
@@ -843,6 +846,41 @@ corpus (§3-5) et par le protocole de jugement lui-même (§7.1), pas par le vol
 d'aucun des quatre paramètres d'échelle testés à ce jour (tokens, largeur, époques,
 capacité).
 
+## 3.11. Sanity check : le protocole d'évaluation distingue-t-il un SAE entraîné d'un décodeur aléatoire ?
+
+Question posée par la lecture critique de Korznikov et al. (2026, *Sanity Checks
+for Sparse Autoencoders*, chapitre 1) : leurs résultats montrent qu'un SAE dont le
+décodeur est figé à une initialisation aléatoire (jamais entraîné) égale un SAE
+réellement entraîné sur interprétabilité automatique, sparse probing et édition
+causale — remettant en cause la validité de ces métriques comme preuve d'un
+apprentissage de features significatif. Reproduit sur ce projet
+(`FrozenDecoderExtendedSAE`, `src/sae/frozen_core.py`) : même conditions que le run
+principal (16k, 150 features jugées, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`),
+seul le décodeur de l'extension reste figé aléatoire (`requires_grad_(False)`),
+l'encodeur s'entraîne normalement.
+
+| Métrique | Run principal (décodeur entraîné) | Frozen Decoder (décodeur figé) | Écart (significativité) |
+|---|---|---|---|
+| Interprétabilité odd-one-out | 45,3% (68/150) | 29,3% (44/150) | −16,0 points (z=2,91, p<0,01) |
+| Classification en aval (14 classes) | 93,5% | 91,2% | −2,3 points (z=2,86, p<0,01) |
+
+**Résultat nuancé** : sur l'interprétabilité odd-one-out, l'écart est net et
+statistiquement solide — contrairement au résultat du papier, notre protocole
+distingue clairement un décodeur entraîné d'un décodeur aléatoire. Mais sur la
+classification en aval, l'écart est réel tout en restant faible en proportion du
+signal total : un décodeur purement aléatoire capture déjà 91,2% de précision, la
+quasi-totalité de ce qu'atteint le décodeur entraîné (93,5%) — ce volet réplique
+largement le constat du papier sur le sparse probing. **Conséquence pour la lecture
+des résultats de ce rapport** : le taux d'interprétabilité odd-one-out (§3-10) reste
+une preuve solide d'apprentissage de features significatives ; la sonde de
+classification en aval (§5.4), en revanche, doit être lue avec prudence — un score
+élevé ne suffit pas à lui seul à prouver un apprentissage réel, une fraction
+substantielle du signal étant déjà disponible avec un décodeur aléatoire de taille
+comparable. Les tests de fidélité et de plausibilité (§8), de nature causale
+différente (ablation directe des features, jugement humain-like sur le document
+entier), ne sont pas concernés par cette réserve. Détail complet et calculs de
+significativité : `RESULTS_TESTS.md` §19.
+
 
 \newpage
 
@@ -1289,12 +1327,16 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
     full fine-tuning) sur le corpus emails.
 13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
-    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`). Reste à faire selon le
-    résultat obtenu : si la baseline égale le run principal, envisager les métriques
-    plus exigeantes du papier (AutoInterp par description+détection sur échantillon
-    non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
-    sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
-    testé contre un décodeur figé).
+    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`) — résultat **nuancé** :
+    l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé
+    aléatoire, écart significatif) mais la classification en aval y résiste beaucoup
+    moins (93,5% vs 91,2% — un décodeur aléatoire capture déjà la quasi-totalité du
+    signal), répliquant partiellement le constat du papier sur le sparse probing.
+    Reste à faire : étendre le sanity check au Pipeline 2 (`PhraseLevelSAE`,
+    entraîné from-scratch, jamais testé contre un décodeur figé) ; envisager les
+    métriques plus exigeantes du papier (AutoInterp par description+détection sur
+    échantillon non vu, sparse probing SAEBench) en remplacement de la sonde de
+    classification actuelle, dont ce sanity check a montré la faible sensibilité.
 14. Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*, Bussmann et al. 2025)
     pour l'extension P1, comme piste alternative à l'ablation capacité simple
     (`D_EXTRA`/`K_EXTRA`, déjà testée sans effet) pour expliquer/réduire le résidu

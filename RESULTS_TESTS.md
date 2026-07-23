@@ -1215,13 +1215,52 @@ IDENTIQUES au run principal (`results_v10_emails_main` — SAE_ID=16k,
 corpus), seule la classe change (`FrozenDecoderExtendedSAE` au lieu
 d'`ExtendedSAE`) — comparaison à facteur unique directe.
 
-*[Résultats en cours au moment de la rédaction. Si le taux d'interprétabilité
-odd-one-out et la précision de la sonde de classification de cette baseline à
-décodeur figé s'avèrent proches du run principal (45,3% / 93,5%), cela
-remettrait en cause la validité de notre protocole d'évaluation exactement comme
-le montre le papier pour AutoInterp/sparse probing/RAVEL -- un résultat qui,
-bien que négatif pour la méthode, aurait une grande valeur scientifique pour le
-rapport de stage. Cette section sera complétée dès la fin du job.]*
+### 19.2. Résultat (job 41082, COMPLETED)
+
+| Métrique | Run principal (`ExtendedSAE`, décodeur entraîné) | Frozen Decoder (décodeur figé aléatoire) | Écart | Significativité |
+|---|---|---|---|---|
+| Interprétabilité odd-one-out (n=150) | 45,3% (68/150) | **29,3%** (44/150) | −16,0 points | z=2,91 (p<0,01) |
+| `clf_acc_email_axes` (14 classes, n=2177 test) | 93,5% | **91,2%** | −2,3 points | z=2,86 (p<0,01) |
+| Features mortes (extension) | 0 | 0 | — | — |
+
+**Lecture — résultat nuancé, ni réplication à l'identique du papier, ni réfutation
+complète** :
+
+- **Interprétabilité odd-one-out : écart réel et substantiel** (16 points, très
+  au-delà de l'écart-type binomial ≈4,1pt à n=150, z=2,91). Contrairement au
+  résultat du papier (leur baseline "Frozen Decoder" égalait leur SAE entraîné sur
+  AutoInterp, 0,87 vs 0,90), **notre protocole odd-one-out distingue clairement un
+  décodeur entraîné d'un décodeur aléatoire** sur ce projet -- un signal rassurant
+  que l'entraînement de `ExtendedSAE` apprend une structure réelle, pas seulement un
+  ajustement de l'encodeur à des directions arbitraires. Le décodeur figé reste
+  cependant loin d'être inerte (29,3%, bien au-dessus d'un score nul), signe que la
+  seule diversité de 1024 directions aléatoires suffit à produire un nombre non
+  négligeable de "features" fortuitement monosémantiques par pur volume
+  combinatoire -- cohérent avec l'argument du papier sur le rôle du hasard à grande
+  échelle, mais ne suffisant pas à expliquer tout le taux mesuré.
+- **Classification en aval : écart réel mais faible en proportion du signal total**
+  (2,3 points, statistiquement significatif à n=2177 mais très petit dans l'absolu).
+  **Ce volet réplique largement le constat du papier pour le sparse probing** : un
+  décodeur aléatoire de 1024 directions capture déjà 91,2% de précision de
+  classification -- la quasi-totalité du signal exploité par la sonde en aval ne
+  dépend donc pas d'un apprentissage réel du décodeur, seuls les 2,3 derniers points
+  y sont attribuables. Cohérent avec l'hypothèse du papier : à haute dimension, un
+  nombre suffisant de directions aléatoires corrèle déjà avec la plupart des
+  concepts par hasard, rendant le sparse probing peu discriminant pour juger de la
+  qualité d'un SAE.
+
+**Conclusion retenue pour ce projet** : le protocole d'auto-interprétation
+odd-one-out (métrique centrale du chapitre 3) résiste bien au sanity check --
+l'écart avec un décodeur aléatoire est net et significatif. La sonde de
+classification en aval (`clf_acc_sae`/`clf_acc_email_axes`), en revanche, doit être
+interprétée avec prudence : un score élevé n'est qu'une preuve faible d'un
+apprentissage de features réellement significatif, la majorité du signal étant déjà
+disponible avec un décodeur aléatoire de taille comparable. Ceci nuance
+(sans l'invalider) le résultat de séparabilité linéaire du chapitre 3 §5.4 (93,5%
+Pipeline 1) : la valeur ajoutée de l'entraînement pour CETTE métrique spécifique est
+modeste, même si les métriques d'auto-interprétation et de fidélité/plausibilité
+(chapitre 3 §8, non retestées ici mais causales par construction) restent, elles,
+des preuves plus solides de features significatives.
 
 ## 20. Erreur de nettoyage disque : suppression d'un lien symbolique confondu avec un doublon
 

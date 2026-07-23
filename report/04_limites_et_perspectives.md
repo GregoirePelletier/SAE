@@ -294,12 +294,16 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
     full fine-tuning) sur le corpus emails.
 13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
-    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`). Reste à faire selon le
-    résultat obtenu : si la baseline égale le run principal, envisager les métriques
-    plus exigeantes du papier (AutoInterp par description+détection sur échantillon
-    non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
-    sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
-    testé contre un décodeur figé).
+    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`) — résultat **nuancé** :
+    l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé
+    aléatoire, écart significatif) mais la classification en aval y résiste beaucoup
+    moins (93,5% vs 91,2% — un décodeur aléatoire capture déjà la quasi-totalité du
+    signal), répliquant partiellement le constat du papier sur le sparse probing.
+    Reste à faire : étendre le sanity check au Pipeline 2 (`PhraseLevelSAE`,
+    entraîné from-scratch, jamais testé contre un décodeur figé) ; envisager les
+    métriques plus exigeantes du papier (AutoInterp par description+détection sur
+    échantillon non vu, sparse probing SAEBench) en remplacement de la sonde de
+    classification actuelle, dont ce sanity check a montré la faible sensibilité.
 14. Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*, Bussmann et al. 2025)
     pour l'extension P1, comme piste alternative à l'ablation capacité simple
     (`D_EXTRA`/`K_EXTRA`, déjà testée sans effet) pour expliquer/réduire le résidu
