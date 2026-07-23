@@ -70,8 +70,33 @@ par une seule dimension outlier et rapporte une variance quasi-totalement expliq
 sans rapport avec la qualité de reconstruction réelle. Recommandation retenue : ne
 jamais publier un score de variance expliquée sans préciser la formule exacte utilisée
 sur ce modèle. La comparaison avec `interp_embed` reste partielle (test optionnel
-dépendant d'une installation non faite par défaut), et aucune comparaison avec
-"SAE Boost" n'a été entreprise (implémentation officielle non identifiée à date).
+dépendant d'une installation non faite par défaut).
+
+**Mise à jour (identifié, session pdf/)** : "SAE Boost" (Koriagin et al., COLM 2025)
+n'était pas "non fait" mais déjà implémenté sans le savoir --
+`FrozenCoreResidualSAE`/`ExtendedSAE` EST une implémentation de SAE Boost (même
+architecture : SAE résiduel sur l'erreur de reconstruction d'un core gelé, sommé à
+l'inférence). Deux écarts identifiés par la relecture du papier restent à tester :
+(1) leur étude de sensibilité montre qu'un `K_EXTRA` plus faible (k=5 optimal chez
+eux, contre 32 dans ce projet) améliore l'interprétabilité au prix d'un peu d'EV
+domaine -- non testé ; (2) leur étude montre qu'un budget de 100-200M tokens est
+nécessaire pour que le SAE résiduel converge sans dégrader la performance générale
+(jusqu'à -31% d'EV en dessous de 100M) -- notre ablation volume (100k-2M tokens)
+reste 50-100x en dessous de ce seuil, donc **notre conclusion "le volume ne change
+rien" n'est établie que dans un régime que leur étude qualifie d'insuffisant** ;
+elle ne peut pas être extrapolée sans un run à cette échelle, non lancé dans ce
+stage (coût GPU substantiel). Aucune comparaison chiffrée avec leurs baselines
+alternatives (Extended SAE random/most-active init, SAE Stitching, full
+fine-tuning) n'a été menée sur ce projet. Détail complet : `RESULTS_TESTS.md` §18.
+
+**Mise à jour (nouveau, testé, session pdf/)** : une question plus fondamentale a été
+posée par *Sanity Checks for Sparse Autoencoders* (Korznikov et al., 2026) --
+un SAE dont le décodeur est figé à une initialisation aléatoire (jamais entraîné)
+égale, dans leur étude, un SAE réellement entraîné sur interprétabilité automatique,
+sparse probing et édition causale. Reproduit sur ce projet
+(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf. `RESULTS_TESTS.md`
+§19 pour le protocole et le résultat (en cours au moment de la rédaction de cette
+version du rapport).
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -217,3 +242,17 @@ investigation.
     onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette
     passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
     conditions envisagée par l'utilisateur peut être considérée en suite de stage.
+12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
+    (`RESULTS_TESTS.md` §18). Reste à faire : tester un `K_EXTRA` plus faible (proche
+    de leur k=5 optimal) et, si le budget GPU le permet, un run à 100-200M tokens
+    d'entraînement de l'extension pour vérifier si leur seuil de convergence
+    s'applique à ce projet (notre ablation actuelle reste 50-100x en dessous) ;
+    comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
+    full fine-tuning) sur le corpus emails.
+13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
+    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`). Reste à faire selon le
+    résultat obtenu : si la baseline égale le run principal, envisager les métriques
+    plus exigeantes du papier (AutoInterp par description+détection sur échantillon
+    non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
+    sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
+    testé contre un décodeur figé).

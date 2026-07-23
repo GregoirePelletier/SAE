@@ -1118,3 +1118,107 @@ beaucoup plus de chances de disposer d'un label exploitable, donc d'un ensemble
 ordre de grandeur (aucune conclusion de changement, les deux mesures restant très
 supérieures au hasard) : cohérent avec le fait qu'elle mesure une propriété causale
 du classifieur indépendante du volume de labels disponibles.
+
+## 18. Relecture littérature (session pdf/) : `FrozenCoreResidualSAE` est une implémentation de SAE Boost
+
+Lecture de `pdf/teacholdsaes.pdf` (*Teach Old SAEs New Domain Tricks with Boosting*,
+Koriagin et al., COLM 2025) — quasi certainement la référence "SAE Boost" du cadrage
+initial du stage (`Context.md`, objectif n°4, marquée "non fait" dans
+`docs/references.md` depuis le début du stage).
+
+### 18.1. Constat : architecture identique, jamais identifiée comme telle
+
+Leur méthode ("SAE Boost") : un SAE secondaire, entraîné à reconstruire le résidu
+`e = x - x̂` d'un SAE core **gelé**, sommé au SAE core à l'inférence
+(`x ≈ x̂ + ê`). C'est exactement `FrozenCoreResidualSAE`/`ExtendedSAE`
+(`src/sae/frozen_core.py`) : `core_sae` gelé (`requires_grad_(False)`), branche
+"extra" entraînée sur `residual = x - core_out`, sortie `core_out + extra_out`.
+Coïncidence notable : leur dictionnaire résiduel fait 1024 features dans toutes
+leurs expériences — exactement notre `D_EXTRA` par défaut. Le projet a donc, sans
+le savoir/le documenter, déjà implémenté et validé à l'échelle la méthode listée
+comme objectif optionnel du cadrage initial. Corrigé dans `docs/references.md`
+et `report/01_etat_de_lart.md`.
+
+### 18.2. Écart de sensibilité `K_EXTRA` (top-k du résiduel)
+
+Leur étude de sensibilité (Table 12 du papier) teste top-k ∈ {5, 10, 20, 50} pour
+le SAE résiduel : k=5 est retenu comme meilleur compromis interprétabilité/EV
+domaine (k plus élevé améliore légèrement l'EV domaine mais dégrade la parcimonie/
+interprétabilité). Notre `K_EXTRA` par défaut est **32**, jamais testé en dessous
+de cette valeur (notre ablation capacité, §17.5, a testé K_EXTRA=64, dans la
+direction opposée). Piste non testée à ce jour : un `K_EXTRA` plus faible
+(5-10) pourrait améliorer le taux d'interprétabilité odd-one-out à budget
+d'entraînement égal.
+
+### 18.3. Écart critique : budget de tokens du SAE résiduel
+
+Leur Figure 4 montre qu'un SAE résiduel entraîné sur **moins de 100M tokens**
+dégrade la performance en domaine général de jusqu'à **-31% d'EV** ; la
+convergence sans dégradation nécessite de dépasser ~200M tokens. Notre ablation de
+volume (§5.2/§12, `N_TOKENS_EXTRA_TRAIN` ∈ {100k, 500k, 2M}) reste **50 à 100 fois**
+en dessous de ce seuil. La conclusion tirée dans ce projet ("le volume de tokens ne
+change rien au-delà de 100k, une fois le domaine corrigé") est donc établie
+uniquement dans un régime que leur étude qualifie explicitement d'insuffisant pour
+observer un effet de convergence — **elle ne peut pas être extrapolée** au régime
+100M-200M sans le tester directement. Aucun run à ce volume n'a été lancé dans ce
+stage (coût GPU largement supérieur aux runs existants : leur budget est calibré
+sur un unique domaine à la fois, quand ce projet réextrait aussi les activations
+Gemma-3-12B à chaque configuration). Reste une limite explicitement documentée
+(`report/04_limites_et_perspectives.md`) plutôt qu'un résultat.
+
+### 18.4. Baselines alternatives jamais comparées
+
+Le papier compare SAE Boost à quatre alternatives de domain adaptation :
+Extended SAE (init sur features les plus actives), Extended SAE (init aléatoire),
+SAE Stitching (fine-tuning complet + greffe des features les plus changées), et
+full fine-tuning. Leurs résultats : SAE Boost (= notre architecture) offre le
+meilleur compromis performance domaine/généraliste ; le fine-tuning complet
+souffre d'oubli catastrophique (EV générale -28% à -36% selon le domaine) ; les
+approches "Extended SAE" sont compétitives mais moins efficientes en parcimonie.
+Ce projet n'a jamais comparé son choix architectural (`FrozenCoreResidualSAE`) à
+ces alternatives plus simples sur SON corpus — le choix a toujours reposé sur la
+littérature générale (Context.md, règle n°3 : "Conserver FrozenCoreResidualSAE"),
+jamais sur un test empirique comparatif propre à ce projet. Piste de poursuite.
+
+## 19. Sanity check (Korznikov et al. 2026) : le taux d'interprétabilité bat-il un décodeur aléatoire ?
+
+Lecture de `pdf/sanitychecks.pdf` (*Sanity Checks for Sparse Autoencoders: Do SAEs
+Beat Random Baselines?*, Korznikov et al., 2026, preprint). Résultat central du
+papier : sur des SAE conventionnels (BatchTopK, JumpReLU, ReLU), une baseline
+**"Frozen Decoder"** (décodeur figé à une initialisation aléatoire, jamais
+entraîné — seul l'encodeur apprend à projeter sur ces directions fixes) égale un
+SAE réellement entraîné sur interprétabilité automatique (AutoInterp, 0,87 vs
+0,90), sparse probing (0,69 vs 0,72) et édition causale RAVEL (0,73 vs 0,72).
+Leur conclusion : ces métriques, prises isolément, ne suffisent pas à prouver
+qu'un SAE a appris une décomposition en features réellement significative — un
+ajustement de l'encodeur seul à des directions arbitraires peut produire les
+mêmes scores.
+
+### 19.1. Protocole appliqué à ce projet
+
+Nouvelle classe `FrozenDecoderExtendedSAE` (`src/sae/frozen_core.py`), sous-classe
+DIRECTE de `FrozenCoreResidualSAE` (pas d'`ExtendedSAE`, dont l'initialisation PCA
+sur le résidu serait déjà informée par les données — le test doit partir d'un
+décodeur purement aléatoire, fidèle à leur protocole) : `W_dec_extra.requires_grad_
+(False)` + `normalize_decoder()` neutralisée (no-op, pour éviter toute dérive
+flottante cumulative du décodeur "figé" sur des milliers de pas -- vérifié par un
+test unitaire dédié, `tests/test_frozen_core.py::test_frozen_decoder_stays_frozen_during_training`,
+qui entraîne 5 pas et vérifie `W_dec_extra` bit-à-bit inchangé tandis que
+`W_enc_extra` bouge normalement). Sélectionnable via
+`SANITY_CHECK_FROZEN_DECODER=1` (`src/config.py`), sans toucher au pipeline de
+production (défaut `0`).
+
+Run `results_v12_sanity_frozen_decoder` (job 41060,
+`slurm/analysis/run_sanity_check_frozen_decoder.slurm`) : toutes conditions
+IDENTIQUES au run principal (`results_v10_emails_main` — SAE_ID=16k,
+`N_FEATURES_TO_LABEL=150`, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`, même
+corpus), seule la classe change (`FrozenDecoderExtendedSAE` au lieu
+d'`ExtendedSAE`) — comparaison à facteur unique directe.
+
+*[Résultats en cours au moment de la rédaction. Si le taux d'interprétabilité
+odd-one-out et la précision de la sonde de classification de cette baseline à
+décodeur figé s'avèrent proches du run principal (45,3% / 93,5%), cela
+remettrait en cause la validité de notre protocole d'évaluation exactement comme
+le montre le papier pour AutoInterp/sparse probing/RAVEL -- un résultat qui,
+bien que négatif pour la méthode, aurait une grande valeur scientifique pour le
+rapport de stage. Cette section sera complétée dès la fin du job.]*

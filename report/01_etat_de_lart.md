@@ -83,6 +83,43 @@ l'autre :
   nettement inférieur et une granularité différente (phrase plutôt que token).
 
 Cette architecture à deux niveaux (SAE généraliste + extension spécifique au domaine)
-est l'apport spécifique du projet par rapport à un usage "out of the box" de
-GemmaScope ou de SAELens ; elle est documentée comme telle dans `Context.md` (règle
-n°3 : "Conserver `FrozenCoreResidualSAE` — spécifique au projet").
+a longtemps été documentée dans ce projet comme un apport spécifique par rapport à un
+usage "out of the box" de GemmaScope ou de SAELens (`Context.md`, règle n°3 :
+"Conserver `FrozenCoreResidualSAE` — spécifique au projet"). Une relecture tardive de
+la littérature de référence a établi qu'il s'agit en réalité d'une implémentation de
+**SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs New Domain Tricks with
+Boosting*) — une des quatre méthodes explicitement listées dans le cadrage initial du
+stage (`Context.md`, objectif n°4), marquée "non fait" dans `docs/references.md`
+depuis le début : le projet l'avait en réalité déjà implémentée et validée à
+l'échelle, sans jamais l'identifier ni la citer comme telle. `FrozenCoreResidualSAE`/
+`ExtendedSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
+résiduel entraîné sur l'erreur de reconstruction `e = x - x̂` d'un SAE core gelé,
+sommé à l'inférence) — y compris la taille de dictionnaire résiduel (1024), identique
+dans les deux cas sans que ce ne soit délibéré. Détail complet de la comparaison
+(écarts de sensibilité `K_EXTRA`, budget de tokens nécessaire, baselines
+alternatives jamais testées) : `RESULTS_TESTS.md` §18.
+
+## Perspectives critiques : les SAE apprennent-ils réellement des features signifiantes ?
+
+Une partie de la littérature récente questionne directement la prémisse sur laquelle
+repose ce projet. *Sanity Checks for Sparse Autoencoders: Do SAEs Beat Random
+Baselines?* (Korznikov et al., 2026) montre que des SAE dont des composants clés
+(en particulier le décodeur) sont **figés à une initialisation aléatoire, jamais
+entraînés**, égalent des SAE réellement entraînés sur les métriques standard du
+domaine : interprétabilité automatique, sparse probing, et édition causale (RAVEL).
+Sur un cas synthétique à vérité terrain connue, ils montrent également qu'un SAE peut
+atteindre une variance expliquée élevée (71%) tout en ne recouvrant que 9% des
+véritables features génératrices. Leur conclusion : la reconstruction et
+l'interprétabilité mesurées isolément ne suffisent pas à prouver qu'un SAE a appris
+une décomposition en features réellement significative plutôt qu'un simple ajustement
+de l'encodeur à des directions arbitraires.
+
+Ce résultat interroge directement le protocole d'auto-interprétation odd-one-out
+utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
+(`clf_acc_sae`, `03_experiences_et_resultats.md` §5.4) : nos taux mesurés
+(45,3% d'interprétabilité, >90% de classification) sont-ils réellement dus à un
+apprentissage de features significatives, ou un décodeur figé à l'initialisation
+obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sanity
+check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
+`src/sae/frozen_core.py`) — méthode et résultats détaillés en
+`RESULTS_TESTS.md` §19.

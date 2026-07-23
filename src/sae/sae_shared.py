@@ -68,9 +68,9 @@ except ImportError:
     )
 
 try:
-    from src.sae.frozen_core import ExtendedSAE, FrozenCoreResidualSAE
+    from src.sae.frozen_core import ExtendedSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
 except ImportError:
-    from frozen_core import ExtendedSAE, FrozenCoreResidualSAE
+    from frozen_core import ExtendedSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
 
 try:
     from src.sae.phrase_sae import (

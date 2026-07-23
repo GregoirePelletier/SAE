@@ -271,9 +271,46 @@ l'autre :
   nettement inférieur et une granularité différente (phrase plutôt que token).
 
 Cette architecture à deux niveaux (SAE généraliste + extension spécifique au domaine)
-est l'apport spécifique du projet par rapport à un usage "out of the box" de
-GemmaScope ou de SAELens ; elle est documentée comme telle dans `Context.md` (règle
-n°3 : "Conserver `FrozenCoreResidualSAE` — spécifique au projet").
+a longtemps été documentée dans ce projet comme un apport spécifique par rapport à un
+usage "out of the box" de GemmaScope ou de SAELens (`Context.md`, règle n°3 :
+"Conserver `FrozenCoreResidualSAE` — spécifique au projet"). Une relecture tardive de
+la littérature de référence a établi qu'il s'agit en réalité d'une implémentation de
+**SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs New Domain Tricks with
+Boosting*) — une des quatre méthodes explicitement listées dans le cadrage initial du
+stage (`Context.md`, objectif n°4), marquée "non fait" dans `docs/references.md`
+depuis le début : le projet l'avait en réalité déjà implémentée et validée à
+l'échelle, sans jamais l'identifier ni la citer comme telle. `FrozenCoreResidualSAE`/
+`ExtendedSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
+résiduel entraîné sur l'erreur de reconstruction `e = x - x̂` d'un SAE core gelé,
+sommé à l'inférence) — y compris la taille de dictionnaire résiduel (1024), identique
+dans les deux cas sans que ce ne soit délibéré. Détail complet de la comparaison
+(écarts de sensibilité `K_EXTRA`, budget de tokens nécessaire, baselines
+alternatives jamais testées) : `RESULTS_TESTS.md` §18.
+
+## Perspectives critiques : les SAE apprennent-ils réellement des features signifiantes ?
+
+Une partie de la littérature récente questionne directement la prémisse sur laquelle
+repose ce projet. *Sanity Checks for Sparse Autoencoders: Do SAEs Beat Random
+Baselines?* (Korznikov et al., 2026) montre que des SAE dont des composants clés
+(en particulier le décodeur) sont **figés à une initialisation aléatoire, jamais
+entraînés**, égalent des SAE réellement entraînés sur les métriques standard du
+domaine : interprétabilité automatique, sparse probing, et édition causale (RAVEL).
+Sur un cas synthétique à vérité terrain connue, ils montrent également qu'un SAE peut
+atteindre une variance expliquée élevée (71%) tout en ne recouvrant que 9% des
+véritables features génératrices. Leur conclusion : la reconstruction et
+l'interprétabilité mesurées isolément ne suffisent pas à prouver qu'un SAE a appris
+une décomposition en features réellement significative plutôt qu'un simple ajustement
+de l'encodeur à des directions arbitraires.
+
+Ce résultat interroge directement le protocole d'auto-interprétation odd-one-out
+utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
+(`clf_acc_sae`, `03_experiences_et_resultats.md` §5.4) : nos taux mesurés
+(45,3% d'interprétabilité, >90% de classification) sont-ils réellement dus à un
+apprentissage de features significatives, ou un décodeur figé à l'initialisation
+obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sanity
+check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
+`src/sae/frozen_core.py`) — méthode et résultats détaillés en
+`RESULTS_TESTS.md` §19.
 
 
 \newpage
@@ -996,8 +1033,33 @@ par une seule dimension outlier et rapporte une variance quasi-totalement expliq
 sans rapport avec la qualité de reconstruction réelle. Recommandation retenue : ne
 jamais publier un score de variance expliquée sans préciser la formule exacte utilisée
 sur ce modèle. La comparaison avec `interp_embed` reste partielle (test optionnel
-dépendant d'une installation non faite par défaut), et aucune comparaison avec
-"SAE Boost" n'a été entreprise (implémentation officielle non identifiée à date).
+dépendant d'une installation non faite par défaut).
+
+**Mise à jour (identifié, session pdf/)** : "SAE Boost" (Koriagin et al., COLM 2025)
+n'était pas "non fait" mais déjà implémenté sans le savoir --
+`FrozenCoreResidualSAE`/`ExtendedSAE` EST une implémentation de SAE Boost (même
+architecture : SAE résiduel sur l'erreur de reconstruction d'un core gelé, sommé à
+l'inférence). Deux écarts identifiés par la relecture du papier restent à tester :
+(1) leur étude de sensibilité montre qu'un `K_EXTRA` plus faible (k=5 optimal chez
+eux, contre 32 dans ce projet) améliore l'interprétabilité au prix d'un peu d'EV
+domaine -- non testé ; (2) leur étude montre qu'un budget de 100-200M tokens est
+nécessaire pour que le SAE résiduel converge sans dégrader la performance générale
+(jusqu'à -31% d'EV en dessous de 100M) -- notre ablation volume (100k-2M tokens)
+reste 50-100x en dessous de ce seuil, donc **notre conclusion "le volume ne change
+rien" n'est établie que dans un régime que leur étude qualifie d'insuffisant** ;
+elle ne peut pas être extrapolée sans un run à cette échelle, non lancé dans ce
+stage (coût GPU substantiel). Aucune comparaison chiffrée avec leurs baselines
+alternatives (Extended SAE random/most-active init, SAE Stitching, full
+fine-tuning) n'a été menée sur ce projet. Détail complet : `RESULTS_TESTS.md` §18.
+
+**Mise à jour (nouveau, testé, session pdf/)** : une question plus fondamentale a été
+posée par *Sanity Checks for Sparse Autoencoders* (Korznikov et al., 2026) --
+un SAE dont le décodeur est figé à une initialisation aléatoire (jamais entraîné)
+égale, dans leur étude, un SAE réellement entraîné sur interprétabilité automatique,
+sparse probing et édition causale. Reproduit sur ce projet
+(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf. `RESULTS_TESTS.md`
+§19 pour le protocole et le résultat (en cours au moment de la rédaction de cette
+version du rapport).
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -1143,6 +1205,20 @@ investigation.
     onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette
     passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
     conditions envisagée par l'utilisateur peut être considérée en suite de stage.
+12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
+    (`RESULTS_TESTS.md` §18). Reste à faire : tester un `K_EXTRA` plus faible (proche
+    de leur k=5 optimal) et, si le budget GPU le permet, un run à 100-200M tokens
+    d'entraînement de l'extension pour vérifier si leur seuil de convergence
+    s'applique à ce projet (notre ablation actuelle reste 50-100x en dessous) ;
+    comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
+    full fine-tuning) sur le corpus emails.
+13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
+    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`). Reste à faire selon le
+    résultat obtenu : si la baseline égale le run principal, envisager les métriques
+    plus exigeantes du papier (AutoInterp par description+détection sur échantillon
+    non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
+    sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
+    testé contre un décodeur figé).
 
 
 \newpage
@@ -1240,6 +1316,19 @@ présente dans `report/README.md`.
   (OpenAI). Origine de la mesure ρ_interp (corrélation de Spearman entre intensité
   jugée par un LLM et activation réelle) utilisée dans le protocole
   d'auto-interprétation local (`src/sae/judge.py`).
+- Koriagin, N., Aksenov, Y., Laptev, D., Gerasimov, G., Balagansky, N., Gavrilov, D.
+  (2025). *Teach Old SAEs New Domain Tricks with Boosting*
+  ([arXiv:2507.12990](https://arxiv.org/abs/2507.12990), COLM 2025,
+  `pdf/teacholdsaes.pdf`). Introduit "SAE Boost" — identifié a posteriori comme
+  l'architecture déjà implémentée par `FrozenCoreResidualSAE`/`ExtendedSAE` de ce
+  projet (cf. chapitre 1 "Perspectives critiques", `RESULTS_TESTS.md` §18).
+- Korznikov, A., Galichin, A., Dontsov, A., Rogov, O. Y., Oseledets, I., Tutubalina, E.
+  (2026). *Sanity Checks for Sparse Autoencoders: Do SAEs Beat Random Baselines?*
+  ([arXiv:2602.14111](https://arxiv.org/abs/2602.14111), `pdf/sanitychecks.pdf`).
+  Introduit les baselines à composants gelés/aléatoires (Frozen Decoder, Frozen
+  Encoder, Soft-Frozen Decoder) comme test de validité des métriques SAE standard.
+  Protocole "Frozen Decoder" reproduit sur ce projet
+  (`FrozenDecoderExtendedSAE`, `RESULTS_TESTS.md` §19).
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,

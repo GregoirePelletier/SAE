@@ -22,6 +22,19 @@ présente dans `report/README.md`.
   (OpenAI). Origine de la mesure ρ_interp (corrélation de Spearman entre intensité
   jugée par un LLM et activation réelle) utilisée dans le protocole
   d'auto-interprétation local (`src/sae/judge.py`).
+- Koriagin, N., Aksenov, Y., Laptev, D., Gerasimov, G., Balagansky, N., Gavrilov, D.
+  (2025). *Teach Old SAEs New Domain Tricks with Boosting*
+  ([arXiv:2507.12990](https://arxiv.org/abs/2507.12990), COLM 2025,
+  `pdf/teacholdsaes.pdf`). Introduit "SAE Boost" — identifié a posteriori comme
+  l'architecture déjà implémentée par `FrozenCoreResidualSAE`/`ExtendedSAE` de ce
+  projet (cf. chapitre 1 "Perspectives critiques", `RESULTS_TESTS.md` §18).
+- Korznikov, A., Galichin, A., Dontsov, A., Rogov, O. Y., Oseledets, I., Tutubalina, E.
+  (2026). *Sanity Checks for Sparse Autoencoders: Do SAEs Beat Random Baselines?*
+  ([arXiv:2602.14111](https://arxiv.org/abs/2602.14111), `pdf/sanitychecks.pdf`).
+  Introduit les baselines à composants gelés/aléatoires (Frozen Decoder, Frozen
+  Encoder, Soft-Frozen Decoder) comme test de validité des métriques SAE standard.
+  Protocole "Frozen Decoder" reproduit sur ce projet
+  (`FrozenDecoderExtendedSAE`, `RESULTS_TESTS.md` §19).
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,

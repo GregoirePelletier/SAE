@@ -132,7 +132,7 @@ from sae_shared import (
     downstream_classification,
     steer_activations, steer_and_decode,
     build_email_train_test_corpus,
-    FrozenCoreResidualSAE, ExtendedSAE,
+    FrozenCoreResidualSAE, ExtendedSAE, FrozenDecoderExtendedSAE,
     PhraseLevelSAE, extract_f2llm_embeddings,
     encode_documents_with_phrase_sae, load_or_train_sae,
     compute_sae_metrics,
@@ -228,7 +228,7 @@ MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
-    N_FEATURES_TO_LABEL,
+    N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -897,7 +897,10 @@ def run_llm_max_pool_pipeline(
             # traite explicitement en fp32 partout (.float() systématique). Un cast
             # module-wide ici la bascule en bf16/fp16 et casse le backward
             # ("Found dtype X but expected Float"), cf. bug rencontré en test réel.
-            ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
+            if SANITY_CHECK_FROZEN_DECODER:
+                ext_sae = FrozenDecoderExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
+            else:
+                ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
             missing, unexpected = ext_sae.load_state_dict(ckpt["state_dict"], strict=False)
             if missing or unexpected:
@@ -925,10 +928,18 @@ def run_llm_max_pool_pipeline(
 
                 # Idem : pas de .to(TORCH_DTYPE) module-wide (cf. commentaire ci-dessus) —
                 # la branche "extra" reste fp32, seul core_sae (déjà casté) est en TORCH_DTYPE.
-                ext_sae = ExtendedSAE(
-                    pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
-                    domain_residuals=domain_residuals_cpu
-                ).to(DEVICE)
+                # SANITY_CHECK_FROZEN_DECODER (Korznikov et al. 2026) : décodeur ALÉATOIRE
+                # figé, pas d'init PCA sur le résidu (affaiblirait le test, cf. frozen_core.py) —
+                # domain_residuals délibérément PAS transmis dans cette branche.
+                if SANITY_CHECK_FROZEN_DECODER:
+                    ext_sae = FrozenDecoderExtendedSAE(
+                        pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
+                    ).to(DEVICE)
+                else:
+                    ext_sae = ExtendedSAE(
+                        pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
+                        domain_residuals=domain_residuals_cpu
+                    ).to(DEVICE)
 
                 # FIX : Résolution de la signature erronée d'import
                 from sae_shared import load_or_train_extended_sae as load_or_train

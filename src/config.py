@@ -39,6 +39,12 @@ EPOCHS_EXTRA = int(os.environ.get("EPOCHS_EXTRA", "10"))
 LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
 USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
 N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
+# Sanity-check (Korznikov et al. 2026, "Sanity Checks for Sparse Autoencoders : Do SAEs
+# Beat Random Baselines?") : construit un FrozenDecoderExtendedSAE (décodeur figé,
+# initialisation aléatoire jamais entraînée) à la place d'ExtendedSAE, pour tester si nos
+# métriques (juge odd-one-out, sondes de classification) distinguent un apprentissage de
+# features significatif d'un simple ajustement de l'encodeur à des directions arbitraires.
+SANITY_CHECK_FROZEN_DECODER = os.environ.get("SANITY_CHECK_FROZEN_DECODER", "0").strip() in ("1", "true", "True")
 N_FEATURES_TO_LABEL  = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
 
 # ─── Modèle Gemma-3 / GemmaScope ───

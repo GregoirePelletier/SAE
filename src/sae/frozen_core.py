@@ -131,6 +131,35 @@ class FrozenCoreResidualSAE(nn.Module):
         torch.save({k: v.cpu().float() for k, v in self.state_dict().items()}, save_path)
 
 
+class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
+    """Sanity-check (Korznikov et al. 2026, "Sanity Checks for Sparse
+    Autoencoders : Do SAEs Beat Random Baselines?") : W_dec_extra reste figé à
+    son initialisation ALÉATOIRE (jamais mis à jour par le gradient) ; seuls
+    l'encodeur (W_enc_extra, b_enc_extra) et le seuil BatchTopK sont appris
+    normalement. Réplique leur baseline "Frozen Decoder", qui égalait un SAE
+    entraîné sur interprétabilité/sparse probing/causal editing dans leur
+    étude — teste si nos métriques (juge odd-one-out, sondes de
+    classification) distinguent réellement un apprentissage de features
+    significatif d'un simple ajustement de l'encodeur à des directions
+    arbitraires. Volontairement PAS de sous-classe d'ExtendedSAE : ce dernier
+    initialise le décodeur par PCA sur le résidu (des directions déjà
+    informées par les données), ce qui affaiblirait le test — la baseline de
+    référence doit partir d'un décodeur ALÉATOIRE, pas data-informed."""
+
+    def __init__(self, core_sae, d_extra: int = 1024, k_extra: int = 32):
+        super().__init__(core_sae, d_extra, k_extra)
+        self.W_dec_extra.requires_grad_(False)
+
+    @torch.no_grad()
+    def normalize_decoder(self):
+        """No-op : la renormalisation systématique du parent (`F.normalize` sur
+        `.data`, appelée 2x/step par le harnais d'entraînement) introduirait un
+        bruit flottant cumulatif sur des directions censées rester STRICTEMENT
+        figées bit-à-bit sur des milliers de pas — annulée ici pour garantir un
+        décodeur véritablement inchangé du premier au dernier pas."""
+        pass
+
+
 class ExtendedSAE(FrozenCoreResidualSAE):
     def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32, domain_residuals=None):
         super().__init__(core_sae, d_extra, k_extra)
