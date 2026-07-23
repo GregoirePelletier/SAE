@@ -118,8 +118,13 @@ Les grands modèles de langage (LLM) offrent une capacité de compréhension fin
 texte, mais leurs représentations internes restent largement opaques : une même
 direction de leur espace d'activation encode typiquement plusieurs concepts
 sémantiques différents (phénomène de *superposition*), ce qui empêche une lecture
-directe de "ce que le modèle a compris du texte". Les Sparse Autoencoders, popularisés
-récemment par les travaux d'interprétabilité mécaniste (Anthropic, DeepMind), proposent
+directe de "ce que le modèle a compris du texte". Cette question — dans quelle mesure
+un LLM "comprend" réellement le texte qu'il traite plutôt que d'en imiter la surface
+statistique — est elle-même débattue ; Beckmann & Queloz (2026) soutiennent que les
+avancées récentes de l'interprétabilité mécanique rendent la position purement
+sceptique de moins en moins tenable, à condition d'articuler ces résultats à un cadre
+théorique de la compréhension. Les Sparse Autoencoders, popularisés récemment par les
+travaux d'interprétabilité mécaniste (Anthropic, DeepMind), proposent
 de réapprendre une représentation parcimonieuse et de plus haute dimension dans
 laquelle chaque direction ("feature") correspond, dans l'idéal, à un concept isolé et
 nommable en langage naturel.
@@ -311,6 +316,21 @@ obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sa
 check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
 `src/sae/frozen_core.py`) — méthode et résultats détaillés en
 `RESULTS_TESTS.md` §19.
+
+## Taxonomie des méthodes d'explication et d'évaluation
+
+*A Survey on Sparse Autoencoders* (Shu, Wu, Zhao et al., EMNLP 2025 Findings)
+distingue deux familles de méthodes d'explication des features SAE — **input-based**
+(quel exemple d'entrée active la feature — nos protocoles odd-one-out et
+labellisation contrastive directe, ci-dessus) et **output-based** (quel changement de
+génération produit l'amplification de la feature — le *steering*) — ainsi que deux
+familles de métriques d'évaluation — **structurelles** (fidélité de reconstruction :
+NMSE, FVE, L0) et **fonctionnelles** (utilité en aval : nos sondes de classification,
+tests de fidélité/plausibilité, chapitre 3 §8). Ce projet couvre bien les deux
+familles de métriques, mais uniquement le versant *input-based* des méthodes
+d'explication : le steering (`steer_activations`/`steer_and_decode`,
+`src/sae/sae_shared.py`) existe déjà dans le dépôt mais n'a jamais été évalué comme
+méthode d'explication à part entière — piste documentée au chapitre 5.
 
 
 \newpage
@@ -944,6 +964,18 @@ documentés comme piste non intégrée :
   disponibles (16k/65k/262k/1m) a montré que 65k est en réalité la meilleure
   couverture pour 12B (87,8%, 57 551 features labellisées), meilleure que 16k (82,6%,
   13 535) — largeur adoptée pour le run de mise à l'échelle final (chapitre 3).
+- **Suppression accidentelle d'un lien symbolique confondu avec un doublon** : lors
+  d'un nettoyage disque, un dossier racine de 30 Go (`saes/`) a été identifié comme un
+  doublon legacy de `local_data/saes/` (ancienne convention de nommage) et supprimé
+  après confirmation. En réalité, `local_data/saes/gemma-scope-2-12b-it` était un
+  **lien symbolique** vers ce même dossier, pas une copie indépendante — sa
+  suppression a donc effacé la seule copie physique des poids SAE, laissant un lien
+  cassé, détecté seulement à l'échec du job suivant (`ValueError` au chargement du
+  SAE). Impact nul sur les résultats déjà produits (artefacts déjà écrits sur disque
+  indépendamment des poids sources) ; poids retéléchargés et lien symbolique remplacé
+  par un dossier réel pour éliminer la source de confusion. Leçon retenue : vérifier
+  `ls -la`/`readlink` avant de supprimer un chemin présenté comme "doublon", pas
+  seulement sa taille ou son nom.
 
 ## Constat transversal
 
@@ -1143,6 +1175,50 @@ facteur de confusion partagé entre "ce qui rend une variante reconnaissable com
 augmentée" et "ce que le SAE apprend à détecter" — non quantifié dans cette
 investigation.
 
+### Pistes issues d'une relecture élargie de la littérature (nouveau)
+
+Une relecture de l'ensemble des PDF de référence disponibles (`pdf/`, au-delà des
+seuls SAE Boost et sanity checks déjà traités ci-dessus) fait ressortir trois pistes
+non testées, chacune directement actionnable mais représentant un effort
+d'implémentation plus substantiel que les corrections déjà apportées :
+
+- **Feature splitting/absorption comme cause possible du résidu non-interprété**
+  (*Matryoshka SAEs*, Bussmann et al. 2025) : leur travail montre qu'agrandir
+  simplement un dictionnaire SAE (notre ablation capacité, `D_EXTRA` 1024→2048,
+  chapitre 3 §10.4) peut dégrader la qualité des features de haut niveau par
+  fragmentation/absorption plutôt que de mieux couvrir le domaine — cohérent avec le
+  fait que notre ablation capacité n'a montré aucun gain d'interprétabilité. Leur
+  solution (dictionnaires SAE emboîtés, entraînés simultanément à plusieurs tailles)
+  n'a pas été implémentée : changement de la boucle d'entraînement plus substantiel
+  que le sanity check Frozen Decoder déjà réalisé. **Ne pas confondre** avec
+  `MATRYOSHKA_DIM` (`src/config.py`), qui ne concerne que la troncature des
+  embeddings F2LLM, un mécanisme complètement différent (cf. `docs/references.md`).
+- **Entraînement supervisé conjoint SAE+classifieur pour la classification**
+  (*ClassifSAE*, Le Bail et al. 2025) : ce projet extrait des concepts de façon
+  totalement non supervisée puis les relie à la classification par une sonde
+  post-hoc (`downstream_classification`). ClassifSAE propose d'entraîner le SAE
+  conjointement avec un classifieur (avec une pénalité de parcimonie sur le taux
+  d'activation), spécifiquement pour concentrer les concepts pertinents à la tâche —
+  directement aligné avec les objectifs "détection d'urgence"/"détection d'intention"
+  du cadrage initial. Non implémenté : nécessiterait une nouvelle boucle
+  d'entraînement (SAE + tête de classification jointe), distincte de l'architecture
+  actuelle des deux pipelines.
+- **Steering comme méthode d'explication "output-based" jamais évaluée** (taxonomie
+  de *A Survey on Sparse Autoencoders*, Shu et al. 2025) : `steer_activations`/
+  `steer_and_decode` (`src/sae/sae_shared.py`) et `p1_steering_demo.json` existent
+  déjà dans le dépôt, mais n'ont jamais été évalués comme méthode d'explication à
+  part entière (contrairement aux protocoles "input-based" — odd-one-out,
+  labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
+  coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
+  changement de génération cohérent avec son label, sur un échantillon de documents.
+- **Biais multilingue non quantifié** (*survey* sur l'explicabilité des LLM
+  multilingues, Resck et al. 2025) : le juge d'auto-interprétation (Gemma-3-12B-it)
+  et le corpus sont en français, mais la littérature documente une tendance des LLM à
+  représenter les concepts via une structure dominée par l'anglais en interne — un
+  facteur de confusion potentiel pour la qualité des labels générés, jamais mesuré
+  dans ce projet (par exemple en comparant la qualité des labels sur un sous-corpus
+  traduit en anglais avant labellisation).
+
 ## Perspectives pour la suite du stage
 
 1. ~~Tester en priorité la robustesse du protocole de jugement (vote majoritaire)~~
@@ -1219,6 +1295,23 @@ investigation.
     non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
     sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
     testé contre un décodeur figé).
+14. Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*, Bussmann et al. 2025)
+    pour l'extension P1, comme piste alternative à l'ablation capacité simple
+    (`D_EXTRA`/`K_EXTRA`, déjà testée sans effet) pour expliquer/réduire le résidu
+    non-interprété — nécessite une nouvelle boucle d'entraînement multi-échelle.
+15. Entraîner un SAE supervisé conjointement avec un classifieur (*ClassifSAE*,
+    Le Bail et al. 2025) pour la détection d'urgence/intention, en alternative à la
+    sonde post-hoc actuelle (`downstream_classification`) — permettrait de comparer
+    directement la précision et l'interprétabilité des concepts obtenus.
+16. Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté mais
+    jamais utilisé comme méthode d'explication à part entière) comme complément
+    "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
+    coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
+17. Quantifier le biais multilingue potentiel du juge d'auto-interprétation (corpus
+    et prompts en français, modèle possiblement biaisé vers une représentation
+    interne dominée par l'anglais) — par exemple en comparant la qualité des labels
+    obtenus sur le corpus français original vs une version traduite en anglais avant
+    labellisation.
 
 
 \newpage
@@ -1329,6 +1422,42 @@ présente dans `report/README.md`.
   Encoder, Soft-Frozen Decoder) comme test de validité des métriques SAE standard.
   Protocole "Frozen Decoder" reproduit sur ce projet
   (`FrozenDecoderExtendedSAE`, `RESULTS_TESTS.md` §19).
+- Cunningham, H., Ewart, A., Riggs, L., Huben, R., Sharkey, L. (2023). *Sparse
+  Autoencoders Find Highly Interpretable Features in Language Models*
+  ([arXiv:2309.08600](https://arxiv.org/abs/2309.08600), `pdf/2309.08600v3.pdf`).
+  Un des deux papiers fondateurs de l'usage des SAE pour l'interprétabilité des LLM.
+- Bussmann, B., Leask, P., Nanda, N. (2024). *BatchTopK Sparse Autoencoders*
+  ([arXiv:2412.06410](https://arxiv.org/abs/2412.06410), `pdf/BatchTopK.pdf`).
+  Mécanisme de parcimonie de `ExtendedSAE`/`PhraseLevelSAE`
+  (`src/sae/batch.py::BatchTopKEncoder`) — implémentation vérifiée fidèle au papier
+  (cf. `docs/references.md`).
+- Rajamanoharan, S., Lieberum, T., Sonnerat, N. et al. (2024). *Jumping Ahead:
+  Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders*
+  (`pdf/jumpRELU.pdf`). Architecture du SAE core GemmaScope-2 (Pipeline 1).
+- Bussmann, B., Nabeshima, N., Karvonen, A., Nanda, N. (2025). *Learning Multi-Level
+  Features with Matryoshka Sparse Autoencoders*
+  ([arXiv:2503.17547](https://arxiv.org/abs/2503.17547), `pdf/Matryoshka.pdf`).
+  Piste non implémentée pour le résidu non-interprété (chapitre 5) — à ne pas
+  confondre avec `MATRYOSHKA_DIM` du projet (cf. `docs/references.md`).
+- Le Bail, M., Dentan, J., Buscaldi, D., Vanier, S. (2025). *Unveiling
+  Decision-Making in LLMs for Text Classification: Extraction of Influential and
+  Interpretable Concepts with Sparse Autoencoders*
+  ([arXiv:2506.23951](https://arxiv.org/abs/2506.23951),
+  `pdf/UnveilingDecision-MakinginLLMsforTextClassification.pdf`). Introduit
+  ClassifSAE (SAE supervisé conjoint SAE+classifieur) — piste non implémentée,
+  directement pertinente pour les objectifs détection d'urgence/intention
+  (chapitre 5).
+- Shu, D., Wu, X., Zhao, H. et al. (2025). *A Survey on Sparse Autoencoders:
+  Interpreting the Internal Mechanisms of Large Language Models* (EMNLP 2025
+  Findings, `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
+  métriques structurelles/fonctionnelles, utilisée pour cadrer le chapitre 1.
+- Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
+  Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
+  `pdf/2025.emnlp-main.1033.pdf`). Cité pour le biais multilingue potentiel du juge
+  d'auto-interprétation (corpus français), non quantifié dans ce projet.
+- Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
+  Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
+  cité en introduction.
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,

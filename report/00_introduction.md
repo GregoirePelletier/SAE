@@ -14,8 +14,13 @@ Les grands modèles de langage (LLM) offrent une capacité de compréhension fin
 texte, mais leurs représentations internes restent largement opaques : une même
 direction de leur espace d'activation encode typiquement plusieurs concepts
 sémantiques différents (phénomène de *superposition*), ce qui empêche une lecture
-directe de "ce que le modèle a compris du texte". Les Sparse Autoencoders, popularisés
-récemment par les travaux d'interprétabilité mécaniste (Anthropic, DeepMind), proposent
+directe de "ce que le modèle a compris du texte". Cette question — dans quelle mesure
+un LLM "comprend" réellement le texte qu'il traite plutôt que d'en imiter la surface
+statistique — est elle-même débattue ; Beckmann & Queloz (2026) soutiennent que les
+avancées récentes de l'interprétabilité mécanique rendent la position purement
+sceptique de moins en moins tenable, à condition d'articuler ces résultats à un cadre
+théorique de la compréhension. Les Sparse Autoencoders, popularisés récemment par les
+travaux d'interprétabilité mécaniste (Anthropic, DeepMind), proposent
 de réapprendre une représentation parcimonieuse et de plus haute dimension dans
 laquelle chaque direction ("feature") correspond, dans l'idéal, à un concept isolé et
 nommable en langage naturel.

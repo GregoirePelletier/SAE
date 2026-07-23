@@ -35,6 +35,42 @@ présente dans `report/README.md`.
   Encoder, Soft-Frozen Decoder) comme test de validité des métriques SAE standard.
   Protocole "Frozen Decoder" reproduit sur ce projet
   (`FrozenDecoderExtendedSAE`, `RESULTS_TESTS.md` §19).
+- Cunningham, H., Ewart, A., Riggs, L., Huben, R., Sharkey, L. (2023). *Sparse
+  Autoencoders Find Highly Interpretable Features in Language Models*
+  ([arXiv:2309.08600](https://arxiv.org/abs/2309.08600), `pdf/2309.08600v3.pdf`).
+  Un des deux papiers fondateurs de l'usage des SAE pour l'interprétabilité des LLM.
+- Bussmann, B., Leask, P., Nanda, N. (2024). *BatchTopK Sparse Autoencoders*
+  ([arXiv:2412.06410](https://arxiv.org/abs/2412.06410), `pdf/BatchTopK.pdf`).
+  Mécanisme de parcimonie de `ExtendedSAE`/`PhraseLevelSAE`
+  (`src/sae/batch.py::BatchTopKEncoder`) — implémentation vérifiée fidèle au papier
+  (cf. `docs/references.md`).
+- Rajamanoharan, S., Lieberum, T., Sonnerat, N. et al. (2024). *Jumping Ahead:
+  Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders*
+  (`pdf/jumpRELU.pdf`). Architecture du SAE core GemmaScope-2 (Pipeline 1).
+- Bussmann, B., Nabeshima, N., Karvonen, A., Nanda, N. (2025). *Learning Multi-Level
+  Features with Matryoshka Sparse Autoencoders*
+  ([arXiv:2503.17547](https://arxiv.org/abs/2503.17547), `pdf/Matryoshka.pdf`).
+  Piste non implémentée pour le résidu non-interprété (chapitre 5) — à ne pas
+  confondre avec `MATRYOSHKA_DIM` du projet (cf. `docs/references.md`).
+- Le Bail, M., Dentan, J., Buscaldi, D., Vanier, S. (2025). *Unveiling
+  Decision-Making in LLMs for Text Classification: Extraction of Influential and
+  Interpretable Concepts with Sparse Autoencoders*
+  ([arXiv:2506.23951](https://arxiv.org/abs/2506.23951),
+  `pdf/UnveilingDecision-MakinginLLMsforTextClassification.pdf`). Introduit
+  ClassifSAE (SAE supervisé conjoint SAE+classifieur) — piste non implémentée,
+  directement pertinente pour les objectifs détection d'urgence/intention
+  (chapitre 5).
+- Shu, D., Wu, X., Zhao, H. et al. (2025). *A Survey on Sparse Autoencoders:
+  Interpreting the Internal Mechanisms of Large Language Models* (EMNLP 2025
+  Findings, `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
+  métriques structurelles/fonctionnelles, utilisée pour cadrer le chapitre 1.
+- Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
+  Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
+  `pdf/2025.emnlp-main.1033.pdf`). Cité pour le biais multilingue potentiel du juge
+  d'auto-interprétation (corpus français), non quantifié dans ce projet.
+- Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
+  Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
+  cité en introduction.
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,

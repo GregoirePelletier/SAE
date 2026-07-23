@@ -123,3 +123,18 @@ obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sa
 check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
 `src/sae/frozen_core.py`) — méthode et résultats détaillés en
 `RESULTS_TESTS.md` §19.
+
+## Taxonomie des méthodes d'explication et d'évaluation
+
+*A Survey on Sparse Autoencoders* (Shu, Wu, Zhao et al., EMNLP 2025 Findings)
+distingue deux familles de méthodes d'explication des features SAE — **input-based**
+(quel exemple d'entrée active la feature — nos protocoles odd-one-out et
+labellisation contrastive directe, ci-dessus) et **output-based** (quel changement de
+génération produit l'amplification de la feature — le *steering*) — ainsi que deux
+familles de métriques d'évaluation — **structurelles** (fidélité de reconstruction :
+NMSE, FVE, L0) et **fonctionnelles** (utilité en aval : nos sondes de classification,
+tests de fidélité/plausibilité, chapitre 3 §8). Ce projet couvre bien les deux
+familles de métriques, mais uniquement le versant *input-based* des méthodes
+d'explication : le steering (`steer_activations`/`steer_and_decode`,
+`src/sae/sae_shared.py`) existe déjà dans le dépôt mais n'a jamais été évalué comme
+méthode d'explication à part entière — piste documentée au chapitre 5.

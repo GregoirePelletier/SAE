@@ -114,6 +114,18 @@ documentés comme piste non intégrée :
   disponibles (16k/65k/262k/1m) a montré que 65k est en réalité la meilleure
   couverture pour 12B (87,8%, 57 551 features labellisées), meilleure que 16k (82,6%,
   13 535) — largeur adoptée pour le run de mise à l'échelle final (chapitre 3).
+- **Suppression accidentelle d'un lien symbolique confondu avec un doublon** : lors
+  d'un nettoyage disque, un dossier racine de 30 Go (`saes/`) a été identifié comme un
+  doublon legacy de `local_data/saes/` (ancienne convention de nommage) et supprimé
+  après confirmation. En réalité, `local_data/saes/gemma-scope-2-12b-it` était un
+  **lien symbolique** vers ce même dossier, pas une copie indépendante — sa
+  suppression a donc effacé la seule copie physique des poids SAE, laissant un lien
+  cassé, détecté seulement à l'échec du job suivant (`ValueError` au chargement du
+  SAE). Impact nul sur les résultats déjà produits (artefacts déjà écrits sur disque
+  indépendamment des poids sources) ; poids retéléchargés et lien symbolique remplacé
+  par un dossier réel pour éliminer la source de confusion. Leçon retenue : vérifier
+  `ls -la`/`readlink` avant de supprimer un chemin présenté comme "doublon", pas
+  seulement sa taille ou son nom.
 
 ## Constat transversal
 

@@ -180,6 +180,50 @@ facteur de confusion partagé entre "ce qui rend une variante reconnaissable com
 augmentée" et "ce que le SAE apprend à détecter" — non quantifié dans cette
 investigation.
 
+### Pistes issues d'une relecture élargie de la littérature (nouveau)
+
+Une relecture de l'ensemble des PDF de référence disponibles (`pdf/`, au-delà des
+seuls SAE Boost et sanity checks déjà traités ci-dessus) fait ressortir trois pistes
+non testées, chacune directement actionnable mais représentant un effort
+d'implémentation plus substantiel que les corrections déjà apportées :
+
+- **Feature splitting/absorption comme cause possible du résidu non-interprété**
+  (*Matryoshka SAEs*, Bussmann et al. 2025) : leur travail montre qu'agrandir
+  simplement un dictionnaire SAE (notre ablation capacité, `D_EXTRA` 1024→2048,
+  chapitre 3 §10.4) peut dégrader la qualité des features de haut niveau par
+  fragmentation/absorption plutôt que de mieux couvrir le domaine — cohérent avec le
+  fait que notre ablation capacité n'a montré aucun gain d'interprétabilité. Leur
+  solution (dictionnaires SAE emboîtés, entraînés simultanément à plusieurs tailles)
+  n'a pas été implémentée : changement de la boucle d'entraînement plus substantiel
+  que le sanity check Frozen Decoder déjà réalisé. **Ne pas confondre** avec
+  `MATRYOSHKA_DIM` (`src/config.py`), qui ne concerne que la troncature des
+  embeddings F2LLM, un mécanisme complètement différent (cf. `docs/references.md`).
+- **Entraînement supervisé conjoint SAE+classifieur pour la classification**
+  (*ClassifSAE*, Le Bail et al. 2025) : ce projet extrait des concepts de façon
+  totalement non supervisée puis les relie à la classification par une sonde
+  post-hoc (`downstream_classification`). ClassifSAE propose d'entraîner le SAE
+  conjointement avec un classifieur (avec une pénalité de parcimonie sur le taux
+  d'activation), spécifiquement pour concentrer les concepts pertinents à la tâche —
+  directement aligné avec les objectifs "détection d'urgence"/"détection d'intention"
+  du cadrage initial. Non implémenté : nécessiterait une nouvelle boucle
+  d'entraînement (SAE + tête de classification jointe), distincte de l'architecture
+  actuelle des deux pipelines.
+- **Steering comme méthode d'explication "output-based" jamais évaluée** (taxonomie
+  de *A Survey on Sparse Autoencoders*, Shu et al. 2025) : `steer_activations`/
+  `steer_and_decode` (`src/sae/sae_shared.py`) et `p1_steering_demo.json` existent
+  déjà dans le dépôt, mais n'ont jamais été évalués comme méthode d'explication à
+  part entière (contrairement aux protocoles "input-based" — odd-one-out,
+  labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
+  coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
+  changement de génération cohérent avec son label, sur un échantillon de documents.
+- **Biais multilingue non quantifié** (*survey* sur l'explicabilité des LLM
+  multilingues, Resck et al. 2025) : le juge d'auto-interprétation (Gemma-3-12B-it)
+  et le corpus sont en français, mais la littérature documente une tendance des LLM à
+  représenter les concepts via une structure dominée par l'anglais en interne — un
+  facteur de confusion potentiel pour la qualité des labels générés, jamais mesuré
+  dans ce projet (par exemple en comparant la qualité des labels sur un sous-corpus
+  traduit en anglais avant labellisation).
+
 ## Perspectives pour la suite du stage
 
 1. ~~Tester en priorité la robustesse du protocole de jugement (vote majoritaire)~~
@@ -256,3 +300,20 @@ investigation.
     non vu, sparse probing SAEBench) plutôt que le seul odd-one-out ; étendre le
     sanity check au Pipeline 2 (`PhraseLevelSAE`, entraîné from-scratch, jamais
     testé contre un décodeur figé).
+14. Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*, Bussmann et al. 2025)
+    pour l'extension P1, comme piste alternative à l'ablation capacité simple
+    (`D_EXTRA`/`K_EXTRA`, déjà testée sans effet) pour expliquer/réduire le résidu
+    non-interprété — nécessite une nouvelle boucle d'entraînement multi-échelle.
+15. Entraîner un SAE supervisé conjointement avec un classifieur (*ClassifSAE*,
+    Le Bail et al. 2025) pour la détection d'urgence/intention, en alternative à la
+    sonde post-hoc actuelle (`downstream_classification`) — permettrait de comparer
+    directement la précision et l'interprétabilité des concepts obtenus.
+16. Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté mais
+    jamais utilisé comme méthode d'explication à part entière) comme complément
+    "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
+    coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
+17. Quantifier le biais multilingue potentiel du juge d'auto-interprétation (corpus
+    et prompts en français, modèle possiblement biaisé vers une représentation
+    interne dominée par l'anglais) — par exemple en comparant la qualité des labels
+    obtenus sur le corpus français original vs une version traduite en anglais avant
+    labellisation.

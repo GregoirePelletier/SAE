@@ -1222,3 +1222,36 @@ remettrait en cause la validité de notre protocole d'évaluation exactement com
 le montre le papier pour AutoInterp/sparse probing/RAVEL -- un résultat qui,
 bien que négatif pour la méthode, aurait une grande valeur scientifique pour le
 rapport de stage. Cette section sera complétée dès la fin du job.]*
+
+## 20. Erreur de nettoyage disque : suppression d'un lien symbolique confondu avec un doublon
+
+Lors du nettoyage du dépôt (réorganisation `slurm/`/`logs/`, cf. commits précédents),
+le dossier racine `saes/` (30 Go) a été identifié comme un "doublon legacy" de
+`local_data/saes/` (ancienne convention de nommage `-res`, cf. `Context.md`) et
+supprimé après confirmation utilisateur. **Erreur** : `local_data/saes/
+gemma-scope-2-12b-it` n'était pas un dossier réel mais un **lien symbolique**
+pointant vers `saes/gemma-scope-2-12b-it-res` — la suppression du dossier racine a
+donc supprimé la seule copie physique des poids SAE GemmaScope (16k/65k/262k),
+laissant un lien symbolique cassé. Non détecté avant de relancer un nouveau job
+(`results_v12_sanity_frozen_decoder`, job 41060) : `ls -la` sur le dossier parent
+n'avait pas été utilisé pour vérifier si l'entrée `gemma-scope-2-12b-it` était un
+lien avant suppression — seul l'espace disque et le nom du dossier ("legacy",
+suffixe `-res`) avaient motivé la décision.
+
+**Impact réel** : nul sur les résultats déjà produits (tous les runs `results_v12_*`
+avaient déjà terminé et leurs artefacts — activations, checkpoints, labels — étaient
+déjà écrits sur disque indépendamment des poids SAE sources). Le seul job affecté
+était `results_v12_sanity_frozen_decoder` (échec immédiat, `ValueError` au
+chargement du SAE, cf. log `logs/analysis/sanity_check_frozen_decoder_41060.log`).
+
+**Corrigé** : lien symbolique cassé supprimé, poids des 3 largeurs (16k/65k/262k)
+retéléchargés via `download_sae.py --sae-only` directement vers le chemin canonique
+`local_data/saes/gemma-scope-2-12b-it` (dossier réel désormais, plus de lien
+symbolique vers un autre chemin — élimine la source de confusion pour l'avenir).
+Job relancé (41082).
+
+**Leçon retenue** : avant toute suppression présentée comme un "nettoyage de
+doublon", vérifier avec `ls -la`/`readlink` si le chemin candidat est un lien
+symbolique référencé ailleurs, pas seulement sa taille ou son nom -- particulièrement
+quand deux chemins portent des noms proches (`saes/` vs `local_data/saes/`,
+`gemma-scope-2-12b-it` vs `gemma-scope-2-12b-it-res`).
