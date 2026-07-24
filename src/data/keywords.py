@@ -67,3 +67,28 @@ DOMAIN_URL_MAP = {
     "sports": SPORTS_URL_PATTERNS,
     "support": SUPPORT_URL_PATTERNS,
 }
+
+# ─── Filler de volume pour l'ablation 100-200M tokens (SAE Boost, arXiv:2507.12990,
+# RESULTS_TESTS.md §18/§23) ──────────────────────────────────────────────────────
+# Phrases composées (PAS de mots isolés courts type "edf"/"eni" -- testés et rejetés :
+# substring trop générique, faux positifs massifs, cf. RESULTS_TESTS.md §23.1) ciblant
+# spécifiquement le registre réclamation/résiliation/facturation énergie. Hit rate
+# mesuré empiriquement sur FineWeb2-fr : 0,275% (contre 70,8% pour la simple union
+# ENERGY_KEYWORDS+SUPPORT_KEYWORDS, beaucoup trop permissive). Reste imparfait
+# (précision qualitative estimée ~15-20% sur échantillon manuel, cf. §23.1) --
+# corpus de "filler" à grand volume, PAS un substitut au corpus emails+augmentés
+# (jamais ajouté à train_texts lui-même, cf. saev5.py::run_llm_max_pool_pipeline).
+UTILITY_COMPLAINT_KEYWORDS = [
+    "réclamation client", "service client edf", "service clientèle",
+    "résiliation de contrat", "résilier mon contrat", "résiliation abonnement",
+    "coupure d'électricité", "coupure de courant", "coupure de gaz",
+    "facture d'électricité", "facture de gaz", "erreur de facturation",
+    "contestation de facture", "contester ma facture", "remboursement facture",
+    "litige avec mon fournisseur", "litige edf", "mise en demeure",
+    "compteur linky", "relève de compteur", "fournisseur d'énergie",
+    "fournisseur d'électricité", "médiateur de l'énergie", "médiateur national de l'énergie",
+    "impayé edf", "relance impayé", "facture impayée",
+    "souscription contrat énergie", "mise en service électricité",
+    "déménagement edf", "changement de fournisseur énergie",
+    "client edf mécontent", "plainte edf", "service après-vente edf",
+]

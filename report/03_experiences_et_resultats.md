@@ -496,3 +496,36 @@ le protocole odd-one-out à décision unique reste sensible à toute perturbatio
 surface (ordre ou langue), justifiant le vote majoritaire comme protocole par
 défaut. Détail et limites assumées (traduction par le même modèle juge, pas de
 réentraînement sur corpus anglais natif) : `RESULTS_TESTS.md` §22.
+
+## 14. Ablation volume à grande échelle (~100-120M tokens)
+
+Suite directe du chapitre 1 ("Perspectives critiques") : le papier SAE Boost
+montre qu'un SAE résiduel a besoin de 100-200M tokens pour converger sans
+dégrader la performance générale — 50 à 100x au-dessus du volume testé dans notre
+ablation initiale (§5, jusqu'à 2M). Le corpus emails+augmentés (~6M tokens) étant
+très insuffisant pour cette échelle, plusieurs sources de complément ont été
+évaluées :
+
+- **SignalConso** (réclamations consommateurs officielles françaises) : écarté
+  après vérification empirique directe — l'export public ne contient que des
+  métadonnées catégorielles, aucun texte libre.
+- **FineWeb2-fr filtré par mots-clés** : trois configurations testées
+  empiriquement, aucune ne donnant un filtre véritablement propre (le registre
+  "réclamation client" est partagé par de nombreux secteurs, pas spécifique à
+  l'énergie). La meilleure configuration trouvée (phrases composées spécifiques)
+  atteint un hit rate de 0,275% avec une précision qualitative estimée à 15-20%
+  sur échantillon manuel — retenue comme compromis assumé, pas comme solution
+  propre.
+
+Le filler retenu est ajouté **uniquement** au réservoir de tokens résiduels
+(nouveau paramètre `volume_filler_texts`, `run_llm_max_pool_pipeline`), jamais au
+corpus utilisé pour la sélection des features à labelliser ni pour la sonde de
+classification — ceci pour ne pas réintroduire le biais de domaine diagnostiqué et
+corrigé au chapitre 3. Run à `N_TOKENS_EXTRA_TRAIN=100 000 000` (~114M tokens de
+filler estimés, 3 shards FineWeb2-fr), sinon identique au run principal.
+
+*[Résultats en cours au moment de la rédaction — job multi-jours (extraction
+Gemma-3-12B sur ~584 000 textes). Cette section sera complétée avec le taux
+d'interprétabilité obtenu et la comparaison avec le run principal (45,3%) et
+l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job.
+Détail complet : `RESULTS_TESTS.md` §23.]*

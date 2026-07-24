@@ -127,6 +127,7 @@ TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
     ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
+    UTILITY_COMPLAINT_KEYWORDS,
     prepare_domain_dataset, split_into_phrases,
     compute_metrics, compute_rho_sae,
     downstream_classification,
@@ -709,18 +710,32 @@ def run_llm_max_pool_pipeline(
     test_labels: list,
     diff_texts: list = None,
     diff_labels: list = None,
+    volume_filler_texts: list = None,
 ) -> dict:
     """train_texts/test_texts : corpus principal (emails+augmentés), utilisé pour
     l'entraînement du SAE et les métriques. diff_texts/diff_labels : corpus
     secondaire (energy/sports/support), encodé post-hoc UNIQUEMENT pour la
-    démonstration de diffing cross-domaine -- jamais utilisé pour entraîner."""
+    démonstration de diffing cross-domaine -- jamais utilisé pour entraîner.
+    volume_filler_texts (optionnel, défaut None -> comportement 100% inchangé) :
+    corpus supplémentaire (ex. FineWeb-2 FR filtré par domaine à grande échelle,
+    cf. RESULTS_TESTS.md §23) ajouté UNIQUEMENT au réservoir de tokens résiduels
+    (SAE Boost, arXiv:2507.12990, §18 -- teste si 100-200M tokens changent la
+    conclusion "le volume ne change rien" de l'ablation §5/§12, testée jusqu'à 2M
+    seulement). Volontairement PAS ajouté à `train_texts` lui-même : la sélection
+    des features à labelliser (`feature_selection_by_magnitude`, `range(n_train)`)
+    et la sonde de classification email restent calculées sur les emails+augmentés
+    SEULS, pour ne pas réintroduire le biais de domaine déjà diagnostiqué et
+    corrigé au §12 (fonctionnerait sinon comme si `volume_filler_texts` faisait
+    partie du corpus "principal", diluant la sélection de features vers du
+    contenu générique)."""
     print("\n" + "=" * 70)
     print(" PIPELINE 1 : GEMMA-3 → MAX-POOL SAE ACTS")
     print("=" * 70)
 
     diff_texts = diff_texts or []
     diff_labels = diff_labels or []
-    all_texts = train_texts + test_texts + diff_texts
+    volume_filler_texts = volume_filler_texts or []
+    all_texts = train_texts + volume_filler_texts + test_texts + diff_texts
 
     pretrained_sae = load_pretrained_sae()
     pretrained_sae = pretrained_sae.to(DEVICE).to(TORCH_DTYPE).eval()
@@ -734,8 +749,9 @@ def run_llm_max_pool_pipeline(
     token_fragments_dir  = os.path.join(CACHE_DIR, "p1_token_fragments")
     
     n_train = len(train_texts)
+    n_filler = len(volume_filler_texts)
     n_test  = len(test_texts)
-    
+
     _need_extraction = True
     _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_path)
     
@@ -750,7 +766,7 @@ def run_llm_max_pool_pipeline(
                 print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
                 raw_residuals_list = []
                 n_collected = 0
-                for _fid in fragment_ids[:n_train]:
+                for _fid in fragment_ids[:n_train + n_filler]:
                     frag = load_fragment(token_fragments_dir, _fid)
                     if "raw_acts" in frag:
                         raw_residuals_list.append(frag["raw_acts"])
@@ -845,7 +861,7 @@ def run_llm_max_pool_pipeline(
 
                     all_doc_sae_acts.append(doc_sae_vec.cpu())
 
-                    if USE_FROZEN_CORE and doc_global_idx < len(train_texts):
+                    if USE_FROZEN_CORE and doc_global_idx < n_train + n_filler:
                         # C3 — Réservoir (Vitter, Algorithm R) : échantillon uniforme
                         # sur TOUS les tokens du split train, au lieu des seuls
                         # premiers documents. Phase 1 : remplissage séquentiel ;
@@ -986,7 +1002,7 @@ def run_llm_max_pool_pipeline(
                         token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
                         del core_out_tokens
                         del residual_tokens
-                        if n_train <= i < n_train + n_test and \
+                        if n_train + n_filler <= i < n_train + n_filler + n_test and \
                            sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
                             _eval_raw.append(raw_acts.float().cpu())
 
@@ -1014,8 +1030,8 @@ def run_llm_max_pool_pipeline(
             print(f"  [P1] Dimension SAE étendue : {d_core} core + {D_EXTRA} extra = {d_total}")
 
     train_doc_acts = all_doc_sae_acts[:n_train]
-    test_doc_acts  = all_doc_sae_acts[n_train: n_train + n_test]
-    diff_doc_acts  = all_doc_sae_acts[n_train + n_test:]  # corpus energy/sports/support, post-hoc
+    test_doc_acts  = all_doc_sae_acts[n_train + n_filler: n_train + n_filler + n_test]
+    diff_doc_acts  = all_doc_sae_acts[n_train + n_filler + n_test:]  # corpus energy/sports/support, post-hoc
 
     # ─── LABELS DÉCOUPLÉS : GemmaScope (core) ⊕ Juge LLM (extension) ──────
     #
@@ -1115,14 +1131,14 @@ def run_llm_max_pool_pipeline(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
         filename="umap_pipeline1_emails.html",
         title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (Emails EDF, test)",
-        token_fragments_dir=token_fragments_dir, offset=n_train, feature_labels=label_map_p1,
+        token_fragments_dir=token_fragments_dir, offset=n_train + n_filler, feature_labels=label_map_p1,
     )
     if diff_texts:
         analyze_with_umap(
             texts=diff_texts, sae_acts=diff_doc_acts, labels=diff_labels,
             filename="umap_pipeline1_diffcorpus.html",
             title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (energy/sports/support, post-hoc)",
-            token_fragments_dir=token_fragments_dir, offset=n_train + n_test, feature_labels=label_map_p1,
+            token_fragments_dir=token_fragments_dir, offset=n_train + n_filler + n_test, feature_labels=label_map_p1,
         )
 
     # Diffing cross-domaine (démonstration, corpus secondaire post-hoc -- cf.
@@ -1593,11 +1609,40 @@ if __name__ == "__main__":
     diff_labels = ["energy"] * len(energy_texts) + ["sports"] * len(sports_texts) + ["support"] * len(support_texts)
     print(f"Corpus diffing (energy/sports/support, post-hoc uniquement) : {len(diff_texts)} chunks")
 
+    # ── Filler de volume (SAE Boost, arXiv:2507.12990, ablation 100-200M tokens
+    # RESULTS_TESTS.md §18/§23) : AJOUTÉ UNIQUEMENT au réservoir résiduel via
+    # volume_filler_texts (run_llm_max_pool_pipeline), jamais à train_texts lui-même
+    # (préserverait sinon la sélection de features/la sonde de classification email
+    # du biais de domaine déjà corrigé, cf. docstring de la fonction). Désactivé par
+    # défaut (N_VOLUME_FILLER_TARGET_CHUNKS=0) -- n'affecte aucun run existant.
+    N_VOLUME_FILLER_TARGET_CHUNKS = int(os.environ.get("N_VOLUME_FILLER_TARGET_CHUNKS", "0"))
+    volume_filler_texts = []
+    if N_VOLUME_FILLER_TARGET_CHUNKS > 0:
+        filler_shards = sorted(glob.glob(os.environ.get(
+            "VOLUME_FILLER_DATASET_GLOB", LOCAL_DATASET_PATH)))
+        if not filler_shards:
+            filler_shards = [LOCAL_DATASET_PATH]
+        n_per_shard = max(1, N_VOLUME_FILLER_TARGET_CHUNKS // len(filler_shards))
+        print(f"  [filler] Construction du corpus de volume (~{N_VOLUME_FILLER_TARGET_CHUNKS} "
+              f"chunks cible sur {len(filler_shards)} shard(s) FineWeb2-fr)...")
+        for shard_path in filler_shards:
+            shard_texts = prepare_domain_dataset(
+                UTILITY_COMPLAINT_KEYWORDS, "utility_complaint_filler",
+                n_per_shard, chunk_length=1024, max_chunks=20,
+                local_dataset_path=shard_path, use_fineweb2=True,
+            )
+            volume_filler_texts.extend(shard_texts)
+            if len(volume_filler_texts) >= N_VOLUME_FILLER_TARGET_CHUNKS:
+                break
+        print(f"  [filler] {len(volume_filler_texts)} chunks de filler construits "
+              f"(hors train_texts, réservoir résiduel uniquement).")
+
     RUN = set(os.environ.get("PIPELINES", "p1,p2").split(","))
     results_p1 = {}
     if "p1" in RUN:
         results_p1 = run_llm_max_pool_pipeline(
-            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
+            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels,
+            volume_filler_texts=volume_filler_texts,
         )
         run_steering_demo(results_p1)
     # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).

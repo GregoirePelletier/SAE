@@ -1373,3 +1373,69 @@ corpus anglais natif, qui testerait une hypothèses différente -- cf.
 face à toute perturbation de surface (ordre OU langue), justifiant l'adoption du
 vote majoritaire comme protocole par défaut plutôt qu'une preuve d'un problème
 spécifiquement multilingue.
+
+## 23. Ablation volume à grande échelle (~100-120M tokens, SAE Boost)
+
+Suite directe du §18.3 : le papier de référence (SAE Boost, Koriagin et al., COLM
+2025) montre qu'un SAE résiduel a besoin de 100-200M tokens pour converger sans
+dégrader la performance générale — 50 à 100x au-dessus du volume testé dans notre
+ablation initiale (§5/§12, jusqu'à 2M). Ce chapitre documente l'investigation de
+faisabilité et le run lancé pour tester directement ce seuil sur ce projet.
+
+### 23.1. Recherche d'une source de données française pour le volume manquant
+
+Le corpus emails+augmentés (~6M tokens) est très en dessous de 100M. Options
+étudiées :
+
+- **SignalConso** (réclamations consommateurs officielles françaises, DGCCRF,
+  data.gouv.fr, ~500k signalements) : écarté après vérification empirique directe
+  du schéma de l'export public (`data.economie.gouv.fr/api/explore/v2.1/catalog/
+  datasets/signalconso`) — 15 champs, tous catégoriels/géographiques
+  (`category`, `subcategories`, `tags`, `dep_name`, etc.), **aucun champ de texte
+  libre** contenant la réclamation rédigée par le consommateur (anonymisation
+  RGPD probable). Inutilisable comme source de texte.
+- **FineWeb2-fr filtré par mots-clés**, retenu, avec trois configurations testées
+  empiriquement (échantillon de 200-300k documents du shard local
+  `000_00000.parquet`, `datasets.load_dataset(..., streaming=True)`) :
+
+| Configuration de mots-clés | Hit rate | Précision qualitative (échantillon manuel) |
+|---|---|---|
+| Union `ENERGY_KEYWORDS` + `SUPPORT_KEYWORDS` (déjà existants) | 70,8% | Quasi nulle -- mots trop génériques ("bonjour", "urgence", "cordialement") matchent presque toute page web |
+| Phrases composées spécifiques (`UTILITY_COMPLAINT_KEYWORDS`, nouveau) | 0,275% | ~15-20% -- majorité de pages e-commerce/télécom génériques partageant le registre "réclamation/résiliation" sans rapport avec l'énergie |
+| Ancre énergie (EDF/Enedis/kWh) ET terme de plainte (substring court) | 3,7% | Quasi nulle -- "edf"/"eni" comme substrings courts matchent des mots sans rapport (page mémorial Auschwitz, biographie du XIXe, forum Ubuntu, extrait de roman) ; vocabulaire juridique générique ("litige", "contentieux", "risque") traverse tous les secteurs |
+
+**Conclusion retenue** : aucune configuration de mots-clés ne donne un corpus
+"réclamations énergie" pur sur un corpus web générique français -- le registre
+"client mécontent" est partagé par de nombreux secteurs (télécom, e-commerce,
+assurance), pas spécifique à l'énergie. `UTILITY_COMPLAINT_KEYWORDS`
+(`src/data/keywords.py`, 33 phrases composées) retenu comme meilleur compromis
+disponible, avec sa limite de précision documentée explicitement plutôt que
+présentée comme un filtre propre.
+
+### 23.2. Protocole du run
+
+`run_llm_max_pool_pipeline` (`src/sae/saev5.py`) étendu avec un paramètre
+`volume_filler_texts` (optionnel, défaut `None` → comportement 100% inchangé pour
+tous les runs existants) : le filler est ajouté **uniquement** au réservoir de
+tokens résiduels (échantillonnage par réservoir de Vitter, déjà en place), jamais à
+`train_texts` lui-même — la sélection des features à labelliser
+(`feature_selection_by_magnitude`, restreinte à `range(n_train)`) et la sonde de
+classification email restent calculées sur les emails+augmentés SEULS, pour ne pas
+réintroduire le biais de domaine diagnostiqué et corrigé au §12.
+
+Run `results_v13_ablation_volume100m` (job 41176,
+`slurm/pipeline_runs/run_ablation_volume_100m.slurm`) : 3 shards FineWeb2-fr locaux
+(`000_00000/1/2.parquet`, ~14,5 Go, 2 shards supplémentaires téléchargés pour ce
+run — `HuggingFaceFW/fineweb-2`, config `fra_Latn`, 135 shards disponibles au
+total), `N_VOLUME_FILLER_TARGET_CHUNKS=540000` (~114M tokens estimés),
+`N_TOKENS_EXTRA_TRAIN=100000000`. Sinon identique au run principal (16k, 150
+features jugées, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`) — Pipeline 1
+seul (le levier testé, SAE résiduel, n'existe pas pour le `PhraseLevelSAE`
+from-scratch de Pipeline 2). Coût attendu multi-jours (extraction Gemma-3-12B sur
+~584 000 textes, ~13x le volume du run principal) — job soumis avec
+`--time=120:00:00`.
+
+*[Résultats en cours au moment de la rédaction. Cette section sera complétée avec
+le taux d'interprétabilité obtenu, les métriques de reconstruction, et la
+comparaison avec le run principal (45,3%) et l'ablation volume initiale
+(40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job.]*
