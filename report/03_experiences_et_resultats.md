@@ -58,7 +58,7 @@ d'entraînement.
 Deux changements ont été apportés au pipeline (`src/data/preparation.py`,
 `src/sae/saev5.py`) :
 
-1. **Nouveau corpus principal** : mails réels (`Mails.tsv`) + variantes augmentées
+1. **Nouveau corpus principal** : mails originaux (`Mails.tsv`) + variantes augmentées
    acceptées (`augmented_mails.jsonl`, 39 949 variantes issues de 13 axes de
    perturbation contrôlée — émotion, registre, orthographe, urgence). Ce corpus devient
    celui qui entraîne l'extension SAE et le `PhraseLevelSAE`. Split train/test
@@ -191,13 +191,13 @@ une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre dif
 **Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
 protocole de jugement plutôt qu'un défaut réel des features testées.**
 
-### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails réels ?
+### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
 
 Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
 complété par un test sur des labels **indépendants du corpus augmenté** : des labels
-faibles par expression régulière, déjà calculés sur le texte brut des mails réels
+faibles par expression régulière, déjà calculés sur le texte brut des mails originaux
 (`src/data/dataset.py::INTENT_KEYWORDS_FR` — réclamation, résiliation, remboursement,
-information, urgence), appliqués aux 3 300 mails réels du split d'entraînement
+information, urgence), appliqués aux 3 300 mails originaux du split d'entraînement
 (`scripts/intent_urgency_probe.py`, zéro calcul GPU — réutilise
 `p1_all_doc_acts_ext_d1024.pt` déjà en cache).
 
@@ -211,7 +211,7 @@ information, urgence), appliqués aux 3 300 mails réels du split d'entraînemen
 Ce résultat répond directement aux deux objectifs "détection d'urgence" et
 "détection d'intentions" énoncés dans le cadrage initial du projet
 (`Context.md`, section "Objectif") : les codes latents du SAE séparent très
-nettement l'urgence et la réclamation, sur des mails réels non augmentés, avec un
+nettement l'urgence et la réclamation, sur des mails originaux non augmentés, avec un
 gain net important sur la baseline naïve. Le remboursement ne bat pas sa baseline
 (déjà forte du fait du déséquilibre de classe, 85,5% de négatifs) — à interpréter
 comme une limite du label faible par regex pour cette catégorie plutôt que comme un
@@ -227,7 +227,7 @@ explication ? Deux propriétés indépendantes ont été testées.
 
 ### 8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
 
-Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails réels par
+Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails originaux par
 intention (urgence, réclamation, information, remboursement), correctement classés
 par une sonde logistique, ablation des 10 features les plus contributives à la
 décision vs 10 features actives aléatoires vs les 10 moins contributives.
@@ -275,7 +275,7 @@ Un résultat notable de ce passage en revue systématique : la comparaison du ba
 d'embedding du Pipeline 2 (F2LLM-v2-80M vs -330M, "assez grand") donne un résultat
 **mixte** — le modèle plus grand reconstruit légèrement mieux (NMSE −7,5%) et sépare
 un peu mieux le corpus de diffing générique (+2 points), mais sépare légèrement MOINS
-bien les axes email réels (−2,2 points), la métrique la plus proche des objectifs
+bien les axes email (−2,2 points), la métrique la plus proche des objectifs
 métier. Aucun écart n'est de l'ordre d'un problème majeur ; pas de justification
 claire pour préférer l'un à l'autre sur ce projet.
 
@@ -444,3 +444,55 @@ comparable. Les tests de fidélité et de plausibilité (§8), de nature causale
 différente (ablation directe des features, jugement humain-like sur le document
 entier), ne sont pas concernés par cette réserve. Détail complet et calculs de
 significativité : `RESULTS_TESTS.md` §19.
+
+## 12. Ablation de variance de seed
+
+Question posée par la littérature (*Unstable Features, Reproducible Subspaces*,
+arXiv:2606.12138 ; *Toward Identifiable Sparse Autoencoders*, arXiv:2605.31245) :
+les features individuelles d'un SAE varient-elles substantiellement d'un seed
+d'entraînement à l'autre, à corpus et hyperparamètres identiques ? `SEED` a été
+découplé du split train/test (`CORPUS_SPLIT_SEED`, nouveau, défaut 42 inchangé)
+pour isoler la variance d'entraînement du SAE de toute variance de corpus. Run à
+`SEED=123` (sinon identique au run principal) :
+
+| Métrique | SEED=42 | SEED=123 | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out | 45,3% (68/150) | 47,3% (71/150) | +2,0 points (non significatif) |
+| `clf_acc_email_axes` | 93,5% | 91,3% | −2,2 points |
+| Recouvrement exact des labels interprétables | — | 22/78 = 28,2% | |
+
+Le taux agrégé d'interprétabilité est stable entre seeds, mais seulement 28,2% des
+labels sont des chaînes identiques entre les deux runs — les deux seeds recouvrent
+des thèmes similaires (adresses, contrats énergie, réclamations, coupures,
+urgence) mais rarement la même feature exacte. **Conséquence pour la lecture de ce
+rapport** : les features individuelles citées en exemple sont représentatives d'une
+catégorie de concepts récurrente, pas des atomes stables et reproductibles du
+dictionnaire ; seul le taux agrégé d'interprétabilité doit être lu comme une mesure
+fiable de la qualité du SAE. Détail : `RESULTS_TESTS.md` §21.
+
+## 13. Biais multilingue du juge (français vs anglais traduit)
+
+Question posée par la littérature sur l'interprétabilité multilingue (Resck et al.
+2025 ; *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
+Languages*, arXiv:2507.11230) : le juge interprète-t-il mieux les mêmes features
+quand les exemples sont présentés en anglais plutôt qu'en français ? Les 150
+features déjà jugées sont retraduites (un appel Gemma-3 par feature) et rejugées
+intégralement en anglais (`scripts/multilingual_judge_bias_test.py`), sans
+réextraction ni réentraînement.
+
+| Métrique | Français original | Anglais traduit | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out (n=145) | 46,9% | 45,5% | −1,4 point (non significatif) |
+| Features changeant de statut (FR↔EN) | — | 56/145 = 38,6% | |
+
+**Résultat nul sur l'hypothèse testée** : pas de différence significative entre
+français et anglais traduit — aucun biais systématique détecté envers l'anglais sur
+ce protocole et ce corpus. Le taux de retournement individuel (38,6%), supérieur à
+celui déjà mesuré pour le réordonnancement des exemples (§7.1, 31,3%), est
+symétrique (27 flips dans un sens, 29 dans l'autre) plutôt qu'orienté vers
+l'anglais — cohérent avec un bruit de traduction générique plutôt qu'un déficit
+structurel de l'auto-interprétation en français. Renforce le constat du §7.1 :
+le protocole odd-one-out à décision unique reste sensible à toute perturbation de
+surface (ordre ou langue), justifiant le vote majoritaire comme protocole par
+défaut. Détail et limites assumées (traduction par le même modèle juge, pas de
+réentraînement sur corpus anglais natif) : `RESULTS_TESTS.md` §22.

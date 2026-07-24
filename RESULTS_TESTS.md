@@ -491,7 +491,7 @@ disponible, job 39531) :
 - **Cause racine** : `train_texts` (le corpus utilisé pour échantillonner le
   réservoir de résidus `N_TOKENS_EXTRA_TRAIN` et entraîner `ExtendedSAE`) était
   bâti **uniquement** à partir de `energy_texts + sports_texts + support_texts`
-  (FineWeb-2/Wikipedia filtré par mots-clés). Les emails réels et augmentés
+  (FineWeb-2/Wikipedia filtré par mots-clés). Les emails originaux et augmentés
   (`email_texts`) n'étaient chargés qu'**après** l'entraînement, uniquement pour
   une visualisation UMAP post-hoc (`analyze_with_umap`) — jamais vus par le SAE
   pendant l'entraînement. Le SAE d'extension apprenait donc des concepts
@@ -500,7 +500,7 @@ disponible, job 39531) :
 ### Correction appliquée
 
 - `src/data/preparation.py::build_email_train_test_corpus()` — nouveau corpus
-  principal : mails réels (`Mails.tsv`) + variantes augmentées acceptées
+  principal : mails originaux (`Mails.tsv`) + variantes augmentées acceptées
   (`augmented_mails.jsonl`, 39 949 lignes). Split **group-aware par mail
   d'origine** (`parent_id`) : un mail et toutes ses variantes tombent du même
   côté train/test (sinon une variante augmentée d'un mail de test fuiterait dans
@@ -576,7 +576,7 @@ ci-dessus.
 
 ---
 
-## 13. Suites données au diagnostic §12 : robustesse du juge et validation métier sur mails réels
+## 13. Suites données au diagnostic §12 : robustesse du juge et validation métier sur mails originaux
 
 Deux analyses complémentaires, lancées après le diagnostic §12, pour répondre plus
 largement aux objectifs du stage (`Context.md`, section "Projet" : détection
@@ -611,7 +611,7 @@ réel des features.** Un vote majoritaire sur plusieurs répétitions (ou une
 température non nulle) est recommandé avant de conclure qu'une feature spécifique
 n'est "pas interprétable".
 
-### 13.2. Le SAE prédit-il l'urgence et l'intention sur des mails réels (pas augmentés) ?
+### 13.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux (pas augmentés) ?
 
 `scripts/intent_urgency_probe.py` (nouveau) — **zéro calcul GPU**, réutilise les
 activations déjà en cache (`p1_all_doc_acts_ext_d1024.pt`) et les labels faibles par
@@ -631,7 +631,7 @@ d'intentions" avec un test indépendant du corpus augmenté synthétique.
 
 **Lecture** : les codes latents du SAE (Pipeline 1, 17 408 dimensions) séparent très
 nettement l'**urgence** (+27 points au-dessus de la baseline) et la **réclamation**
-(+42,6 points) sur des mails réels non augmentés — validation directe et à moindre
+(+42,6 points) sur des mails originaux non augmentés — validation directe et à moindre
 coût (aucun calcul GPU supplémentaire) des deux objectifs "détection d'urgence" et
 "détection d'intentions" du projet. L'**information** est modérément mieux détectée
 que la baseline ; le **remboursement** ne l'est pas mieux qu'une baseline déjà forte
@@ -846,7 +846,7 @@ fixées (`docs/evaluation_protocol.md`).
 
 `scripts/explanation_fidelity_test.py` (CPU uniquement, réutilise les activations déjà
 en cache) : ajuste une sonde logistique finale par intention (urgence, réclamation,
-information, remboursement) sur les mails réels, identifie pour 200 documents
+information, remboursement) sur les mails originaux, identifie pour 200 documents
 positifs bien classés (proba > 0.7) les 10 features dont la contribution
 (`coef × activation`) est la plus forte, puis ablate (met à zéro) ce top-10 et mesure
 la chute de probabilité prédite, comparée à l'ablation de 10 features actives
@@ -869,7 +869,7 @@ sur cette architecture (sonde linéaire directement sur les codes SAE).
 ### 16.2. Plausibilité de l'explication (choix forcé, juge LLM)
 
 `scripts/explanation_plausibility_test.py` (GPU, juge Gemma-3-12B-it, réutilise les
-activations déjà en cache) : sur 60 mails réels échantillonnés, présente au juge le
+activations déjà en cache) : sur 60 mails originaux échantillonnés, présente au juge le
 mail + deux ensembles de labels (le top-8 réel des features les plus actives pour ce
 document, et un décoy de 8 labels tirés au hasard parmi les features labellisées mais
 non actives pour ce document), ordre A/B mélangé aléatoirement, et demande lequel
@@ -942,7 +942,7 @@ directement à l'étape manquante (quelques secondes au lieu de ~10 minutes).
 **Lecture** : résultat **mixte**, pas de gain net et homogène. F2LLM-330M reconstruit
 légèrement mieux (NMSE, cohérent avec un backbone plus grand) et sépare légèrement
 mieux le corpus diffing generic (energy/sports), mais sépare légèrement MOINS bien
-les axes email réels (la métrique la plus directement liée aux objectifs métier du
+les axes email (la métrique la plus directement liée aux objectifs métier du
 projet). Aucun de ces écarts n'est de l'ordre de grandeur d'un problème majeur (tous
 < 3 points ou < 8% relatif) : conclusion retenue pour cette passe -- **pas de
 justification claire pour préférer -330M à -80M sur ce projet** ; le choix n'est pas
@@ -1294,3 +1294,82 @@ doublon", vérifier avec `ls -la`/`readlink` si le chemin candidat est un lien
 symbolique référencé ailleurs, pas seulement sa taille ou son nom -- particulièrement
 quand deux chemins portent des noms proches (`saes/` vs `local_data/saes/`,
 `gemma-scope-2-12b-it` vs `gemma-scope-2-12b-it-res`).
+
+## 21. Ablation de variance de seed (Unstable Features, Reproducible Subspaces)
+
+Question posée par *Unstable Features, Reproducible Subspaces* (arXiv:2606.12138)
+et *Toward Identifiable Sparse Autoencoders* (arXiv:2605.31245) : les features
+individuelles d'un SAE varient-elles substantiellement d'un seed d'entraînement à
+l'autre, même quand tout le reste (corpus, split, hyperparamètres) est identique ?
+Toutes les ablations précédentes de ce projet utilisent `SEED=42` -- cet axe n'avait
+jamais été testé. `SEED` a été découplé du split train/test du corpus
+(`CORPUS_SPLIT_SEED`, nouveau, `src/config.py`, défaut 42 inchangé) pour isoler
+proprement la variance d'entraînement du SAE (init des poids, échantillonnage de
+`feature_selection_by_magnitude`) de toute variance de corpus. Run
+`results_v13_ablation_seed123` (job 41118) : `SEED=123`, `CORPUS_SPLIT_SEED=42`
+(inchangé), toutes les autres conditions identiques au run principal (16k, 150
+features, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`).
+
+| Métrique | SEED=42 (run principal) | SEED=123 | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out | 45,3% (68/150) | 47,3% (71/150) | +2,0 points (z=0,35, non significatif) |
+| `clf_acc_email_axes` | 93,5% | 91,3% | −2,2 points |
+| Recouvrement EXACT des labels interprétables (chaîne de caractères) | — | **22/78 = 28,2%** | |
+
+**Lecture** : au niveau AGRÉGÉ, le taux d'interprétabilité est parfaitement stable
+d'un seed à l'autre (45,3% vs 47,3%, écart non significatif) -- rassurant, ce
+n'est pas un artefact d'un seed particulièrement favorable. En revanche, au niveau
+INDIVIDUEL, seulement 28,2% des labels obtenus sont des chaînes de caractères
+identiques entre les deux seeds -- confirmant précisément le résultat de la
+littérature (*Unstable Features, Reproducible Subspaces*) : les features
+individuelles ne sont PAS reproductibles à l'identique, seule la performance
+agrégée et la thématique générale le sont (les deux seeds recouvrent des thèmes
+similaires -- adresses, contrats énergie, réclamations, coupures, urgence -- mais
+rarement avec le même libellé exact ni la même sélection de features). **Implication
+pour la lecture de ce rapport** : toute feature individuelle citée comme exemple
+(chapitre 3) doit être comprise comme un exemple représentatif d'une catégorie de
+concepts récurrente, pas comme un atome stable et reproductible du dictionnaire —
+seul le taux agrégé d'interprétabilité constitue une mesure fiable de la qualité
+du SAE.
+
+## 22. Test de biais multilingue du juge (FR original vs EN traduit)
+
+Question posée par la littérature sur l'interprétabilité multilingue (Resck et al.
+2025 ; *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
+Languages*, arXiv:2507.11230) : le juge (Gemma-3-12B-it) interprète-t-il MIEUX les
+mêmes features quand les exemples et le prompt sont en anglais plutôt qu'en
+français (hypothèse : représentation interne des concepts dominée par l'anglais) ?
+`scripts/multilingual_judge_bias_test.py` (nouveau, job 41119) : réutilise les 150
+features déjà jugées de `results_v10_emails_main` (mêmes activations/fragments,
+aucune réextraction), traduit les exemples odd-one-out en anglais (un appel Gemma-3
+par feature, JSON in/JSON out, marqueurs `<<mot>>` préservés) puis rejoue le
+protocole odd-one-out intégralement en anglais (prompt traduit aussi).
+
+| Métrique | Français (original) | Anglais (traduit) | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out (n=145, 5 échecs de traduction exclus) | 46,9% (68/145) | 45,5% (66/145) | −1,4 point (z=0,24, non significatif) |
+| Features changeant de statut FR→EN | — | 27 (non-interprétable→interprétable) | |
+| Features changeant de statut EN→FR | — | 29 (interprétable→non-interprétable) | |
+| **Total features changeant de statut** | — | **56/145 = 38,6%** | |
+
+**Lecture — résultat nul sur l'hypothèse testée, mais confirmation d'un bruit de
+décision substantiel** : aucune différence significative entre le taux
+d'interprétabilité en français et en anglais traduit (46,9% vs 45,5%, écart bien en
+deçà du bruit binomial attendu) -- **pas de preuve d'un biais systématique
+favorisant l'anglais** sur ce protocole et ce corpus. Cependant, 38,6% des features
+changent de statut individuellement selon la langue de présentation -- un taux de
+retournement même supérieur à celui déjà mesuré pour le simple réordonnancement des
+exemples (§13.1, 31,3%). Puisque les retournements sont globalement symétriques
+(27 dans un sens, 29 dans l'autre) plutôt que systématiquement orientés vers
+l'anglais, l'interprétation la plus probable est que la traduction introduit son
+propre bruit de perturbation (comparable en ampleur à un simple réordonnancement),
+pas un déficit structurel de l'auto-interprétation en français. **Limite assumée** :
+le test traduit les exemples via LE MÊME modèle juge (pas de réentraînement sur
+corpus anglais natif, qui testerait une hypothèses différente -- cf.
+`docs/references.md`) ; la traduction elle-même peut introduire des artefacts
+(perte de nuance, changement de longueur) indépendants de la question posée.
+**Conclusion retenue** : renforce (sans le remettre en cause) le résultat déjà
+établi en §13.1 -- le protocole odd-one-out à décision greedy unique reste bruyant
+face à toute perturbation de surface (ordre OU langue), justifiant l'adoption du
+vote majoritaire comme protocole par défaut plutôt qu'une preuve d'un problème
+spécifiquement multilingue.

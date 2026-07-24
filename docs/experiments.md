@@ -38,7 +38,7 @@ de tokens. Diagnostic complet et 3 runs de validation dans `RESULTS_TESTS.md` §
    uniquement depuis FineWeb-2/Wikipedia générique (energy/sports/support) —
    `email_texts` n'était chargé qu'après l'entraînement, pour de la visualisation
    post-hoc uniquement.
-2. **Fix** : corpus principal = mails réels + augmentés (group-aware split par mail
+2. **Fix** : corpus principal = mails originaux + augmentés (group-aware split par mail
    d'origine), corpus generic réduit à un rôle post-hoc secondaire (diffing
    cross-domaine uniquement).
 3. **Ablation contrôlée** : 3 runs à corpus strictement identique (emails-dominant),

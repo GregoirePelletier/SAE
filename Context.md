@@ -192,7 +192,7 @@ façon fiable pour le gradient — confirmé par isolation empirique d'un cas mi
 
 ---
 
-## Validation à l'échelle complète (Gemma-3-12B-it, corpus réel EDF) — session v10
+## Validation à l'échelle complète (Gemma-3-12B-it, corpus EDF, mails originaux + augmentés) — session v10
 
 Confirme et RÉSOUT la limite ci-dessus ("features d'extension restent `dead_feature`
 avec un budget d'entraînement modeste") : ce n'était pas (seulement) un problème de
@@ -208,7 +208,7 @@ runs de validation dans `RESULTS_TESTS.md` §12. Résumé :
   odd-one-out — les "exemples positifs" présentés au juge étaient des extraits
   Wikipedia sans rapport entre eux (aucun concept commun à trouver).
 - **Fix** : `build_email_train_test_corpus()` (nouveau, `src/data/preparation.py`) —
-  corpus principal = mails réels + variantes augmentées acceptées, split group-aware
+  corpus principal = mails originaux + variantes augmentées acceptées, split group-aware
   par mail d'origine (`parent_id`, empêche toute fuite train/test). energy/sports/
   support réduit et repositionné en corpus secondaire post-hoc (démonstration de
   diffing cross-domaine uniquement, plus jamais utilisé pour l'entraînement).

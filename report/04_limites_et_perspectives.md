@@ -167,7 +167,7 @@ Détail complet : `RESULTS_TESTS.md` §16.1-16.2, `report/03_experiences_et_resu
 
 Résultat **mixte** (`RESULTS_TESTS.md` §16.5) : -330M reconstruit légèrement mieux
 (NMSE −7,5%) et sépare un peu mieux le corpus de diffing générique (+2 points), mais
-sépare légèrement MOINS bien les axes email réels (−2,2 points, la métrique la plus
+sépare légèrement MOINS bien les axes email (−2,2 points, la métrique la plus
 proche des objectifs métier). Aucun écart n'est de l'ordre d'un problème majeur ; pas
 de justification claire pour préférer l'un à l'autre sur ce projet à ce stade.
 
@@ -216,13 +216,18 @@ d'implémentation plus substantiel que les corrections déjà apportées :
   labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
   coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
   changement de génération cohérent avec son label, sur un échantillon de documents.
-- **Biais multilingue non quantifié** (*survey* sur l'explicabilité des LLM
-  multilingues, Resck et al. 2025) : le juge d'auto-interprétation (Gemma-3-12B-it)
-  et le corpus sont en français, mais la littérature documente une tendance des LLM à
-  représenter les concepts via une structure dominée par l'anglais en interne — un
-  facteur de confusion potentiel pour la qualité des labels générés, jamais mesuré
-  dans ce projet (par exemple en comparant la qualité des labels sur un sous-corpus
-  traduit en anglais avant labellisation).
+- **Biais multilingue** (*survey* sur l'explicabilité des LLM multilingues, Resck et
+  al. 2025) : **mesuré** (`RESULTS_TESTS.md` §22) — pas de différence significative
+  d'interprétabilité entre français et anglais traduit (46,9% vs 45,5%), mais 38,6%
+  des features changent individuellement de statut selon la langue, un taux de
+  bruit supérieur à celui déjà mesuré pour le réordonnancement des exemples (§13.1,
+  31,3%). Pas de biais systématique détecté envers l'anglais sur ce test précis.
+- **Variance de seed d'entraînement du SAE** (*Unstable Features, Reproducible
+  Subspaces*, arXiv:2606.12138) : **mesurée** (`RESULTS_TESTS.md` §21) — taux
+  d'interprétabilité agrégé stable entre deux seeds (45,3% vs 47,3%), mais
+  seulement 28,2% de recouvrement exact des labels individuels obtenus. Les
+  features prises individuellement ne sont pas reproductibles à l'identique d'un
+  seed à l'autre, contrairement au taux agrégé.
 
 ## Perspectives pour la suite du stage
 
@@ -245,7 +250,7 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    BM25 live sur le vocabulaire latent complet (cf. `scripts/retrieval_demo.py` pour
    cette dernière) ; pas de déploiement serveur persistant, lancement manuel.
 5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
-   un cas d'usage concret de détection d'urgence/d'intention sur mails réels~~
+   un cas d'usage concret de détection d'urgence/d'intention sur mails originaux~~
    **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
    les labels faibles réels (regex, indépendants du corpus augmenté) : +27,0 points
    sur l'urgence, +42,6 points sur la réclamation par rapport à la baseline classe
@@ -316,8 +321,22 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     jamais utilisé comme méthode d'explication à part entière) comme complément
     "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
     coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
-17. Quantifier le biais multilingue potentiel du juge d'auto-interprétation (corpus
-    et prompts en français, modèle possiblement biaisé vers une représentation
-    interne dominée par l'anglais) — par exemple en comparant la qualité des labels
-    obtenus sur le corpus français original vs une version traduite en anglais avant
-    labellisation.
+17. ~~Quantifier le biais multilingue potentiel du juge d'auto-interprétation~~
+    **FAIT** (`RESULTS_TESTS.md` §22) — résultat **nul sur l'hypothèse testée** :
+    aucune différence significative entre le taux d'interprétabilité en français et
+    en anglais traduit (46,9% vs 45,5%, z=0,24). Renforce en revanche le constat du
+    §13.1 : 38,6% des features changent de statut selon la langue de présentation
+    (contre 31,3% pour un simple réordonnancement), confirmant que le protocole
+    odd-one-out à décision unique reste globalement bruyant face à toute
+    perturbation de surface, pas spécifiquement biaisé envers l'anglais sur ce
+    corpus. Reste à faire : tester l'hypothèse alternative (entraîner le SAE sur un
+    corpus anglais natif équivalent, pas seulement traduire la vue du juge).
+18. ~~Tester la variance de seed d'entraînement du SAE~~ **FAIT**
+    (`RESULTS_TESTS.md` §21, *Unstable Features, Reproducible Subspaces*,
+    arXiv:2606.12138) — taux d'interprétabilité agrégé stable entre seeds (45,3% vs
+    47,3%, non significatif) mais seulement 28,2% de recouvrement exact des labels
+    individuels obtenus. Confirme que les features individuelles ne sont pas
+    reproductibles à l'identique (seule la performance agrégée et la thématique
+    générale le sont) — nuance importante pour la lecture des exemples de features
+    cités dans ce rapport (chapitre 3) : à comprendre comme représentatifs d'une
+    catégorie récurrente de concepts, pas comme des atomes stables du dictionnaire.

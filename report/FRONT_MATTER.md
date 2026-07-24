@@ -47,7 +47,7 @@ embeddings de phrase (F2LLM-v2). Le pipeline initial, fonctionnel de bout en bou
 présentait un taux de succès faible (20%) au test d'auto-interprétation des features
 propres au domaine. Une démarche de diagnostic par ablation contrôlée a établi que ce
 taux n'était pas limité par le volume d'entraînement, mais par une erreur de
-conception du corpus d'entraînement (uniquement générique, sans emails réels) —
+conception du corpus d'entraînement (uniquement générique, sans emails originaux) —
 corrigée, elle porte le taux d'interprétabilité à ~41-45%. Le stage a ensuite mis en
 place des tests de qualité de l'explication document-level (fidélité par ablation,
 plausibilité par choix forcé, toutes deux positives), un protocole d'évaluation

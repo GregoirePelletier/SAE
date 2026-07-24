@@ -7,6 +7,14 @@ import os
 import re
 
 SEED = int(os.environ.get("SEED", "42"))
+# Seed DÉCOUPLÉE de SEED pour le split train/test du corpus emails
+# (build_email_train_test_corpus) : permet de faire varier SEED (init des poids SAE,
+# échantillonnage feature_selection_by_magnitude, etc.) pour une ablation de variance
+# d'entraînement (cf. Unstable Features, Reproducible Subspaces, RESULTS_TESTS.md §21)
+# SANS changer le split train/test lui-même — sinon la comparaison entre deux SEED
+# mélangerait variance d'entraînement et variance de corpus. Défaut 42 : tous les runs
+# précédents (SEED=42 partout) ont un split identique à celui-ci, aucune régression.
+CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 
 # ─── Pipeline 2 (F2LLM) ───
 # Repo HF réel confirmé : codefuse-ai/F2LLM-v2-80M (l'org "Alibaba-NLP" utilisée

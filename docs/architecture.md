@@ -53,7 +53,7 @@ protocole de labellisation par juge LLM local (`local_gemma_judge`, `src/sae/jud
 Deux rôles bien séparés depuis la session v10 (cf. `RESULTS_TESTS.md` §12 pour le
 diagnostic qui a motivé cette séparation) :
 
-- **Corpus principal** (`build_email_train_test_corpus`) : mails réels
+- **Corpus principal** (`build_email_train_test_corpus`) : mails originaux
   (`local_data/emails/Mails.tsv`) + variantes augmentées acceptées
   (`local_data/emails/augmented_mails.jsonl`, générées par `scripts/run_augmentation.py`
   via perturbations contrôlées — émotion, registre, orthographe, urgence, cf.

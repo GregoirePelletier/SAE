@@ -20,11 +20,11 @@ corrigés, labellisation Neuronpedia réparée (ancienne route REST cassée → 
 S3 direct, cache local canonique réutilisé sans jamais retenter d'appel réseau),
 plusieurs bugs de dtype (fp16/bf16) découverts et corrigés par exécution réelle, code
 mort supprimé, modules orphelins raccordés. Validé à l'échelle complète sur
-**Gemma-3-12B-it** (cible de production) sur le corpus réel EDF (mails + variantes
+**Gemma-3-12B-it** (cible de production) sur le corpus EDF (mails originaux + variantes
 augmentées).
 
 **Corpus d'entraînement (v10)** : le SAE d'extension (`ExtendedSAE`) et le
-`PhraseLevelSAE` s'entraînent désormais sur les **mails réels + variantes augmentées**
+`PhraseLevelSAE` s'entraînent désormais sur les **mails originaux + variantes augmentées**
 (`local_data/emails/`), qui dominent le train (~41k/2.2k docs train/test). Le corpus
 generic energy/sports/support (FineWeb-2/Wikipedia) est réduit à un petit corpus
 secondaire, encodé post-hoc uniquement pour la démonstration de diffing cross-domaine
@@ -115,11 +115,11 @@ avec un profil `12b` (principal) et un profil `270m` (validation rapide, comment
 | `D_SAE` / `K_SPARSE` | `8192` / `16` | Dimension / sparsité du `PhraseLevelSAE` (Pipeline 2) |
 | `EMB_MODEL` | `codefuse-ai/F2LLM-v2-80M` | Modèle d'embeddings phrase (Pipeline 2) |
 | `SAVE_DIR` | `./results/` | Racine des sorties (résultats + `cache/`) |
-| `LOCAL_MAILS_PATH` | `./local_data/emails/Mails.tsv` | Corpus EDF réel (absent hors machine de calcul) |
+| `LOCAL_MAILS_PATH` | `./local_data/emails/Mails.tsv` | Corpus EDF (mails originaux, absent hors machine de calcul) |
 | `LOCAL_AUGMENTED_MAILS_PATH` | `./local_data/emails/augmented_mails.jsonl` | Variantes augmentées acceptées (produites par `scripts/run_augmentation.py`) |
 | `NEURONPEDIA_LABELS_PATH` | `./local_data/neuronpedia_labels/neuronpedia_labels_{layer}-gemmascope-2-res-{width}.json` | Cache labels Neuronpedia, **partagé entre tous les runs** (indépendant de `SAVE_DIR`) |
 | `EMAIL_TEST_SPLIT` | `0.05` | Fraction des mails (et de leurs variantes) réservée au test, split group-aware par mail d'origine |
-| `MAX_AUGMENTED_PER_MAIL` | `13` | Nb max de variantes augmentées conservées par mail réel |
+| `MAX_AUGMENTED_PER_MAIL` | `13` | Nb max de variantes augmentées conservées par mail original |
 | `CLUSTER_OFFLINE_MODE` | `0` | `1` = reproduit l'environnement cluster (SSL désactivé, HF offline) |
 | `HF_TOKEN` | — | Token HF pour les repos gated |
 
@@ -150,7 +150,7 @@ python download_sae.py --sae-only                  # SAE seul
 ### `src/sae/saev5.py` — orchestration principale
 
 Point d'entrée des deux pipelines. `if __name__ == "__main__":` charge le corpus
-**principal** (mails réels + variantes augmentées, via
+**principal** (mails originaux + variantes augmentées, via
 `build_email_train_test_corpus` de `src/data/preparation.py`, avec fallback
 synthétique si `LOCAL_MAILS_PATH` est absent), qui domine désormais l'entraînement du
 SAE d'extension et du `PhraseLevelSAE` (cf. `RESULTS_TESTS.md` §12 pour le diagnostic
@@ -212,7 +212,7 @@ Génère des variantes de mails perturbées (émotion, registre, orthographe, ur
 `AXES` dans `src/data/augmentation.py`) via Gemma-3, tracées et validées (garde-fous
 factuels : numéros de contrat, montants, dates préservés). **Nécessite un `Mails.tsv`
 réel** — non exécuté lors de la validation locale (données EDF absentes de cette
-machine) ; à lancer sur la machine disposant du corpus réel.
+machine) ; à lancer sur la machine disposant du corpus original.
 
 ```bash
 LOCAL_MAILS_PATH=local_data/emails/Mails.tsv MODEL_ID=google/gemma-3-12b-it \
@@ -230,7 +230,7 @@ entraîne un `PhraseLevelSAE`, et exécute une recherche de démonstration.
 python scripts/retrieval_demo.py --n-docs 60 --query "énergie électrique renouvelable"
 ```
 
-Sur données réelles (une fois `Mails.tsv` disponible), utiliser directement
+Sur le corpus original (une fois `Mails.tsv` disponible), utiliser directement
 `src/sae/retrieval/latent_terms.py --mails <Mails.tsv> --query "..."`.
 
 ### `src/sae/compare/pipeline.py`
@@ -394,11 +394,11 @@ résumé :
   L'ancienne recommandation ("augmenter `N_TOKENS_EXTRA_TRAIN`") ne tient plus : le
   problème n'était pas le volume.
 - **`run_augmentation.py` / `baseline_gemmascope.py`** : exécutés avec succès à
-  l'échelle complète sur le corpus réel EDF (cf. `RESULTS_TESTS.md` §0 et §12) —
+  l'échelle complète sur le corpus EDF (mails originaux + augmentés, cf. `RESULTS_TESTS.md` §0 et §12) —
   n'est plus une limite. Biais de formatage résiduel ("Objet :" dans les mails
   augmentés) corrigé et effet mesuré (`RESULTS_TESTS.md` §14.1).
 - **Détection d'urgence/d'intentions** (objectifs énoncés dès le cadrage initial) :
-  validée sur mails réels, +27,0/+42,6 points sur l'urgence/la réclamation par rapport
+  validée sur mails originaux, +27,0/+42,6 points sur l'urgence/la réclamation par rapport
   à une baseline classe majoritaire (`RESULTS_TESTS.md` §13.2).
 - **Dashboard interactif** (Streamlit) : implémenté, `src/visualization/dashboard.py`.
 - **Comparaison chiffrée avec SAELens** (règle n°2 de `Context.md`) : faite —

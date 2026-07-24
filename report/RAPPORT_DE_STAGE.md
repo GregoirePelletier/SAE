@@ -47,7 +47,7 @@ embeddings de phrase (F2LLM-v2). Le pipeline initial, fonctionnel de bout en bou
 présentait un taux de succès faible (20%) au test d'auto-interprétation des features
 propres au domaine. Une démarche de diagnostic par ablation contrôlée a établi que ce
 taux n'était pas limité par le volume d'entraînement, mais par une erreur de
-conception du corpus d'entraînement (uniquement générique, sans emails réels) —
+conception du corpus d'entraînement (uniquement générique, sans emails originaux) —
 corrigée, elle porte le taux d'interprétabilité à ~41-45%. Le stage a ensuite mis en
 place des tests de qualité de l'explication document-level (fidélité par ablation,
 plausibilité par choix forcé, toutes deux positives), un protocole d'évaluation
@@ -352,7 +352,7 @@ partageant la même infrastructure de corpus, de stockage et d'évaluation :
 ```
                     ┌─────────────────────────────────────┐
                     │        Corpus principal              │
-                    │  Mails EDF réels + variantes          │
+                    │  Mails EDF originaux + variantes      │
                     │  augmentées (13 axes de perturbation) │
                     └───────────────┬───────────────────────┘
                                     │
@@ -382,6 +382,21 @@ qui ne correspondraient à aucune direction dédiée du SAE core, le Pipeline 1 
 (1024 features, 32 actives simultanément), qui encode le **résidu** — ce que le SAE
 core ne reconstruit pas. Le SAE core reste gelé (jamais réentraîné) ; seule l'extension
 est entraînée, sur le corpus du projet.
+
+### Nature du corpus "original" (`Mails.tsv`) — précision importante
+
+Le corpus `Mails.tsv`, désigné dans ce rapport par commodité comme les mails
+**"originaux"**, n'est **pas** de la correspondance client authentique : il s'agit
+d'un jeu de données déjà synthétique, produit par un travail antérieur du
+laboratoire EDF R&D (non réalisé pendant ce stage, ni par les mêmes personnes). Les
+variantes **augmentées** (`augmented_mails.jsonl`) sont, elles, générées pendant ce
+stage (`scripts/run_augmentation.py`, Gemma-3-12B-it) à partir de ces mails
+"originaux". **Aucune des deux couches du corpus n'est donc constituée de données
+réelles au sens strict** — le terme "original" désigne uniquement leur statut de
+donnée d'entrée (antérieure et externe à ce stage) par rapport aux variantes
+augmentées qui en dérivent, pas leur authenticité. Ce rapport évite désormais le
+terme "réel"/"réels" pour ce corpus, employé par erreur dans les premières phases
+de rédaction (cf. chapitre 4 pour la correction et sa justification).
 
 ### Corpus d'entraînement : principal vs secondaire
 
@@ -494,7 +509,7 @@ d'entraînement.
 Deux changements ont été apportés au pipeline (`src/data/preparation.py`,
 `src/sae/saev5.py`) :
 
-1. **Nouveau corpus principal** : mails réels (`Mails.tsv`) + variantes augmentées
+1. **Nouveau corpus principal** : mails originaux (`Mails.tsv`) + variantes augmentées
    acceptées (`augmented_mails.jsonl`, 39 949 variantes issues de 13 axes de
    perturbation contrôlée — émotion, registre, orthographe, urgence). Ce corpus devient
    celui qui entraîne l'extension SAE et le `PhraseLevelSAE`. Split train/test
@@ -627,13 +642,13 @@ une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre dif
 **Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
 protocole de jugement plutôt qu'un défaut réel des features testées.**
 
-### 3.7.2. Le SAE prédit-il l'urgence et l'intention sur des mails réels ?
+### 3.7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
 
 Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
 complété par un test sur des labels **indépendants du corpus augmenté** : des labels
-faibles par expression régulière, déjà calculés sur le texte brut des mails réels
+faibles par expression régulière, déjà calculés sur le texte brut des mails originaux
 (`src/data/dataset.py::INTENT_KEYWORDS_FR` — réclamation, résiliation, remboursement,
-information, urgence), appliqués aux 3 300 mails réels du split d'entraînement
+information, urgence), appliqués aux 3 300 mails originaux du split d'entraînement
 (`scripts/intent_urgency_probe.py`, zéro calcul GPU — réutilise
 `p1_all_doc_acts_ext_d1024.pt` déjà en cache).
 
@@ -647,7 +662,7 @@ information, urgence), appliqués aux 3 300 mails réels du split d'entraînemen
 Ce résultat répond directement aux deux objectifs "détection d'urgence" et
 "détection d'intentions" énoncés dans le cadrage initial du projet
 (`Context.md`, section "Objectif") : les codes latents du SAE séparent très
-nettement l'urgence et la réclamation, sur des mails réels non augmentés, avec un
+nettement l'urgence et la réclamation, sur des mails originaux non augmentés, avec un
 gain net important sur la baseline naïve. Le remboursement ne bat pas sa baseline
 (déjà forte du fait du déséquilibre de classe, 85,5% de négatifs) — à interpréter
 comme une limite du label faible par regex pour cette catégorie plutôt que comme un
@@ -663,7 +678,7 @@ explication ? Deux propriétés indépendantes ont été testées.
 
 ### 3.8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
 
-Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails réels par
+Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails originaux par
 intention (urgence, réclamation, information, remboursement), correctement classés
 par une sonde logistique, ablation des 10 features les plus contributives à la
 décision vs 10 features actives aléatoires vs les 10 moins contributives.
@@ -711,7 +726,7 @@ Un résultat notable de ce passage en revue systématique : la comparaison du ba
 d'embedding du Pipeline 2 (F2LLM-v2-80M vs -330M, "assez grand") donne un résultat
 **mixte** — le modèle plus grand reconstruit légèrement mieux (NMSE −7,5%) et sépare
 un peu mieux le corpus de diffing générique (+2 points), mais sépare légèrement MOINS
-bien les axes email réels (−2,2 points), la métrique la plus proche des objectifs
+bien les axes email (−2,2 points), la métrique la plus proche des objectifs
 métier. Aucun écart n'est de l'ordre d'un problème majeur ; pas de justification
 claire pour préférer l'un à l'autre sur ce projet.
 
@@ -881,6 +896,58 @@ différente (ablation directe des features, jugement humain-like sur le document
 entier), ne sont pas concernés par cette réserve. Détail complet et calculs de
 significativité : `RESULTS_TESTS.md` §19.
 
+## 3.12. Ablation de variance de seed
+
+Question posée par la littérature (*Unstable Features, Reproducible Subspaces*,
+arXiv:2606.12138 ; *Toward Identifiable Sparse Autoencoders*, arXiv:2605.31245) :
+les features individuelles d'un SAE varient-elles substantiellement d'un seed
+d'entraînement à l'autre, à corpus et hyperparamètres identiques ? `SEED` a été
+découplé du split train/test (`CORPUS_SPLIT_SEED`, nouveau, défaut 42 inchangé)
+pour isoler la variance d'entraînement du SAE de toute variance de corpus. Run à
+`SEED=123` (sinon identique au run principal) :
+
+| Métrique | SEED=42 | SEED=123 | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out | 45,3% (68/150) | 47,3% (71/150) | +2,0 points (non significatif) |
+| `clf_acc_email_axes` | 93,5% | 91,3% | −2,2 points |
+| Recouvrement exact des labels interprétables | — | 22/78 = 28,2% | |
+
+Le taux agrégé d'interprétabilité est stable entre seeds, mais seulement 28,2% des
+labels sont des chaînes identiques entre les deux runs — les deux seeds recouvrent
+des thèmes similaires (adresses, contrats énergie, réclamations, coupures,
+urgence) mais rarement la même feature exacte. **Conséquence pour la lecture de ce
+rapport** : les features individuelles citées en exemple sont représentatives d'une
+catégorie de concepts récurrente, pas des atomes stables et reproductibles du
+dictionnaire ; seul le taux agrégé d'interprétabilité doit être lu comme une mesure
+fiable de la qualité du SAE. Détail : `RESULTS_TESTS.md` §21.
+
+## 3.13. Biais multilingue du juge (français vs anglais traduit)
+
+Question posée par la littérature sur l'interprétabilité multilingue (Resck et al.
+2025 ; *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
+Languages*, arXiv:2507.11230) : le juge interprète-t-il mieux les mêmes features
+quand les exemples sont présentés en anglais plutôt qu'en français ? Les 150
+features déjà jugées sont retraduites (un appel Gemma-3 par feature) et rejugées
+intégralement en anglais (`scripts/multilingual_judge_bias_test.py`), sans
+réextraction ni réentraînement.
+
+| Métrique | Français original | Anglais traduit | Écart |
+|---|---|---|---|
+| Interprétabilité odd-one-out (n=145) | 46,9% | 45,5% | −1,4 point (non significatif) |
+| Features changeant de statut (FR↔EN) | — | 56/145 = 38,6% | |
+
+**Résultat nul sur l'hypothèse testée** : pas de différence significative entre
+français et anglais traduit — aucun biais systématique détecté envers l'anglais sur
+ce protocole et ce corpus. Le taux de retournement individuel (38,6%), supérieur à
+celui déjà mesuré pour le réordonnancement des exemples (§7.1, 31,3%), est
+symétrique (27 flips dans un sens, 29 dans l'autre) plutôt qu'orienté vers
+l'anglais — cohérent avec un bruit de traduction générique plutôt qu'un déficit
+structurel de l'auto-interprétation en français. Renforce le constat du §7.1 :
+le protocole odd-one-out à décision unique reste sensible à toute perturbation de
+surface (ordre ou langue), justifiant le vote majoritaire comme protocole par
+défaut. Détail et limites assumées (traduction par le même modèle juge, pas de
+réentraînement sur corpus anglais natif) : `RESULTS_TESTS.md` §22.
+
 
 \newpage
 
@@ -928,7 +995,7 @@ inspection qualitative des exemples présentés au juge, lecture du code d'assem
 du corpus) est détaillée au chapitre 3. Elle a révélé une **erreur de conception**,
 plus qu'un bug au sens strict : le corpus utilisé pour entraîner le SAE d'extension
 était construit **exclusivement** à partir de textes génériques (FineWeb-2/Wikipedia
-filtrés par mots-clés), les emails réels n'étant chargés que pour une visualisation
+filtrés par mots-clés), les emails originaux n'étant chargés que pour une visualisation
 post-hoc, jamais vus pendant l'entraînement. Corrigée par
 `build_email_train_test_corpus()` (corpus principal = emails + augmentés, split
 group-aware par mail d'origine), cette correction a fait passer le taux
@@ -1014,6 +1081,19 @@ documentés comme piste non intégrée :
   par un dossier réel pour éliminer la source de confusion. Leçon retenue : vérifier
   `ls -la`/`readlink` avant de supprimer un chemin présenté comme "doublon", pas
   seulement sa taille ou son nom.
+- **Erreur de terminologie sur la nature du corpus "original"** : tout le rapport,
+  jusqu'à cette phase, employait "mails réels"/"emails réels"/"corpus réel EDF"
+  pour désigner `Mails.tsv`. Cette formulation est incorrecte : `Mails.tsv` est
+  lui-même un jeu de données synthétique, produit par un travail antérieur du
+  laboratoire EDF R&D (indépendant de ce stage), pas de la correspondance client
+  authentique. Ni le corpus "original" (`Mails.tsv`) ni les variantes augmentées
+  générées pendant ce stage ne sont donc des données réelles au sens strict.
+  Corrigé par une relecture terminologique complète du rapport et des documents
+  techniques (`docs/`, `RESULTS_TESTS.md`, `README.md`) : le terme "réel(s)" est
+  remplacé par "original(aux)" partout où il désignait ce corpus, avec une
+  clarification explicite ajoutée au chapitre 2. Erreur sans impact sur la
+  validité des résultats eux-mêmes (aucune métrique ne dépend de l'authenticité du
+  corpus), mais une imprécision qu'un rapport de stage se doit de corriger.
 
 ## Constat transversal
 
@@ -1200,7 +1280,7 @@ Détail complet : `RESULTS_TESTS.md` §16.1-16.2, `report/03_experiences_et_resu
 
 Résultat **mixte** (`RESULTS_TESTS.md` §16.5) : -330M reconstruit légèrement mieux
 (NMSE −7,5%) et sépare un peu mieux le corpus de diffing générique (+2 points), mais
-sépare légèrement MOINS bien les axes email réels (−2,2 points, la métrique la plus
+sépare légèrement MOINS bien les axes email (−2,2 points, la métrique la plus
 proche des objectifs métier). Aucun écart n'est de l'ordre d'un problème majeur ; pas
 de justification claire pour préférer l'un à l'autre sur ce projet à ce stade.
 
@@ -1249,13 +1329,18 @@ d'implémentation plus substantiel que les corrections déjà apportées :
   labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
   coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
   changement de génération cohérent avec son label, sur un échantillon de documents.
-- **Biais multilingue non quantifié** (*survey* sur l'explicabilité des LLM
-  multilingues, Resck et al. 2025) : le juge d'auto-interprétation (Gemma-3-12B-it)
-  et le corpus sont en français, mais la littérature documente une tendance des LLM à
-  représenter les concepts via une structure dominée par l'anglais en interne — un
-  facteur de confusion potentiel pour la qualité des labels générés, jamais mesuré
-  dans ce projet (par exemple en comparant la qualité des labels sur un sous-corpus
-  traduit en anglais avant labellisation).
+- **Biais multilingue** (*survey* sur l'explicabilité des LLM multilingues, Resck et
+  al. 2025) : **mesuré** (`RESULTS_TESTS.md` §22) — pas de différence significative
+  d'interprétabilité entre français et anglais traduit (46,9% vs 45,5%), mais 38,6%
+  des features changent individuellement de statut selon la langue, un taux de
+  bruit supérieur à celui déjà mesuré pour le réordonnancement des exemples (§13.1,
+  31,3%). Pas de biais systématique détecté envers l'anglais sur ce test précis.
+- **Variance de seed d'entraînement du SAE** (*Unstable Features, Reproducible
+  Subspaces*, arXiv:2606.12138) : **mesurée** (`RESULTS_TESTS.md` §21) — taux
+  d'interprétabilité agrégé stable entre deux seeds (45,3% vs 47,3%), mais
+  seulement 28,2% de recouvrement exact des labels individuels obtenus. Les
+  features prises individuellement ne sont pas reproductibles à l'identique d'un
+  seed à l'autre, contrairement au taux agrégé.
 
 ## Perspectives pour la suite du stage
 
@@ -1278,7 +1363,7 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    BM25 live sur le vocabulaire latent complet (cf. `scripts/retrieval_demo.py` pour
    cette dernière) ; pas de déploiement serveur persistant, lancement manuel.
 5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
-   un cas d'usage concret de détection d'urgence/d'intention sur mails réels~~
+   un cas d'usage concret de détection d'urgence/d'intention sur mails originaux~~
    **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
    les labels faibles réels (regex, indépendants du corpus augmenté) : +27,0 points
    sur l'urgence, +42,6 points sur la réclamation par rapport à la baseline classe
@@ -1349,11 +1434,25 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     jamais utilisé comme méthode d'explication à part entière) comme complément
     "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
     coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
-17. Quantifier le biais multilingue potentiel du juge d'auto-interprétation (corpus
-    et prompts en français, modèle possiblement biaisé vers une représentation
-    interne dominée par l'anglais) — par exemple en comparant la qualité des labels
-    obtenus sur le corpus français original vs une version traduite en anglais avant
-    labellisation.
+17. ~~Quantifier le biais multilingue potentiel du juge d'auto-interprétation~~
+    **FAIT** (`RESULTS_TESTS.md` §22) — résultat **nul sur l'hypothèse testée** :
+    aucune différence significative entre le taux d'interprétabilité en français et
+    en anglais traduit (46,9% vs 45,5%, z=0,24). Renforce en revanche le constat du
+    §13.1 : 38,6% des features changent de statut selon la langue de présentation
+    (contre 31,3% pour un simple réordonnancement), confirmant que le protocole
+    odd-one-out à décision unique reste globalement bruyant face à toute
+    perturbation de surface, pas spécifiquement biaisé envers l'anglais sur ce
+    corpus. Reste à faire : tester l'hypothèse alternative (entraîner le SAE sur un
+    corpus anglais natif équivalent, pas seulement traduire la vue du juge).
+18. ~~Tester la variance de seed d'entraînement du SAE~~ **FAIT**
+    (`RESULTS_TESTS.md` §21, *Unstable Features, Reproducible Subspaces*,
+    arXiv:2606.12138) — taux d'interprétabilité agrégé stable entre seeds (45,3% vs
+    47,3%, non significatif) mais seulement 28,2% de recouvrement exact des labels
+    individuels obtenus. Confirme que les features individuelles ne sont pas
+    reproductibles à l'identique (seule la performance agrégée et la thématique
+    générale le sont) — nuance importante pour la lecture des exemples de features
+    cités dans ce rapport (chapitre 3) : à comprendre comme représentatifs d'une
+    catégorie récurrente de concepts, pas comme des atomes stables du dictionnaire.
 
 
 \newpage
@@ -1367,13 +1466,13 @@ d'implémentation plus substantiel que les corrections déjà apportées :
 Le stage visait à rendre fonctionnelle et exploitable une plateforme d'analyse
 interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Au terme des
 quatre phases décrites dans ce rapport, les deux pipelines (Gemma-3 + GemmaScope
-étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus réel, avec des
+étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus original, avec des
 résultats quantifiés et reproductibles sur l'ensemble des capacités visées par
 l'énoncé initial :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes
   synthétiques (93,5%/79,3% selon le pipeline) et gain net mesuré sur des labels
-  faibles indépendants tirés de mails réels non augmentés (+27,0 points sur l'urgence,
+  faibles indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
   +42,6 points sur la réclamation par rapport à la baseline naïve).
 - **Explication des décisions** : deux tests indépendants (fidélité par ablation,
   plausibilité par choix forcé) confirment que les features désignées comme

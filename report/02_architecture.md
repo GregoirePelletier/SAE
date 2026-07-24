@@ -10,7 +10,7 @@ partageant la même infrastructure de corpus, de stockage et d'évaluation :
 ```
                     ┌─────────────────────────────────────┐
                     │        Corpus principal              │
-                    │  Mails EDF réels + variantes          │
+                    │  Mails EDF originaux + variantes      │
                     │  augmentées (13 axes de perturbation) │
                     └───────────────┬───────────────────────┘
                                     │
@@ -40,6 +40,21 @@ qui ne correspondraient à aucune direction dédiée du SAE core, le Pipeline 1 
 (1024 features, 32 actives simultanément), qui encode le **résidu** — ce que le SAE
 core ne reconstruit pas. Le SAE core reste gelé (jamais réentraîné) ; seule l'extension
 est entraînée, sur le corpus du projet.
+
+### Nature du corpus "original" (`Mails.tsv`) — précision importante
+
+Le corpus `Mails.tsv`, désigné dans ce rapport par commodité comme les mails
+**"originaux"**, n'est **pas** de la correspondance client authentique : il s'agit
+d'un jeu de données déjà synthétique, produit par un travail antérieur du
+laboratoire EDF R&D (non réalisé pendant ce stage, ni par les mêmes personnes). Les
+variantes **augmentées** (`augmented_mails.jsonl`) sont, elles, générées pendant ce
+stage (`scripts/run_augmentation.py`, Gemma-3-12B-it) à partir de ces mails
+"originaux". **Aucune des deux couches du corpus n'est donc constituée de données
+réelles au sens strict** — le terme "original" désigne uniquement leur statut de
+donnée d'entrée (antérieure et externe à ce stage) par rapport aux variantes
+augmentées qui en dérivent, pas leur authenticité. Ce rapport évite désormais le
+terme "réel"/"réels" pour ce corpus, employé par erreur dans les premières phases
+de rédaction (cf. chapitre 4 pour la correction et sa justification).
 
 ### Corpus d'entraînement : principal vs secondaire
 

@@ -40,7 +40,7 @@ inspection qualitative des exemples présentés au juge, lecture du code d'assem
 du corpus) est détaillée au chapitre 3. Elle a révélé une **erreur de conception**,
 plus qu'un bug au sens strict : le corpus utilisé pour entraîner le SAE d'extension
 était construit **exclusivement** à partir de textes génériques (FineWeb-2/Wikipedia
-filtrés par mots-clés), les emails réels n'étant chargés que pour une visualisation
+filtrés par mots-clés), les emails originaux n'étant chargés que pour une visualisation
 post-hoc, jamais vus pendant l'entraînement. Corrigée par
 `build_email_train_test_corpus()` (corpus principal = emails + augmentés, split
 group-aware par mail d'origine), cette correction a fait passer le taux
@@ -126,6 +126,19 @@ documentés comme piste non intégrée :
   par un dossier réel pour éliminer la source de confusion. Leçon retenue : vérifier
   `ls -la`/`readlink` avant de supprimer un chemin présenté comme "doublon", pas
   seulement sa taille ou son nom.
+- **Erreur de terminologie sur la nature du corpus "original"** : tout le rapport,
+  jusqu'à cette phase, employait "mails réels"/"emails réels"/"corpus réel EDF"
+  pour désigner `Mails.tsv`. Cette formulation est incorrecte : `Mails.tsv` est
+  lui-même un jeu de données synthétique, produit par un travail antérieur du
+  laboratoire EDF R&D (indépendant de ce stage), pas de la correspondance client
+  authentique. Ni le corpus "original" (`Mails.tsv`) ni les variantes augmentées
+  générées pendant ce stage ne sont donc des données réelles au sens strict.
+  Corrigé par une relecture terminologique complète du rapport et des documents
+  techniques (`docs/`, `RESULTS_TESTS.md`, `README.md`) : le terme "réel(s)" est
+  remplacé par "original(aux)" partout où il désignait ce corpus, avec une
+  clarification explicite ajoutée au chapitre 2. Erreur sans impact sur la
+  validité des résultats eux-mêmes (aucune métrique ne dépend de l'authenticité du
+  corpus), mais une imprécision qu'un rapport de stage se doit de corriger.
 
 ## Constat transversal
 

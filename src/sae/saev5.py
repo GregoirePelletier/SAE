@@ -203,7 +203,7 @@ if DEVICE == "cuda":
 
 from src.config import (
     HF_TOKEN, SAVE_DIR, LOCAL_DATASET_PATH, LOCAL_MAILS_PATH,
-    LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH,
+    LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH, CORPUS_SPLIT_SEED,
 )
 
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -1549,9 +1549,14 @@ if __name__ == "__main__":
     # générique, jamais sur du contenu email -> exemples positifs incohérents
     # présentés au juge). Split GROUP-AWARE par mail d'origine (aucune fuite
     # d'une variante augmentée d'un mail de test vers le train).
+    # seed=CORPUS_SPLIT_SEED (PAS SEED) : le split train/test doit rester identique
+    # entre deux runs qui ne diffèrent que par SEED (ablation de variance
+    # d'entraînement, cf. RESULTS_TESTS.md §21) -- sinon la comparaison mélangerait
+    # variance d'entraînement et variance de corpus.
     train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
         LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
-        test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL, seed=SEED,
+        test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
+        seed=CORPUS_SPLIT_SEED,
     )
     if not train_texts:
         print("  Fallback emails synthétiques (Mails.tsv introuvable).")

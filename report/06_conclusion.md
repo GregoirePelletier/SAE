@@ -5,13 +5,13 @@
 Le stage visait à rendre fonctionnelle et exploitable une plateforme d'analyse
 interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Au terme des
 quatre phases décrites dans ce rapport, les deux pipelines (Gemma-3 + GemmaScope
-étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus réel, avec des
+étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus original, avec des
 résultats quantifiés et reproductibles sur l'ensemble des capacités visées par
 l'énoncé initial :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes
   synthétiques (93,5%/79,3% selon le pipeline) et gain net mesuré sur des labels
-  faibles indépendants tirés de mails réels non augmentés (+27,0 points sur l'urgence,
+  faibles indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
   +42,6 points sur la réclamation par rapport à la baseline naïve).
 - **Explication des décisions** : deux tests indépendants (fidélité par ablation,
   plausibilité par choix forcé) confirment que les features désignées comme
