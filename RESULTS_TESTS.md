@@ -1435,7 +1435,50 @@ from-scratch de Pipeline 2). Coût attendu multi-jours (extraction Gemma-3-12B s
 ~584 000 textes, ~13x le volume du run principal) — job soumis avec
 `--time=120:00:00`.
 
+### 23.3. Incident : OOM du run à 100M tokens, correction et relance à 25M
+
+Job 41176 tué par le gestionnaire OOM du nœud après 2h39 d'exécution, à 24% de
+l'extraction (19 720/82 643 batches, MaxRSS 187,5 Go pour un `--mem=180G` demandé
+— `sacct -j 41176` : état `OUT_OF_MEMORY`).
+
+**Diagnostic** : la cause n'est pas un sous-dimensionnement anodin de `--mem`, mais
+un problème de conception à cette échelle. Le réservoir de résidus bruts
+(`raw_residuals_list`/`reservoir`, `saev5.py` ~L801-896, échantillonnage de Vitter)
+alloue en RAM **hôte** (pas VRAM) un buffer de taille
+`N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets` (bf16), indépendamment de la taille
+du corpus ou du filler. Pour Gemma-3-12B (`hidden_size=3840`) et
+`N_TOKENS_EXTRA_TRAIN=100000000`, cela représente **768 Go** pour ce seul tenseur —
+largement au-delà des 180 Go demandés, et proche de la RAM totale du nœud a100
+(1 To, partagé avec d'autres jobs GPU). Le buffer double transitoirement
+(`raw_residuals_list` + `reservoir` coexistent brièvement au moment de la création
+du réservoir, L880-882), aggravant le pic mémoire réel au-delà même de 768 Go.
+
+Point notable : le run était par ailleurs sain — l'extraction progressait
+normalement (~3,5 batches/s, ~14 docs/s), le filler FineWeb2-fr avait produit
+286 316 chunks (sur les 540 000 visés, faute de matches suffisants sur les 3 shards
+locaux — hit rate mesuré de 0,275%, cf. §23.1), et à ce débit l'extraction complète
+du corpus (~330 000 textes au total) aurait pris ~6-7h, bien en-deçà du
+`--time=120:00:00` alloué. Seule la mémoire était en cause.
+
+**Options considérées** : (a) réduire `N_TOKENS_EXTRA_TRAIN` pour rester en RAM à
+un volume plus modeste, (b) pousser à ~90M tokens avec `--mem=900G` (le nœud,
+quasi inactif au moment du diagnostic, le permettait en théorie, avec un risque de
+contention si d'autres jobs démarrent sur le même nœud partagé), (c) ré-architecturer
+le réservoir en memmap disque pour atteindre malgré tout 100-200M tokens sans
+changer le compromis mémoire. Option (a) retenue pour sa simplicité et son
+absence de risque de contention : `N_TOKENS_EXTRA_TRAIN=25000000` (buffer ≈ 192 Go),
+`--mem=500G` (marge confortable sur un nœud à 1 To). Ce choix ne permet pas
+d'atteindre le seuil exact de 100-200M du papier SAE Boost, mais teste tout de même
+un volume ~12x supérieur à l'ablation initiale (2M tokens, §5/§12) — suffisant pour
+détecter un éventuel effet de volume s'il se manifeste de façon monotone entre 2M
+et 100M.
+
+Relancé sous `results_v13_ablation_volume25m`
+(`slurm/pipeline_runs/run_ablation_volume_25m.slurm`, job 41375), mêmes 3 shards
+FineWeb2-fr, `N_VOLUME_FILLER_TARGET_CHUNKS=540000` inchangé (la RAM n'en dépend
+plus, seul le plafond `N_TOKENS_EXTRA_TRAIN` compte désormais).
+
 *[Résultats en cours au moment de la rédaction. Cette section sera complétée avec
 le taux d'interprétabilité obtenu, les métriques de reconstruction, et la
 comparaison avec le run principal (45,3%) et l'ablation volume initiale
-(40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job.]*
+(40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job 41375.]*

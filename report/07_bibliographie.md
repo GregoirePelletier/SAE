@@ -67,7 +67,21 @@ présente dans `report/README.md`.
 - Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
   Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
   `pdf/2025.emnlp-main.1033.pdf`). Cité pour le biais multilingue potentiel du juge
-  d'auto-interprétation (corpus français), non quantifié dans ce projet.
+  d'auto-interprétation (corpus français) — **mesuré** au chapitre 3, §13 : pas de
+  différence significative français/anglais (46,9% vs 45,5%, z=0,24), mais 38,6%
+  des features changent de statut interprétable selon la langue.
+- *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
+  Languages* ([arXiv:2507.11230](https://arxiv.org/abs/2507.11230)). Motive le test
+  de biais multilingue ci-dessus (features SAE potentiellement langue-spécifiques,
+  facteur de confusion pour un juge interrogé hors de la langue du corpus).
+- *Unstable Features, Reproducible Subspaces*
+  ([arXiv:2606.12138](https://arxiv.org/abs/2606.12138)) et *Toward Identifiable
+  Sparse Autoencoders* ([arXiv:2605.31245](https://arxiv.org/abs/2605.31245)).
+  Montrent que les features individuelles d'un SAE varient selon la graine
+  d'entraînement, le sous-espace de bas rang restant seul reproductible — **testé**
+  au chapitre 3, §12 (ablation de variance de seed) : taux agrégé stable (45,3% vs
+  47,3%, non significatif) mais seulement 28,2% de recouvrement exact des libellés
+  de features entre les deux graines, confirmant la thèse des deux papiers.
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
   Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
   cité en introduction.

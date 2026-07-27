@@ -139,6 +139,21 @@ documentés comme piste non intégrée :
   clarification explicite ajoutée au chapitre 2. Erreur sans impact sur la
   validité des résultats eux-mêmes (aucune métrique ne dépend de l'authenticité du
   corpus), mais une imprécision qu'un rapport de stage se doit de corriger.
+- **OOM par dimensionnement erroné d'un buffer mémoire à grande échelle** : le run
+  d'ablation volume à 100M tokens (job 41176) a été tué par OOM après 2h39,
+  `--mem=180G` demandé contre 187,5 Go effectivement utilisés. Le calcul avait été
+  fait à l'envers : le buffer réservoir de résidus bruts (échantillonnage de
+  Vitter, `saev5.py`) alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
+  **en RAM hôte**, indépendamment de la taille du corpus/filler — pour
+  Gemma-3-12B (hidden_size=3840) et 100M tokens, cela représente 768 Go, un ordre
+  de grandeur jamais vérifié avant de lancer le job. Corrigé en recalculant
+  explicitement ce coût avant toute relance et en réduisant la cible à 25M tokens
+  (buffer ≈ 192 Go, `--mem=500G`) plutôt que de simplement augmenter `--mem` sans
+  comprendre l'origine du pic mémoire. Leçon retenue : pour un paramètre qui
+  dimensionne un buffer en mémoire (ici un multiple direct de la dimension
+  cachée du modèle), calculer l'empreinte mémoire théorique avant de soumettre un
+  job à grande échelle, plutôt que de découvrir le problème par un crash après
+  plusieurs heures de calcul. Détail complet : `RESULTS_TESTS.md` §23.3.
 
 ## Constat transversal
 

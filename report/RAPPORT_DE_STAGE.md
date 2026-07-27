@@ -972,14 +972,27 @@ Le filler retenu est ajouté **uniquement** au réservoir de tokens résiduels
 (nouveau paramètre `volume_filler_texts`, `run_llm_max_pool_pipeline`), jamais au
 corpus utilisé pour la sélection des features à labelliser ni pour la sonde de
 classification — ceci pour ne pas réintroduire le biais de domaine diagnostiqué et
-corrigé au chapitre 3. Run à `N_TOKENS_EXTRA_TRAIN=100 000 000` (~114M tokens de
-filler estimés, 3 shards FineWeb2-fr), sinon identique au run principal.
+corrigé au chapitre 3.
 
-*[Résultats en cours au moment de la rédaction — job multi-jours (extraction
-Gemma-3-12B sur ~584 000 textes). Cette section sera complétée avec le taux
-d'interprétabilité obtenu et la comparaison avec le run principal (45,3%) et
-l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job.
-Détail complet : `RESULTS_TESTS.md` §23.]*
+**Incident et correction** : la première tentative (`N_TOKENS_EXTRA_TRAIN=100 000 000`,
+job 41176) a été tuée par OOM après 2h39 (24% de l'extraction). Cause : le buffer
+réservoir de résidus bruts alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
+**en RAM hôte**, indépendamment de la taille du corpus — pour Gemma-3-12B
+(hidden_size=3840) et 100M tokens, cela représente 768 Go, largement au-delà des
+180 Go demandés et proche de la RAM totale du nœud (1 To, partagé). Le run était
+par ailleurs sain (extraction normale, filler correctement construit) — seule la
+mémoire était en cause. Corrigé en réduisant la cible à
+`N_TOKENS_EXTRA_TRAIN=25 000 000` (buffer ≈ 192 Go, `--mem=500G`) : n'atteint pas
+le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
+supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
+monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
+
+*[Résultats en cours au moment de la rédaction — job en cours (extraction
+Gemma-3-12B sur ~330 000 textes, ~6-7h estimées). Cette section sera complétée
+avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
+(45,3%) et l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la
+fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
+`RESULTS_TESTS.md` §23.3.]*
 
 
 \newpage
@@ -1127,6 +1140,21 @@ documentés comme piste non intégrée :
   clarification explicite ajoutée au chapitre 2. Erreur sans impact sur la
   validité des résultats eux-mêmes (aucune métrique ne dépend de l'authenticité du
   corpus), mais une imprécision qu'un rapport de stage se doit de corriger.
+- **OOM par dimensionnement erroné d'un buffer mémoire à grande échelle** : le run
+  d'ablation volume à 100M tokens (job 41176) a été tué par OOM après 2h39,
+  `--mem=180G` demandé contre 187,5 Go effectivement utilisés. Le calcul avait été
+  fait à l'envers : le buffer réservoir de résidus bruts (échantillonnage de
+  Vitter, `saev5.py`) alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
+  **en RAM hôte**, indépendamment de la taille du corpus/filler — pour
+  Gemma-3-12B (hidden_size=3840) et 100M tokens, cela représente 768 Go, un ordre
+  de grandeur jamais vérifié avant de lancer le job. Corrigé en recalculant
+  explicitement ce coût avant toute relance et en réduisant la cible à 25M tokens
+  (buffer ≈ 192 Go, `--mem=500G`) plutôt que de simplement augmenter `--mem` sans
+  comprendre l'origine du pic mémoire. Leçon retenue : pour un paramètre qui
+  dimensionne un buffer en mémoire (ici un multiple direct de la dimension
+  cachée du modèle), calculer l'empreinte mémoire théorique avant de soumettre un
+  job à grande échelle, plutôt que de découvrir le problème par un crash après
+  plusieurs heures de calcul. Détail complet : `RESULTS_TESTS.md` §23.3.
 
 ## Constat transversal
 
@@ -1628,7 +1656,21 @@ présente dans `report/README.md`.
 - Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
   Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
   `pdf/2025.emnlp-main.1033.pdf`). Cité pour le biais multilingue potentiel du juge
-  d'auto-interprétation (corpus français), non quantifié dans ce projet.
+  d'auto-interprétation (corpus français) — **mesuré** au chapitre 3, §13 : pas de
+  différence significative français/anglais (46,9% vs 45,5%, z=0,24), mais 38,6%
+  des features changent de statut interprétable selon la langue.
+- *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
+  Languages* ([arXiv:2507.11230](https://arxiv.org/abs/2507.11230)). Motive le test
+  de biais multilingue ci-dessus (features SAE potentiellement langue-spécifiques,
+  facteur de confusion pour un juge interrogé hors de la langue du corpus).
+- *Unstable Features, Reproducible Subspaces*
+  ([arXiv:2606.12138](https://arxiv.org/abs/2606.12138)) et *Toward Identifiable
+  Sparse Autoencoders* ([arXiv:2605.31245](https://arxiv.org/abs/2605.31245)).
+  Montrent que les features individuelles d'un SAE varient selon la graine
+  d'entraînement, le sous-espace de bas rang restant seul reproductible — **testé**
+  au chapitre 3, §12 (ablation de variance de seed) : taux agrégé stable (45,3% vs
+  47,3%, non significatif) mais seulement 28,2% de recouvrement exact des libellés
+  de features entre les deux graines, confirmant la thèse des deux papiers.
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
   Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
   cité en introduction.

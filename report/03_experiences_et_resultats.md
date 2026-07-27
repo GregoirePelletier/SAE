@@ -521,11 +521,24 @@ Le filler retenu est ajouté **uniquement** au réservoir de tokens résiduels
 (nouveau paramètre `volume_filler_texts`, `run_llm_max_pool_pipeline`), jamais au
 corpus utilisé pour la sélection des features à labelliser ni pour la sonde de
 classification — ceci pour ne pas réintroduire le biais de domaine diagnostiqué et
-corrigé au chapitre 3. Run à `N_TOKENS_EXTRA_TRAIN=100 000 000` (~114M tokens de
-filler estimés, 3 shards FineWeb2-fr), sinon identique au run principal.
+corrigé au chapitre 3.
 
-*[Résultats en cours au moment de la rédaction — job multi-jours (extraction
-Gemma-3-12B sur ~584 000 textes). Cette section sera complétée avec le taux
-d'interprétabilité obtenu et la comparaison avec le run principal (45,3%) et
-l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job.
-Détail complet : `RESULTS_TESTS.md` §23.]*
+**Incident et correction** : la première tentative (`N_TOKENS_EXTRA_TRAIN=100 000 000`,
+job 41176) a été tuée par OOM après 2h39 (24% de l'extraction). Cause : le buffer
+réservoir de résidus bruts alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
+**en RAM hôte**, indépendamment de la taille du corpus — pour Gemma-3-12B
+(hidden_size=3840) et 100M tokens, cela représente 768 Go, largement au-delà des
+180 Go demandés et proche de la RAM totale du nœud (1 To, partagé). Le run était
+par ailleurs sain (extraction normale, filler correctement construit) — seule la
+mémoire était en cause. Corrigé en réduisant la cible à
+`N_TOKENS_EXTRA_TRAIN=25 000 000` (buffer ≈ 192 Go, `--mem=500G`) : n'atteint pas
+le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
+supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
+monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
+
+*[Résultats en cours au moment de la rédaction — job en cours (extraction
+Gemma-3-12B sur ~330 000 textes, ~6-7h estimées). Cette section sera complétée
+avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
+(45,3%) et l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la
+fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
+`RESULTS_TESTS.md` §23.3.]*
