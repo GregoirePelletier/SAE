@@ -221,7 +221,7 @@ N_TOTAL_SUPPORT = int(os.environ.get("N_TOTAL_SUPPORT", "300"))
 # Proportion d'emails+augmentés réservée au test (le reste va en train -- objectif :
 # maximiser la part réellement utilisée en entraînement, cf. décision utilisateur).
 EMAIL_TEST_SPLIT = float(os.environ.get("EMAIL_TEST_SPLIT", "0.05"))
-# Nombre max de variantes augmentées par mail réel conservées (limite le
+# Nombre max de variantes augmentées par mail original conservées (limite le
 # déséquilibre train si un mail génère beaucoup plus de variantes qu'un autre,
 # et borne le volume total si besoin de contrôler le temps de calcul).
 MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
@@ -1556,7 +1556,7 @@ if __name__ == "__main__":
     print(" CHARGEMENT DU CORPUS")
     print("=" * 70)
 
-    # ─── CORPUS PRINCIPAL : emails réels + variantes augmentées ────────────────
+    # ─── CORPUS PRINCIPAL : emails originaux + variantes augmentées ────────────────
     # Domine désormais l'entraînement du SAE (reservoir de résidus + PhraseLevelSAE),
     # là où le corpus generic energy/sports/support l'occupait entièrement par le
     # passé sans jamais qu'un email n'entre dans le train (cf. RESULTS_TESTS.md /

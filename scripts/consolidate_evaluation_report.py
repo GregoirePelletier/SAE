@@ -103,7 +103,7 @@ def consolidate(run_dir: str) -> tuple[str, dict]:
 
     # 8. Intent/urgence
     intent = load_json(os.path.join(cache, "intent_urgency_probe_results.json"))
-    md.append(section("7-8. Détection d'urgence/intention (mails réels, labels faibles regex)"))
+    md.append(section("7-8. Détection d'urgence/intention (mails originaux, labels faibles regex)"))
     if intent:
         md.append("| Intention | n_pos/n_total | acc_SAE | baseline | Δ |\n|---|---|---|---|---|\n")
         for k, v in intent.items():

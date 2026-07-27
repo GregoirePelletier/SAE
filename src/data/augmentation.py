@@ -207,7 +207,7 @@ def generate_variants(
 def _strip_leading_objet_line(text: str) -> str:
     """Retire une ligne "Objet :"/"Subject :" en tête de texte, si présente.
 
-    Nécessaire pour la cohérence avec les mails réels : `load_and_clean_emails`
+    Nécessaire pour la cohérence avec les mails originaux : `load_and_clean_emails`
     (src/data/preparation.py) applique déjà ce nettoyage aux mails originaux. Sans
     ce même traitement ici, la ligne "Objet :" que le générateur ajoute encore dans
     ~20% des variantes malgré la contrainte n°5 du prompt système (_SYSTEM,
@@ -227,7 +227,7 @@ def load_augmented(jsonl_path: str) -> pd.DataFrame:
     is_augmented=True, corpus_origin=corpus parent, aug_axis, aug_level.
     Le texte est nettoyé d'une éventuelle ligne "Objet :"/"Subject :" résiduelle
     (cf. _strip_leading_objet_line) pour rester cohérent avec le traitement des
-    mails réels et ne pas polluer le SAE avec un artefact de formatage."""
+    mails originaux et ne pas polluer le SAE avec un artefact de formatage."""
     rows = [json.loads(l) for l in open(jsonl_path, encoding="utf-8") if l.strip()]
     df = pd.DataFrame([r for r in rows if r["rejected"] is None])
     df["text"] = df["text"].map(_strip_leading_objet_line)

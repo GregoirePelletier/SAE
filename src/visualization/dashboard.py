@@ -196,6 +196,70 @@ def page_features(run_dir: str) -> None:
             st.info("cache/p2_feature_labels.json absent de ce run.")
 
 
+@st.cache_data
+def _load_email_corpus() -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    mails_path = os.path.join(REPO_ROOT, "local_data", "emails", "Mails.tsv")
+    aug_path = os.path.join(REPO_ROOT, "local_data", "emails", "augmented_mails.jsonl")
+    if not (os.path.exists(mails_path) and os.path.exists(aug_path)):
+        return None
+    mails = pd.read_csv(mails_path, sep="\t", index_col=0)
+    augmented = pd.read_json(aug_path, lines=True)
+    # pandas infère parent_id comme int64 (colonne JSON entièrement numérique) --
+    # re-forcé en str pour matcher mails.index.astype(str) sans dépendre de
+    # l'inférence de type de read_json.
+    augmented["parent_id"] = augmented["parent_id"].astype(str)
+    return mails, augmented
+
+
+def page_email_comparison() -> None:
+    st.header("Comparaison mail original / variantes augmentées")
+    st.caption(
+        "Lien via `parent_id` (index de ligne dans `Mails.tsv`) — 13 variantes par "
+        "mail original, sur 4 axes de perturbation (emotion, registre, orthographe, "
+        "urgence). cf. `src/data/augmentation.py`. Indépendant du run sélectionné "
+        "dans la barre latérale (lit directement `local_data/emails/`)."
+    )
+    corpus = _load_email_corpus()
+    if corpus is None:
+        st.warning("Mails.tsv ou augmented_mails.jsonl absent de local_data/emails/ "
+                    "(absent hors machine de calcul).")
+        return
+    mails, augmented = corpus
+
+    parent_id = st.selectbox(
+        "Mail original (parent_id)",
+        options=mails.index.astype(str).tolist(),
+        format_func=lambda pid: f"#{pid} — {mails.loc[int(pid), 'document'][:80]!r}",
+    )
+    variants = augmented[augmented["parent_id"] == parent_id]
+
+    st.subheader(f"Original — mail #{parent_id}")
+    st.text_area("original_text", mails.loc[int(parent_id), "document"],
+                 height=200, disabled=True, label_visibility="collapsed")
+
+    if variants.empty:
+        st.info("Aucune variante augmentée trouvée pour ce parent_id.")
+        return
+
+    axes = sorted(variants["axis"].unique())
+    chosen_axis = st.radio("Axe de perturbation", axes, horizontal=True)
+    axis_variants = variants[variants["axis"] == chosen_axis]
+
+    st.subheader(f"Variantes — axe « {chosen_axis} »")
+    cols = st.columns(len(axis_variants))
+    for col, (_, row) in zip(cols, axis_variants.iterrows()):
+        with col:
+            st.markdown(f"**{row['level']}**")
+            if row.get("rejected"):
+                # Variante rejetée au contrôle qualité de la génération (texte non
+                # stocké, motif conservé pour audit) -- ~11,7% du corpus augmenté
+                # (5291/45240), cf. src/data/augmentation.py.
+                st.caption(f"Rejetée au contrôle qualité : `{row['rejected']}`")
+            else:
+                st.text_area(row["aug_id"], row["text"], height=300, disabled=True,
+                             label_visibility="collapsed")
+
+
 def page_diffing(run_dir: str) -> None:
     st.header("Diffing de corpus (Fisher exact + BH)")
     csv_files = sorted(glob.glob(os.path.join(REPO_ROOT, run_dir, "**", "diff_*.csv"), recursive=True))
@@ -248,7 +312,7 @@ def page_urgence_robustesse(run_dir: str) -> None:
     st.header("Détection d'urgence/intention & robustesse du juge")
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Sonde intention/urgence (mails réels)")
+        st.subheader("Sonde intention/urgence (mails originaux)")
         d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "intent_urgency_probe_results.json"))
         if d:
             rows = [{"intention": k, **v} for k, v in d.items()]
@@ -342,7 +406,8 @@ def main() -> None:
     page = st.sidebar.radio(
         "Page",
         ["Vue d'ensemble", "UMAP", "Features", "Diffing", "Recherche", "Urgence/Robustesse",
-         "Explication (fidélité/plausibilité)", "Rapport consolidé"],
+         "Explication (fidélité/plausibilité)", "Rapport consolidé",
+         "Comparaison mail original / augmenté"],
     )
 
     if page == "Vue d'ensemble":
@@ -361,6 +426,8 @@ def main() -> None:
         page_search(run_dir)
     elif page == "Urgence/Robustesse":
         page_urgence_robustesse(run_dir)
+    elif page == "Comparaison mail original / augmenté":
+        page_email_comparison()
 
 
 if __name__ == "__main__":

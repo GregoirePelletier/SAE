@@ -9,7 +9,7 @@ sonde, ou juste des labels plausibles sans lien causal réel ?
 
 Protocole :
   1. Ajuste UNE sonde logistique finale (pas la CV de downstream_classification, qui ne
-     réexpose pas les coefficients) sur les activations SAE des mails réels ("original",
+     réexpose pas les coefficients) sur les activations SAE des mails originaux ("original",
      cf. scripts/intent_urgency_probe.py pour la correspondance) pour chaque intention
      testée (urgence, réclamation...).
   2. Pour un échantillon de documents correctement classés positifs avec confiance
@@ -119,10 +119,10 @@ def ablation_drop(clf: LogisticRegression, x: np.ndarray, feature_idx: np.ndarra
 
 
 def main():
-    print("[fidelity] Chargement des activations et labels d'intention (mails réels)...")
+    print("[fidelity] Chargement des activations et labels d'intention (mails originaux)...")
     acts, labels_df, texts = load_real_email_acts_and_intents()
     label_map = load_label_map()
-    print(f"[fidelity] {acts.shape[0]} mails réels, {acts.shape[1]} dims SAE.")
+    print(f"[fidelity] {acts.shape[0]} mails originaux, {acts.shape[1]} dims SAE.")
 
     results = {}
     for col in labels_df.columns:

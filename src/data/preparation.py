@@ -176,19 +176,19 @@ def build_email_train_test_corpus(
     seed: int = 42,
 ) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
-    Corpus principal d'entraînement du SAE : mails réels + variantes augmentées
+    Corpus principal d'entraînement du SAE : mails originaux + variantes augmentées
     acceptées (cf. décision utilisateur -- emails+augmentés doivent dominer le
     train, au lieu du corpus générique energy/sports/support historique qui
     n'incluait jamais d'email, cf. RESULTS_TESTS.md/Context.md).
 
-    Split GROUP-AWARE par mail d'origine (parent_id) : un mail réel et TOUTES ses
+    Split GROUP-AWARE par mail d'origine (parent_id) : un mail original et TOUTES ses
     variantes augmentées tombent ensemble du même côté train/test. Sans ça, une
     variante augmentée d'un mail présent en test fuiterait dans le train (quasi-
     duplicata sémantique) et gonflerait artificiellement les métriques
     (classification, silhouette) -- biais classique de leakage par groupe.
 
     Retourne (train_texts, train_labels, test_texts, test_labels). Label =
-    "original" pour un mail réel, "{axis}__{level}" pour une variante augmentée
+    "original" pour un mail original, "{axis}__{level}" pour une variante augmentée
     (réutilisable tel quel pour la classification/diffing par axe de perturbation).
     """
     real_texts, _ = load_and_clean_emails(mails_tsv_path)

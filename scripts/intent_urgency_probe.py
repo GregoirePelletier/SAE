@@ -1,7 +1,7 @@
 """
 scripts/intent_urgency_probe.py — Les codes latents du SAE prédisent-ils l'urgence et
 l'intention (labels faibles par regex, src/data/dataset.py::INTENT_KEYWORDS_FR) sur les
-MAILS RÉELS (pas les variantes augmentées) ?
+MAILS ORIGINAUX (pas les variantes augmentées) ?
 
 Objectif du projet (Context.md) : "détection d'urgence", "détection d'intentions".
 Le probe de classification déjà ajouté (RESULTS_TESTS.md §12) mesure la séparabilité
@@ -56,14 +56,14 @@ def main():
     print("[intent-probe] Reconstruction de la correspondance texte réel <-> ligne Mails.tsv...")
     kept_row_indices, df_full = replicate_load_and_clean_emails_with_index(LOCAL_MAILS_PATH)
     n_real = len(kept_row_indices)
-    print(f"[intent-probe] n_real (mails réels survivant au nettoyage) = {n_real}")
+    print(f"[intent-probe] n_real (mails originaux survivant au nettoyage) = {n_real}")
 
     print("[intent-probe] Reconstruction du split train/test (déterministe, SEED fixe)...")
     rng = np.random.default_rng(SEED)
     test_mask = rng.random(n_real) < float(os.environ.get("EMAIL_TEST_SPLIT", "0.05"))
     train_positions = [i for i in range(n_real) if not test_mask[i]]  # ordre croissant, cf. build_email_train_test_corpus
     k_train_original = len(train_positions)
-    print(f"[intent-probe] {k_train_original} mails réels dans le bloc 'original' de train_texts.")
+    print(f"[intent-probe] {k_train_original} mails originaux dans le bloc 'original' de train_texts.")
 
     # Vérification croisée : build_email_train_test_corpus doit annoncer le même compte.
     train_texts, train_labels, _, _ = build_email_train_test_corpus(
@@ -90,7 +90,7 @@ def main():
     intent_cols = [c for c in df_full.columns if c.startswith("intent_")]
     labels_df = df_full.loc[row_indices_for_train_original, intent_cols].reset_index(drop=True)
 
-    print(f"\n[intent-probe] {len(intent_cols)} intentions testées sur {k_train_original} mails réels "
+    print(f"\n[intent-probe] {len(intent_cols)} intentions testées sur {k_train_original} mails originaux "
           f"(activations SAE Pipeline 1, {original_train_acts.shape[1]} dims) :\n")
 
     results = {}

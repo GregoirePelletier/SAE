@@ -139,7 +139,7 @@ def main():
     label_map = load_label_map()
     all_labeled_features = [f for f in range(acts.shape[1])
                              if clean_labels([f], label_map)]
-    print(f"[plausibility] {acts.shape[0]} mails réels, {len(all_labeled_features)} features labellisées.")
+    print(f"[plausibility] {acts.shape[0]} mails originaux, {len(all_labeled_features)} features labellisées.")
 
     doc_indices = rng_np.choice(acts.shape[0], size=min(N_DOCS, acts.shape[0]), replace=False)
 
