@@ -180,6 +180,18 @@ facteur de confusion partagé entre "ce qui rend une variante reconnaissable com
 augmentée" et "ce que le SAE apprend à détecter" — non quantifié dans cette
 investigation.
 
+En contrepoint, un aspect qui *est* contrôlé : `src/data/augmentation.py::validate`
+rejette une variante générée si elle est trop courte (<30 caractères), si son ratio
+de longueur par rapport au mail original sort de l'intervalle [0,4 ; 2,5], si elle
+est strictement identique au parent, ou (sauf pour l'axe orthographe) si elle perd
+une entité numérique du mail d'origine (montant, numéro de compte/contrat, date).
+Sur l'ensemble du corpus augmenté (45 240 générations), **11,7% (5291) sont
+rejetées** par ce garde-fou — texte non conservé (`text: null`), motif de rejet
+conservé pour audit (`facts_lost=[...]`, `length_ratio=...`, etc.). Sans impact sur
+les résultats de ce rapport : `load_augmented` filtre ces lignes rejetées avant
+qu'elles n'atteignent le pipeline SAE, elles n'ont donc jamais été vues par
+l'extension ni par la sonde de classification.
+
 ### Pistes issues d'une relecture élargie de la littérature (nouveau)
 
 Une relecture de l'ensemble des PDF de référence disponibles (`pdf/`, au-delà des
