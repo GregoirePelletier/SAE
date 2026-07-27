@@ -110,4 +110,4 @@ plutôt que de choisir arbitrairement entre les trois formules existantes.
 | `google/gemma-3-{4b,1b,270m}-it` | Profils alternatifs (`MODEL_SIZE`), 270m pour validation rapide locale | 4B/1B/270M |
 | `google/gemma-scope-2-{12b,4b,1b,270m}-it` | SAE préentraînés GemmaScope-2 correspondants | — |
 | `codefuse-ai/F2LLM-v2-{80M,160M,330M}` | Embeddings de phrase (Pipeline 2) | 80M-330M |
-| `BAAI/bge-m3` | Présent dans `models/`, non branché dans le pipeline actuel à date | — |
+| `BAAI/bge-m3` | Pooling `[CLS]`, multilingue — branché via `src/config.py::LATENT_LABEL_EMB_MODEL` pour la similarité de labels (`select_latents_by_similarity`, `find_interesting_pairs`, §15.2/15.3 `RESULTS_TESTS.md`), après comparaison empirique où F2LLM (pooling dernier-token) donnait des résultats sans rapport sur des labels courts. | — |
