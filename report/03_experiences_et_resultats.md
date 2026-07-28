@@ -542,3 +542,35 @@ avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
 (45,3%) et l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la
 fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
 `RESULTS_TESTS.md` §23.3.]*
+
+## 15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
+
+Le steering (`steer_activations`/`steer_and_decode`, `src/sae/sae_shared.py`)
+existe dans le dépôt depuis le début mais n'était jamais réellement exercé : seule
+`run_steering_demo` l'utilise, et uniquement pour une vérification géométrique
+superficielle (cosinus avant/après suppression/amplification d'une feature, sans
+tâche en aval). Le test d'ablation existant (§8) ablate déjà des features par
+intention, mais directement dans l'espace des codes SAE, sans jamais appeler
+`decode()`.
+
+Question testée (`scripts/steering_fidelity_test.py`, zéro calcul LLM,
+réutilise les activations en cache et le checkpoint entraîné de
+`results_v10_emails_main`) : si on décode réellement le code stimulé vers l'espace
+résidu puis qu'on RÉ-ENCODE ce résidu décodé, l'intervention (suppression des
+top-10 features explicatives d'une intention) tient-elle à travers cet aller-retour ?
+
+| Intention | Chute en place (témoin) | Chute steer_and_decode | Ratio |
+|---|---|---|---|
+| réclamation | 0,576 | 1,000 | 1,74× |
+| remboursement | 1,000 | 0,016 | 0,02× |
+| information | 1,000 | 0,004 | 0,00× |
+| urgence | 0,646 | 0,584 | 0,90× |
+
+Résultat hétérogène et contre-intuitif : le round-trip decode/encode neutralise
+quasi entièrement l'intervention pour deux intentions sur quatre (remboursement,
+information), la préserve pour urgence, et l'amplifie même pour réclamation.
+Conclusion : `steer_and_decode` n'est pas un mécanisme d'intervention causale
+fiable et prévisible à partir du simple test d'ablation en place — son effet
+dépend fortement de la structure de corrélation entre features propre à chaque
+intention. Détail complet (protocole, limite méthodologique du pooling par
+document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.

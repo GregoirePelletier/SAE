@@ -1482,3 +1482,62 @@ plus, seul le plafond `N_TOKENS_EXTRA_TRAIN` compte désormais).
 le taux d'interprétabilité obtenu, les métriques de reconstruction, et la
 comparaison avec le run principal (45,3%) et l'ablation volume initiale
 (40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job 41375.]*
+
+## 24. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
+
+`steer_activations`/`steer_and_decode` (`src/sae/sae_shared.py`) existent dans le
+dépôt depuis le début mais n'étaient jamais réellement exercés : seule
+`run_steering_demo` (`saev5.py`) les utilise, et uniquement pour une vérification
+géométrique superficielle (cosinus avant/après suppression/amplification d'UNE
+feature, sans tâche en aval) — signalé comme piste non exploitée dans
+`docs/references.md` (entrée "A Survey on Sparse Autoencoders"). `explanation_
+fidelity_test.py` (§16) ablate déjà des features par intention, mais **directement
+dans l'espace des codes SAE, sans jamais appeler `decode()`**.
+
+**Question testée** : si on utilise réellement `steer_and_decode` — décoder le code
+stimulé vers l'espace résidu, puis RÉ-ENCODER ce résidu décodé — l'intervention
+(suppression des top-10 features explicatives d'une intention) tient-elle à travers
+cet aller-retour, ou le décodeur/encodeur du SAE la dilue-t-il ?
+
+**Limite méthodologique assumée** : les vecteurs utilisés
+(`p1_all_doc_acts_ext_d1024.pt`) sont des codes SAE poolés par MAX sur tous les
+tokens d'un document (comme dans `run_steering_demo` déjà) — pas le code d'un token
+réel. Décoder un pooling ne reconstruit donc pas un résidu de token authentique,
+mais une direction résidu synthétique représentant le mélange de concepts du
+document.
+
+**Protocole** (`scripts/steering_fidelity_test.py`, zéro calcul LLM — réutilise les
+activations en cache + le checkpoint `p1_frozen_core_d1024_k32.pt` déjà entraîné de
+`results_v10_emails_main`) : pour chaque intention testée en §16, sur les mêmes
+documents/top-10 features explicatives, compare la chute de probabilité prédite (a)
+par ablation en place dans l'espace des codes (témoin, identique à §16) et (b) par
+`steer_and_decode` (decode → `ext_sae.encode()` → re-score), ainsi que la fraction
+d'activation résiduelle des features "supprimées" après l'aller-retour.
+
+| Intention | Chute en place (témoin) | Chute steer_and_decode | Ratio | Fuite résiduelle moyenne |
+|---|---|---|---|---|
+| réclamation | 0,576 | 1,000 | **1,74×** | 0,213 |
+| remboursement | 1,000 | 0,016 | **0,02×** | 0,049 |
+| information | 1,000 | 0,004 | **0,00×** | 0,246 |
+| urgence | 0,646 | 0,584 | 0,90× | 0,455 |
+
+**Résultat, hétérogène et contre-intuitif** : le comportement du round-trip
+decode/encode varie du tout au tout selon l'intention — quasi neutralisé pour
+`remboursement`/`information` (ratio 0,00-0,02×, l'intervention ne "tient" pas du
+tout : le décodeur puis ré-encodeur régénère une prédiction quasiment identique à
+l'original malgré la suppression), globalement préservé pour `urgence` (0,90×), et
+même **amplifié** pour `réclamation` (1,74×, la chute de probabilité est plus forte
+qu'en ablation directe). La "fuite résiduelle" (fraction de l'activation d'origine
+des features ciblées qui réapparaît après le round-trip) reste partout < 0,5, sans
+corrélation évidente avec le ratio de chute de probabilité — suggérant que ce n'est
+pas la feature ciblée elle-même qui "revient", mais que d'autres features (actives
+et corrélées) compensent différemment selon l'intention lors de la reconstruction
+puis du ré-encodage.
+
+**Conclusion** : `steer_and_decode`, tel qu'il existe dans le dépôt, n'est **pas**
+un mécanisme d'intervention causale fiable et prévisible à partir du simple test
+d'ablation en place (§16) — son effet dépend fortement de la structure de
+corrélation entre features propre à chaque intention, et peut aussi bien annuler
+que renforcer l'intervention voulue. Toute utilisation future du steering comme
+méthode d'explication devrait mesurer cet effet par intention/concept plutôt que de
+supposer qu'une ablation en place et un steering décodé sont équivalents.

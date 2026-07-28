@@ -220,14 +220,19 @@ d'implémentation plus substantiel que les corrections déjà apportées :
   du cadrage initial. Non implémenté : nécessiterait une nouvelle boucle
   d'entraînement (SAE + tête de classification jointe), distincte de l'architecture
   actuelle des deux pipelines.
-- **Steering comme méthode d'explication "output-based" jamais évaluée** (taxonomie
-  de *A Survey on Sparse Autoencoders*, Shu et al. 2025) : `steer_activations`/
-  `steer_and_decode` (`src/sae/sae_shared.py`) et `p1_steering_demo.json` existent
-  déjà dans le dépôt, mais n'ont jamais été évalués comme méthode d'explication à
-  part entière (contrairement aux protocoles "input-based" — odd-one-out,
-  labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
-  coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
-  changement de génération cohérent avec son label, sur un échantillon de documents.
+- **Steering comme méthode d'explication "output-based"** (taxonomie de *A Survey
+  on Sparse Autoencoders*, Shu et al. 2025) : **mesuré** (`RESULTS_TESTS.md` §24) —
+  `steer_activations`/`steer_and_decode` (`src/sae/sae_shared.py`) existaient dans
+  le dépôt depuis le début mais n'avaient jamais été réellement exercés au-delà
+  d'une vérification géométrique superficielle (`run_steering_demo`). Testé en
+  faisant réellement décoder puis ré-encoder un code stimulé (suppression des
+  top-10 features explicatives d'une intention) : résultat très hétérogène selon
+  l'intention — le round-trip neutralise quasi entièrement l'intervention pour
+  2 intentions sur 4 (ratio 0,00-0,02× vs. l'ablation en place), la préserve pour
+  une troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
+  n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
+  du simple test d'ablation en place du chapitre 3 — son effet dépend fortement de
+  la structure de corrélation entre features propre à chaque intention.
 - **Biais multilingue** (*survey* sur l'explicabilité des LLM multilingues, Resck et
   al. 2025) : **mesuré** (`RESULTS_TESTS.md` §22) — pas de différence significative
   d'interprétabilité entre français et anglais traduit (46,9% vs 45,5%), mais 38,6%
@@ -329,10 +334,18 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     Le Bail et al. 2025) pour la détection d'urgence/intention, en alternative à la
     sonde post-hoc actuelle (`downstream_classification`) — permettrait de comparer
     directement la précision et l'interprétabilité des concepts obtenus.
-16. Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté mais
-    jamais utilisé comme méthode d'explication à part entière) comme complément
-    "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
-    coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
+16. ~~Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté
+    mais jamais utilisé comme méthode d'explication à part entière) comme complément
+    "output-based" aux protocoles "input-based" déjà validés (chapitre 3)~~ **FAIT**
+    (`RESULTS_TESTS.md` §24) — résultat hétérogène et non trivial : le round-trip
+    decode/ré-encodage neutralise quasi entièrement l'intervention pour 2 intentions
+    sur 4 testées (ratio 0,00-0,02× vs. ablation en place), la préserve pour une
+    troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
+    n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
+    du simple test d'ablation en place. Reste à faire : étendre à un échantillon plus
+    large de features/intentions pour caractériser ce qui distingue les cas où le
+    round-trip "tient" de ceux où il ne tient pas (structure de corrélation entre
+    features ? spécificité de l'intention ?).
 17. ~~Quantifier le biais multilingue potentiel du juge d'auto-interprétation~~
     **FAIT** (`RESULTS_TESTS.md` §22) — résultat **nul sur l'hypothèse testée** :
     aucune différence significative entre le taux d'interprétabilité en français et

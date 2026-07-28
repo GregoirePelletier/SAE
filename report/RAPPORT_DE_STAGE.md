@@ -466,7 +466,7 @@ tokens) insuffisant pour l'extension SAE, ou à un autre facteur ?**
 
 ## 3.2. Diagnostic
 
-### 3.2.1. Élimination de l'hypothèse "features mortes"
+### 2.1. Élimination de l'hypothèse "features mortes"
 
 Un budget d'entraînement insuffisant se traduirait typiquement par des features
 d'extension qui ne s'activent jamais (`dead_feature`), auquel cas le juge ne peut même
@@ -476,7 +476,7 @@ pas être interrogé (`odd_one_out_judge` retourne directement `dead_feature` si
 exemples positifs disponibles. L'échec du test n'était donc pas un problème de features
 inactives.
 
-### 3.2.2. Inspection qualitative des exemples présentés au juge
+### 2.2. Inspection qualitative des exemples présentés au juge
 
 L'inspection directe des `pos_examples` stockés pour les features non interprétables a
 révélé le problème : les neuf exemples "positifs" présentés au juge pour une même
@@ -487,7 +487,7 @@ présentés ensemble comme activant fortement la même feature. Le test odd-one-
 peut, par construction, pas réussir dans ce cas : il n'y a pas de concept partagé à
 partir duquel identifier l'intrus.
 
-### 3.2.3. Cause racine
+### 2.3. Cause racine
 
 La lecture du code d'assemblage du corpus (`src/sae/saev5.py`, bloc `__main__`) a
 montré que le corpus utilisé pour échantillonner le réservoir de résidus servant à
@@ -538,7 +538,7 @@ observé (avec n=10, l'incertitude sur un taux observé est trop large pour conc
 
 ## 3.5. Résultats
 
-### 3.5.1. Taux d'interprétabilité (test odd-one-out)
+### 5.1. Taux d'interprétabilité (test odd-one-out)
 
 | Corpus | `N_TOKENS_EXTRA_TRAIN` | n features jugées | Features mortes | Taux d'interprétabilité |
 |---|---|---|---|---|
@@ -553,7 +553,7 @@ d'environ ±8 points). Les trois taux mesurés à corpus identique (40,7% / 45,3
 sont statistiquement indistinguables les uns des autres au regard de cette incertitude,
 malgré un facteur 20 entre le budget de tokens le plus faible et le plus élevé testés.
 
-### 3.5.2. Interprétation
+### 5.2. Interprétation
 
 - **Corriger le domaine du corpus (generic → emails), à volume comparable (500 000
   tokens), plus que double le taux d'interprétabilité (20,0% → 45,3%).** C'est le
@@ -567,7 +567,7 @@ malgré un facteur 20 entre le budget de tokens le plus faible et le plus élev�
   de **contenu/domaine du corpus** d'entraînement — les emails, cible réelle du
   projet, n'entraient jamais dans les données servant à entraîner l'extension SAE.
 
-### 3.5.3. Qualité des labels obtenus
+### 5.3. Qualité des labels obtenus
 
 Contraste direct entre les labels obtenus avant et après correction, pour les features
 qui passent le test :
@@ -579,7 +579,7 @@ qui passent le test :
   client` — des concepts directement alignés avec les objectifs métier du projet
   (détection d'urgence, détection d'intention, réclamations).
 
-### 3.5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
+### 5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
 
 Une sonde de classification logistique a été ajoutée pour mesurer si les codes latents
 du SAE permettent de séparer linéairement les 14 classes du corpus principal (13
@@ -618,7 +618,7 @@ plus directement aux objectifs métier du stage et à la limite identifiée au �
 (taux résiduel non expliqué) — toutes deux réutilisent des activations déjà en cache,
 sans calcul GPU supplémentaire pour la seconde.
 
-### 3.7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
+### 7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
 
 Le protocole odd-one-out (`odd_one_out_judge`) ne prend qu'une seule décision greedy
 par feature. Pour tester sa robustesse à l'ordre de présentation des exemples (un
@@ -642,7 +642,7 @@ une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre dif
 **Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
 protocole de jugement plutôt qu'un défaut réel des features testées.**
 
-### 3.7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
+### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
 
 Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
 complété par un test sur des labels **indépendants du corpus augmenté** : des labels
@@ -676,7 +676,7 @@ capacité globale du corpus) : pour UN document donné, l'explication produite p
 pipeline (les features les plus actives et leurs labels) est-elle une bonne
 explication ? Deux propriétés indépendantes ont été testées.
 
-### 3.8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
+### 8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
 
 Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails originaux par
 intention (urgence, réclamation, information, remboursement), correctement classés
@@ -695,7 +695,7 @@ réellement la décision (leur ablation fait s'effondrer la prédiction), contra
 à des features actives choisies au hasard (effet quasi nul). L'explication n'est pas
 une justification a posteriori déconnectée du mécanisme réel.
 
-### 3.8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
+### 8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
 
 Test par choix forcé au niveau document (`scripts/explanation_plausibility_test.py`,
 juge Gemma-3-12B-it — un jugement comparatif comme l'odd-one-out plutôt qu'une
@@ -710,7 +710,7 @@ au-dessus du hasard, mais loin d'être parfaite : dans 28,3% des cas le juge pr�
 décoy aléatoire, cohérent avec le taux d'interprétabilité résiduel (~45-55%) mesuré
 par ailleurs.
 
-### 3.8.3. Protocole d'évaluation complet du dépôt
+### 8.3. Protocole d'évaluation complet du dépôt
 
 Ces deux tests s'inscrivent dans un protocole plus large couvrant l'ensemble des
 méthodes du dépôt sous conditions fixées (`docs/evaluation_protocol.md`) : 16
@@ -770,7 +770,7 @@ d'évaluation, §8.3) :
 | `N_TOKENS_EXTRA_TRAIN` | 500 000 | 500 000 (inchangé) | — (déjà démontré non limitant, §5.2) |
 | Backbone Pipeline 2 | F2LLM-v2-80M | F2LLM-v2-330M | (condition fixée du protocole d'évaluation, §8.3) |
 
-### 3.10.1. Résultats du run combiné
+### 10.1. Résultats du run combiné
 
 | Métrique | Run principal (16k) | Run v12 (65k, échelle) |
 |---|---|---|
@@ -788,7 +788,7 @@ combine trois leviers à la fois (largeur, époques, nombre de features jugées)
 cohérent avec un plafond déjà proche pour cette tâche plutôt qu'un signal de
 dégradation.
 
-### 3.10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
+### 10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
 
 Analyse à coût nul (aucun calcul GPU, relecture de l'ordre de sélection déjà en
 cache) pour savoir si les 450 features supplémentaires labellisées par le scale-up
@@ -808,7 +808,7 @@ moyenne n'est donc pas un proxy fiable de l'interprétabilité potentielle d'une
 feature : restreindre la labellisation aux features de plus forte magnitude exclut
 systématiquement des candidates au moins aussi bonnes, voire meilleures.
 
-### 3.10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
+### 10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
 
 Le test de plausibilité (§8.2) donnait un résultat fortement dégradé sur ce run
 (56,7% contre 71,7% sur le run principal), en contradiction apparente avec la hausse
@@ -830,7 +830,7 @@ cosmétique des exemples exportés, restait numériquement valide (recalculé pa
 prudence, résultat dans le même ordre de grandeur). Détail complet dans
 `RESULTS_TESTS.md` §17.3/17.6.
 
-### 3.10.4. Décomposition largeur / époques / capacité (ablations isolées)
+### 10.4. Décomposition largeur / époques / capacité (ablations isolées)
 
 Trois runs à facteur unique, isolant respectivement la largeur du SAE core, le
 nombre d'époques et la capacité de l'extension (`D_EXTRA`/`K_EXTRA`, toutes choses
@@ -994,10 +994,37 @@ avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
 fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
 `RESULTS_TESTS.md` §23.3.]*
 
+## 3.15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
-\newpage
+Le steering (`steer_activations`/`steer_and_decode`, `src/sae/sae_shared.py`)
+existe dans le dépôt depuis le début mais n'était jamais réellement exercé : seule
+`run_steering_demo` l'utilise, et uniquement pour une vérification géométrique
+superficielle (cosinus avant/après suppression/amplification d'une feature, sans
+tâche en aval). Le test d'ablation existant (§8) ablate déjà des features par
+intention, mais directement dans l'espace des codes SAE, sans jamais appeler
+`decode()`.
 
----
+Question testée (`scripts/steering_fidelity_test.py`, zéro calcul LLM,
+réutilise les activations en cache et le checkpoint entraîné de
+`results_v10_emails_main`) : si on décode réellement le code stimulé vers l'espace
+résidu puis qu'on RÉ-ENCODE ce résidu décodé, l'intervention (suppression des
+top-10 features explicatives d'une intention) tient-elle à travers cet aller-retour ?
+
+| Intention | Chute en place (témoin) | Chute steer_and_decode | Ratio |
+|---|---|---|---|
+| réclamation | 0,576 | 1,000 | 1,74× |
+| remboursement | 1,000 | 0,016 | 0,02× |
+| information | 1,000 | 0,004 | 0,00× |
+| urgence | 0,646 | 0,584 | 0,90× |
+
+Résultat hétérogène et contre-intuitif : le round-trip decode/encode neutralise
+quasi entièrement l'intervention pour deux intentions sur quatre (remboursement,
+information), la préserve pour urgence, et l'amplifie même pour réclamation.
+Conclusion : `steer_and_decode` n'est pas un mécanisme d'intervention causale
+fiable et prévisible à partir du simple test d'ablation en place — son effet
+dépend fortement de la structure de corrélation entre features propre à chaque
+intention. Détail complet (protocole, limite méthodologique du pooling par
+document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.
 
 # Chapitre 4 — Inspection des erreurs et corrections
 
@@ -1394,14 +1421,19 @@ d'implémentation plus substantiel que les corrections déjà apportées :
   du cadrage initial. Non implémenté : nécessiterait une nouvelle boucle
   d'entraînement (SAE + tête de classification jointe), distincte de l'architecture
   actuelle des deux pipelines.
-- **Steering comme méthode d'explication "output-based" jamais évaluée** (taxonomie
-  de *A Survey on Sparse Autoencoders*, Shu et al. 2025) : `steer_activations`/
-  `steer_and_decode` (`src/sae/sae_shared.py`) et `p1_steering_demo.json` existent
-  déjà dans le dépôt, mais n'ont jamais été évalués comme méthode d'explication à
-  part entière (contrairement aux protocoles "input-based" — odd-one-out,
-  labellisation contrastive — qui sont, eux, au cœur du chapitre 3). Piste peu
-  coûteuse : mesurer si l'amplification d'une feature jugée interprétable produit un
-  changement de génération cohérent avec son label, sur un échantillon de documents.
+- **Steering comme méthode d'explication "output-based"** (taxonomie de *A Survey
+  on Sparse Autoencoders*, Shu et al. 2025) : **mesuré** (`RESULTS_TESTS.md` §24) —
+  `steer_activations`/`steer_and_decode` (`src/sae/sae_shared.py`) existaient dans
+  le dépôt depuis le début mais n'avaient jamais été réellement exercés au-delà
+  d'une vérification géométrique superficielle (`run_steering_demo`). Testé en
+  faisant réellement décoder puis ré-encoder un code stimulé (suppression des
+  top-10 features explicatives d'une intention) : résultat très hétérogène selon
+  l'intention — le round-trip neutralise quasi entièrement l'intervention pour
+  2 intentions sur 4 (ratio 0,00-0,02× vs. l'ablation en place), la préserve pour
+  une troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
+  n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
+  du simple test d'ablation en place du chapitre 3 — son effet dépend fortement de
+  la structure de corrélation entre features propre à chaque intention.
 - **Biais multilingue** (*survey* sur l'explicabilité des LLM multilingues, Resck et
   al. 2025) : **mesuré** (`RESULTS_TESTS.md` §22) — pas de différence significative
   d'interprétabilité entre français et anglais traduit (46,9% vs 45,5%), mais 38,6%
@@ -1503,10 +1535,18 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     Le Bail et al. 2025) pour la détection d'urgence/intention, en alternative à la
     sonde post-hoc actuelle (`downstream_classification`) — permettrait de comparer
     directement la précision et l'interprétabilité des concepts obtenus.
-16. Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté mais
-    jamais utilisé comme méthode d'explication à part entière) comme complément
-    "output-based" aux protocoles "input-based" déjà validés (chapitre 3) — piste peu
-    coûteuse (pas de nouvel entraînement, juste une nouvelle évaluation).
+16. ~~Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté
+    mais jamais utilisé comme méthode d'explication à part entière) comme complément
+    "output-based" aux protocoles "input-based" déjà validés (chapitre 3)~~ **FAIT**
+    (`RESULTS_TESTS.md` §24) — résultat hétérogène et non trivial : le round-trip
+    decode/ré-encodage neutralise quasi entièrement l'intervention pour 2 intentions
+    sur 4 testées (ratio 0,00-0,02× vs. ablation en place), la préserve pour une
+    troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
+    n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
+    du simple test d'ablation en place. Reste à faire : étendre à un échantillon plus
+    large de features/intentions pour caractériser ce qui distingue les cas où le
+    round-trip "tient" de ceux où il ne tient pas (structure de corrélation entre
+    features ? spécificité de l'intention ?).
 17. ~~Quantifier le biais multilingue potentiel du juge d'auto-interprétation~~
     **FAIT** (`RESULTS_TESTS.md` §22) — résultat **nul sur l'hypothèse testée** :
     aucune différence significative entre le taux d'interprétabilité en français et
@@ -1526,11 +1566,6 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     générale le sont) — nuance importante pour la lecture des exemples de features
     cités dans ce rapport (chapitre 3) : à comprendre comme représentatifs d'une
     catégorie récurrente de concepts, pas comme des atomes stables du dictionnaire.
-
-
-\newpage
-
----
 
 # Conclusion générale
 
