@@ -1271,16 +1271,18 @@ Pistes encore non testées par manque de temps, par ordre de coût croissant :
    testée, pas nécessairement un contre-exemple "propre" conceptuellement. Une
    feature réellement monosémantique pourrait échouer au test si le contrôle négatif
    choisi partage accidentellement une propriété de surface avec les exemples positifs.
-3. **Capacité architecturale de l'extension** (`D_EXTRA=1024`, `K_EXTRA=32`) : non
-   testée dans cette investigation (fixée dans les trois runs de validation). Une
-   extension plus large ou plus/moins parcimonieuse pourrait changer le taux de
-   features réellement monosémantiques indépendamment du corpus ou du volume.
-4. **Fiabilité du juge selon la taille du modèle** : observée comme dégradée sur
-   `gemma-3-270m-it` par rapport à un modèle plus grand lors de la validation locale
-   initiale (`Context.md`). Le juge utilisé pour la validation à l'échelle (12B) est
-   déjà le plus grand modèle disponible dans ce projet ; tester un modèle encore plus
-   grand comme juge (sans nécessairement l'utiliser pour l'extraction d'activations)
-   est une piste possible mais coûteuse.
+3. ~~**Capacité architecturale de l'extension** (`D_EXTRA=1024`, `K_EXTRA=32`)~~
+   **FAIT** : capacité doublée ensemble (§17.5, 40,0% -- pire, non concluant seul),
+   `K_EXTRA=5` seul (§25, +9,4 points non significatif), `D_EXTRA=2048` seul à
+   `K_EXTRA` fixe (§27, 46,0% -- aucun écart, z=-0,12). Conclusion : aucune
+   configuration de capacité testée à ce jour ne change significativement le taux
+   d'interprétabilité une fois le corpus corrigé.
+4. **Fiabilité du juge/extracteur selon la taille du modèle** : observée comme
+   dégradée sur `gemma-3-270m-it` par rapport à un modèle plus grand lors de la
+   validation locale initiale (`Context.md`). *[En cours au moment de la rédaction
+   de cette version]* : ablation à l'échelle complète avec gemma-3-4b-it et
+   gemma-3-1b-it (+ leurs GemmaScope dédiés) à la place de gemma-3-12b-it, sur le
+   corpus emails complet (pas juste une validation locale) -- résultats à venir.
 
 **Mise à jour (testé, session interp_embed)** : une piste supplémentaire, plus
 fondamentale, a été testée (`scripts/contrastive_labeling_test.py`,
@@ -1550,12 +1552,14 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    sur la fidélité, positifs mais imparfaits sur la plausibilité. Reste à faire :
    étendre le test de plausibilité au Pipeline 2, et à un échantillon plus large que
    60 documents pour resserrer l'intervalle de confiance.
-10. ~~Comparer le backbone d'embedding Pipeline 2 (F2LLM-80M vs -330M)~~ **FAIT**
-    (`RESULTS_TESTS.md` §16.5) — résultat mixte, pas de gain net. Reste à faire :
-    tester bge-m3 comme backbone Pipeline 2 (actuellement utilisé seulement pour la
-    similarité de labels), qui a montré une meilleure fiabilité sur des textes courts
-    dans un contexte différent (§15.2) mais n'a jamais été testé comme backbone
-    d'entraînement du `PhraseLevelSAE` lui-même.
+10. ~~Comparer le backbone d'embedding Pipeline 2 (F2LLM-80M vs -330M vs -160M)~~
+    **FAIT** (`RESULTS_TESTS.md` §16.5-16.6) — résultat mixte, aucune taille ne
+    domine. ~~Tester bge-m3 comme backbone Pipeline 2~~ **FAIT** (§16.7) —
+    nécessitait un vrai correctif de code (pooling dernier-token câblé en dur,
+    incorrect pour un encodeur bidirectionnel comme bge-m3, cf. nouveau
+    `EMB_POOLING`) : résultat net et positif, bge-m3 domine sur NMSE (−18,8% vs
+    le meilleur F2LLM), taux de features mortes, silhouette, et acc_SAE diffing --
+    candidat par défaut recommandé pour une suite de stage.
 11. ~~Concevoir un protocole de test complet du dépôt sous conditions fixées~~ **FAIT** :
     `docs/evaluation_protocol.md` + `scripts/consolidate_evaluation_report.py` +
     onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette

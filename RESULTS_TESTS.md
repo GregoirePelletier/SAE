@@ -948,6 +948,61 @@ projet). Aucun de ces écarts n'est de l'ordre de grandeur d'un problème majeur
 justification claire pour préférer -330M à -80M sur ce projet** ; le choix n'est pas
 un facteur bloquant avant de considérer une comparaison multi-modèles plus large.
 
+### 16.6. Complète le balayage : F2LLM-v2-160M (taille intermédiaire, jamais testée)
+
+`slurm/pipeline_runs/run_sae_v10_p2_f2llm160m.slurm` (job 41495, terminé en 8min51s
+-- Pipeline 2 seul, nouveau `SAVE_DIR` pour éviter la contamination de cache déjà
+documentée en §16.5) :
+
+| Métrique | F2LLM-v2-80M | F2LLM-v2-160M | F2LLM-v2-330M |
+|---|---|---|---|
+| NMSE | 0,0745 | **0,0727** | 0,0689 |
+| L0 | 16,14 | 15,94 | 15,94 |
+| dead% | 0,63% | 0,77% | 0,70% |
+| ρ_SAE | 0,9597 | 0,9531 | 0,9574 |
+| silhouette | 0,0212 | 0,0193 | 0,0183 |
+| clusters | 4 | 4 | 4 |
+| acc_SAE (energy/sports, corpus diffing) | 0,6650-0,6717 | 0,6700 | **0,6867** |
+| acc_SAE (axes email, 14 classes) | n/a (bug antérieur au fix) | 0,7685 | 0,7717 |
+
+**Lecture** : NMSE suit une tendance monotone avec la taille (0,0745 → 0,0727 →
+0,0689, plus grand = meilleure reconstruction, cohérent), mais ρ_SAE ne suit PAS
+cette tendance (160M légèrement en dessous des deux autres tailles) et les deux
+métriques de classification placent 160M au même niveau que 80M, pas entre 80M et
+330M comme la tendance NMSE le suggérerait. Confirme le constat déjà établi en
+§16.5 : **aucune taille de backbone Pipeline 2 ne domine clairement les autres**
+sur l'ensemble des métriques -- la taille du backbone d'embedding n'est pas le
+facteur limitant de ce pipeline.
+
+### 16.7. bge-m3 comme backbone Pipeline 2 (perspective #10, jamais fait avant ce fix)
+
+bge-m3 est déjà utilisé pour la similarité de labels (§15.2, pooling [CLS]) mais
+n'avait jamais été câblé comme backbone d'ENTRAÎNEMENT du `PhraseLevelSAE` --
+`extract_f2llm_embeddings` faisait un pooling dernier-token EN DUR, incorrect
+pour un backbone encodeur bidirectionnel entraîné pour le pooling [CLS]. Corrigé
+via un nouveau `EMB_POOLING` (`src/config.py`, défaut `"last_token"` -- aucun run
+F2LLM existant affecté), vérifié sur CPU avant de lancer le job GPU
+(`slurm/pipeline_runs/run_sae_v10_p2_bgem3.slurm`, job 41539, terminé en 30min51s).
+
+| Métrique | F2LLM-v2-80M | F2LLM-v2-160M | F2LLM-v2-330M | **bge-m3** |
+|---|---|---|---|---|
+| NMSE | 0,0745 | 0,0727 | 0,0689 | **0,0559** |
+| L0 | 16,14 | 15,94 | 15,94 | 16,20 |
+| dead% | 0,63% | 0,77% | 0,70% | **0,13%** |
+| ρ_SAE | 0,9597 | 0,9531 | 0,9574 | 0,9303 |
+| silhouette | 0,0212 | 0,0193 | 0,0183 | **0,0228** |
+| clusters | 4 | 4 | 4 | 4 |
+| acc_SAE (energy/sports, corpus diffing) | 0,6650-0,6717 | 0,6700 | 0,6867 | **0,6967** |
+| acc_SAE (axes email, 14 classes) | n/a | 0,7685 | 0,7717 | 0,7680 |
+
+**Résultat net, contrairement au balayage F2LLM seul** : bge-m3 domine clairement
+sur NMSE (−18,8% vs le meilleur F2LLM, 330M), dead% (4-5x moins de features
+mortes), silhouette, et acc_SAE diffing (meilleur des 4 backbones) -- seul
+ρ_SAE est légèrement inférieur, et acc_SAE axes email reste dans la même
+fourchette que 160M/330M (pas de gain ni de perte notable). Backbone d'embedding
+le plus prometteur testé à ce jour pour Pipeline 2, à retenir comme candidat par
+défaut pour une suite de stage plutôt que F2LLM à n'importe quelle taille.
+
 ## 17. Ablation de mise à l'échelle (v12) : largeur du SAE core, époques, N_FEATURES_TO_LABEL
 
 ### 17.0. Correction préalable des largeurs de SAE disponibles pour 12b
@@ -1659,3 +1714,31 @@ requêtes dont le code latent ne recoupe presque aucun document, sans qu'aucun
 signal d'alerte n'indique que ce cas s'est produit (l'index retourne simplement
 peu ou pas de résultats). Toute utilisation en production devrait vérifier le
 nombre de documents à score non nul avant de faire confiance au classement.
+
+## 27. Ablation `D_EXTRA=2048` seul (dictionnaire plus large, MÊME budget de parcimonie)
+
+L'ablation "capacité" déjà faite (job 40953, §17.5) double `D_EXTRA` ET `K_EXTRA`
+ensemble (1024/32 → 2048/64, ratio K/D=1/32 préservé). Jamais testé : élargir
+SEULEMENT le dictionnaire (`D_EXTRA=2048`) à budget de parcimonie identique
+(`K_EXTRA=32` inchangé, ratio K/D=1/64, deux fois plus sélectif). Run
+`results_v13_ablation_d_extra2048_only` (job 41488, terminé en 3h35min56s), tout
+identique au run principal sauf `D_EXTRA`.
+
+| Run | `D_EXTRA`/`K_EXTRA` | Taux interp. | `rho_sae` | `clf_acc_email_axes` |
+|---|---|---|---|---|
+| Run principal | 1024/32 | 68/150 = 45,3% | 0,922 | 93,5% |
+| Capacité doublée (§17.5, job 40953) | 2048/64 | 60/150 = 40,0% | — | — |
+| **Ce run**, D_EXTRA seul | 2048/32 | **69/150 = 46,0%** | 0,925 | 91,2% |
+
+Comparaison statistique au run principal : z=-0,12, aucun écart mesurable. `rho_sae`
+s'améliore légèrement (0,922 → 0,925), cohérent avec plus d'atomes disponibles pour
+reconstruire le résidu à budget de parcimonie identique.
+
+**Lecture** : élargir le dictionnaire seul, sans toucher au budget de parcimonie,
+ne change rien à l'interprétabilité (contrairement à l'hypothèse qu'un dictionnaire
+plus sélectif -- ratio K/D plus faible -- produirait des features plus
+spécialisées). Complète la conclusion déjà établie au §17.5 : ni la largeur du SAE
+core, ni les époques, ni la capacité de l'extension (isolée OU combinée à un ratio
+K/D constant OU variable) ne changent le taux d'interprétabilité une fois le
+domaine du corpus corrigé -- ce protocole d'évaluation semble structurellement
+plafonné par autre chose que les paramètres d'échelle testés jusqu'ici.
