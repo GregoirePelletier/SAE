@@ -1742,3 +1742,47 @@ core, ni les époques, ni la capacité de l'extension (isolée OU combinée à u
 K/D constant OU variable) ne changent le taux d'interprétabilité une fois le
 domaine du corpus corrigé -- ce protocole d'évaluation semble structurellement
 plafonné par autre chose que les paramètres d'échelle testés jusqu'ici.
+
+## 28. Ablation "échelle du modèle" : gemma-3-1b-it et -4b-it à la place de -12b-it
+
+Toutes les ablations précédentes (largeur, époques, capacité, volume, seed,
+K_EXTRA) gardent le modèle extracteur/juge fixé à gemma-3-12b-it. Jamais testé :
+le taux d'interprétabilité dépend-il de l'échelle du modèle lui-même ? Runs
+`results_v13_ablation_model_scale_1b`/`_4b` (jobs 41494/41493), gemma-3-1b-it et
+gemma-3-4b-it + leurs GemmaScope dédiés (`gemma-scope-2-1b-it` layer 13/16k,
+`gemma-scope-2-4b-it` layer 17/16k -- téléchargés et validés par chargement CPU
+avant les jobs GPU), sinon identique au run principal. Le juge d'auto-
+interprétation change AUSSI de modèle en même temps que l'extracteur (`MODEL_ID`
+partagé par les deux rôles) -- confond structurellement "qualité des features
+extraites" et "qualité du juge", comme pour toute paire modèle+SAE GemmaScope.
+
+| Run | Modèle | `d_model` | Taux interp. | `clf_acc_email_axes` | `fve_pretrained` |
+|---|---|---|---|---|---|
+| Run principal | gemma-3-12b-it | 4096 | **68/150 = 45,3%** | 93,5% | — |
+| `results_v13_ablation_model_scale_1b`, job 41494 (terminé, 2h46min23s) | gemma-3-1b-it | 1152 | **18/150 = 12,0%** | 88,2% | 0,565 |
+| `results_v13_ablation_model_scale_4b`, job 41493 | gemma-3-4b-it | 2560 | *[en cours]* | *[en cours]* | *[en cours]* |
+
+**Résultat 1b, de très loin le plus important de tout ce chapitre** : z=6,38,
+**hautement significatif** (|z|>1,96 dépassé de plus de 3x) -- un effondrement de
+45,3% à 12,0% (−33,3 points), sans commune mesure avec les écarts de 1 à 9 points,
+tous non significatifs, observés sur TOUTES les autres ablations de ce chapitre
+(largeur, époques, capacité, volume, seed, K_EXTRA). C'est le premier levier testé
+dans ce projet qui déplace réellement le taux d'interprétabilité.
+
+Fait notable en faveur d'une origine "qualité du juge" plutôt que "qualité des
+features" : `clf_acc_email_axes` (séparabilité LINÉAIRE des axes de perturbation
+dans l'espace des codes SAE, une mesure indépendante du juge LLM) ne s'effondre
+PAS de la même façon (93,5% → 88,2%, seulement −5,3 points) -- les features
+elles-mêmes restent en grande partie utilisables pour la classification, alors
+que l'évaluation qualitative (odd-one-out) par le modèle 1B lui-même s'effondre
+beaucoup plus fortement. `diff_hypothesis` (texte libre généré par le modèle 1B)
+est qualitativement confus par rapport aux hypothèses cohérentes produites par le
+12B (ex. inversion illogique cause/conséquence entre "énergie" et "sport" dans le
+texte généré). `fve_pretrained` (0,565, très en dessous de 0,83 typique pour le
+12B) suggère aussi une fraction de variance expliquée par le core GemmaScope
+lui-même nettement dégradée à cette échelle.
+
+**Conclusion (partielle -- 4b en cours)** : le plus fort effet mesuré dans tout ce
+projet vient du choix du modèle lui-même, pas des hyperparamètres du SAE. Reste à
+déterminer si 4b (échelle intermédiaire) montre une dégradation progressive ou un
+effet de seuil -- complété dans la prochaine mise à jour de cette section.

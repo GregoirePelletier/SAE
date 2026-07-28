@@ -618,3 +618,24 @@ nulles, mais un seul document sur 3480 dans tout le corpus partage une
 intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
 latent très parcimonieux (k=16), pas un bug ni un raté sémantique. Détail
 complet : `RESULTS_TESTS.md` §26.
+
+## 18. Ablation "échelle du modèle" : le premier levier qui déplace vraiment le taux d'interprétabilité
+
+Toutes les ablations précédentes gardent le modèle extracteur/juge fixé à
+gemma-3-12b-it. Test avec gemma-3-1b-it (+ son propre GemmaScope, job 41494,
+terminé) : **18/150 = 12,0%** d'interprétabilité contre 45,3% pour le run
+principal — effondrement de −33,3 points, **z=6,38, hautement significatif**
+(largement au-delà du seuil |z|>1,96). C'est, de très loin, le premier levier
+testé dans ce projet qui déplace réellement le taux d'interprétabilité — tous les
+autres écarts mesurés (largeur, époques, capacité, volume, seed, K_EXTRA) restent
+entre 1 et 9 points et non significatifs.
+
+Indice que l'origine est plutôt la qualité du JUGE que celle des features
+elles-mêmes : `clf_acc_email_axes` (séparabilité linéaire des axes de
+perturbation, indépendante du juge LLM) recule beaucoup moins (93,5% → 88,2%,
+−5,3 points) que le taux d'interprétabilité qualitatif. Le texte d'hypothèse
+généré par le modèle 1B est qualitativement confus (inversion logique
+cause/conséquence) comparé aux hypothèses cohérentes du 12B. Résultat encore
+partiel : l'échelle intermédiaire (gemma-3-4b-it, job 41493) est en cours pour
+déterminer si la dégradation est progressive ou un effet de seuil. Détail
+complet : `RESULTS_TESTS.md` §28.
