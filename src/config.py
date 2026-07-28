@@ -21,6 +21,10 @@ CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 # ailleurs dans le dépôt historique n'existe pas -> 404). Résolu depuis le cache HF
 # après un premier téléchargement (huggingface_hub.snapshot_download), comme MODEL_ID.
 EMB_MODEL      = os.environ.get("EMB_MODEL", "codefuse-ai/F2LLM-v2-80M")
+# "last_token" (défaut) : backbone décodeur causal (F2LLM). "cls" : backbone
+# encodeur bidirectionnel entraîné pour ce pooling (bge-m3) -- cf.
+# src/sae/phrase_sae.py::extract_f2llm_embeddings.
+EMB_POOLING    = os.environ.get("EMB_POOLING", "last_token")
 MATRYOSHKA_DIM = int(os.environ.get("MATRYOSHKA_DIM", "320"))
 
 # Modèle d'embedding pour select_latents_by_similarity (src/sae/saev5.py) --

@@ -123,12 +123,13 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
         return emb, emb.shape[1]
 
     try:
-        from src.config import EMB_MODEL, MATRYOSHKA_DIM   # FIX : plus d'import circulaire vers saev5
+        from src.config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
     except ImportError:
-        from config import EMB_MODEL, MATRYOSHKA_DIM
+        from config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
     # EMB_MODEL affiché (pas "F2LLM-v2-80M" figé) : le message était trompeur pour
     # tout run avec un backbone différent (ex. F2LLM-v2-330M, cf. RESULTS_TESTS.md).
-    print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} ({len(texts)} phrases)...")
+    print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} (pooling={EMB_POOLING}, "
+          f"{len(texts)} phrases)...")
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
     model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEFAULT_DEVICE).eval()
 
@@ -140,9 +141,18 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
             input_ids = enc["input_ids"].to(DEFAULT_DEVICE)
             attention_mask = enc["attention_mask"].to(DEFAULT_DEVICE)
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            last_idx = attention_mask.sum(dim=1) - 1
-            pooled = outputs.last_hidden_state[
-                torch.arange(outputs.last_hidden_state.shape[0]), last_idx]
+            # EMB_POOLING="last_token" (défaut, préserve tout run existant F2LLM) :
+            # dernier token non-padding, adapté à un backbone décodeur causal comme
+            # F2LLM. EMB_POOLING="cls" : premier token, requis pour un backbone
+            # encodeur bidirectionnel entraîné avec cet objectif (bge-m3 -- cf.
+            # RESULTS_TESTS.md §15.2, déjà établi pour la similarité de labels, jamais
+            # câblé ici pour le backbone Pipeline 2 avant ce fix).
+            if EMB_POOLING == "cls":
+                pooled = outputs.last_hidden_state[:, 0]
+            else:
+                last_idx = attention_mask.sum(dim=1) - 1
+                pooled = outputs.last_hidden_state[
+                    torch.arange(outputs.last_hidden_state.shape[0]), last_idx]
             pooled_m = F.normalize(pooled[:, :MATRYOSHKA_DIM], p=2, dim=-1)
             # PhraseLevelSAE est entraîné from-scratch en fp32 : caster ici plutôt que de
             # laisser passer le dtype natif du checkpoint F2LLM (bf16 avec les versions
