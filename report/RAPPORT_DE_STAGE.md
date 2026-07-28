@@ -987,12 +987,18 @@ le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
 supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
 monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
 
-*[Résultats en cours au moment de la rédaction — job en cours (extraction
-Gemma-3-12B sur ~330 000 textes, ~6-7h estimées). Cette section sera complétée
-avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
-(45,3%) et l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la
-fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
-`RESULTS_TESTS.md` §23.3.]*
+**Résultat** (job 41375, terminé en 18h17min) : **81/150 = 54,0%** d'interprétabilité
+(odd-one-out), contre 45,3% pour le run principal (500k tokens) et 44,7% pour
+l'ablation initiale à 2M — écart numérique de +8,7 points mais **non significatif**
+(test z sur deux proportions, z=-1,50, seuil \|z\|>1,96). `clf_acc_email_axes` recule
+légèrement (93,5% → 91,3%). Porter le volume à 25M tokens (12x l'ablation initiale,
+toujours 50-100x en dessous du seuil 100-200M de SAE Boost) ne change donc pas la
+conclusion qualitative : le problème diagnostiqué en §2 était bien le domaine du
+corpus, pas son volume brut. Fait notable : cet écart directionnel (+8,7 points,
+non significatif) est du même ordre de grandeur que celui observé indépendamment
+pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non significatif) — à
+prendre comme une piste à répliquer plutôt qu'un résultat établi. Détail complet,
+y compris le diagnostic de l'incident OOM : `RESULTS_TESTS.md` §23.3.
 
 ## 3.15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
@@ -1025,6 +1031,44 @@ fiable et prévisible à partir du simple test d'ablation en place — son effet
 dépend fortement de la structure de corrélation entre features propre à chaque
 intention. Détail complet (protocole, limite méthodologique du pooling par
 document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.
+
+## 3.16. Ablation `K_EXTRA=5` (SAE Boost, piste flaguée non testée)
+
+Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un SAE
+résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en dessous de
+cette valeur. Run `results_v13_ablation_k_extra5` (job 41404, terminé en
+3h51min) : **82/150 = 54,7%** d'interprétabilité contre 45,3% pour le run
+principal — écart de +9,4 points, **non significatif** (z=-1,62) mais le plus
+proche du seuil conventionnel de toutes les ablations de ce chapitre. `rho_sae`
+(fidélité de reconstruction du résidu) recule sensiblement (0,922 → 0,849),
+cohérent avec un budget de capacité par token plus faible. Direction cohérente
+avec l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
+directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md` §25.
+
+## 3.17. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
+
+`src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
+entraîné par pure reconstruction, Clavié et al. 2026) n'était exercé que par
+inspection visuelle sur données de substitution. Protocole quantitatif
+(`scripts/latent_retrieval_precision_eval.py`, job 41484) : Precision@10/@20
+contre les labels faibles d'intention (§8), sur 4 requêtes en paraphrase, comparé
+à une baseline TF-IDF, sur les 3480 mails originaux.
+
+| Intention | P@10 Latent Terms | P@10 TF-IDF |
+|---|---|---|
+| réclamation | 1,00 | 1,00 |
+| remboursement | 1,00 | 0,00 |
+| information | 1,00 | 0,20 |
+| urgence | 0,00 | 0,80 |
+
+Précision parfaite et nette supériorité sur TF-IDF pour 2 intentions sur 4
+(remboursement, information) malgré des requêtes ne reprenant pas les mots exacts
+du label — généralisation sémantique réelle. Échec complet sur urgence (0,00),
+diagnostiqué précisément : la requête active bien des features latentes non
+nulles, mais un seul document sur 3480 dans tout le corpus partage une
+intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
+latent très parcimonieux (k=16), pas un bug ni un raté sémantique. Détail
+complet : `RESULTS_TESTS.md` §26.
 
 # Chapitre 4 — Inspection des erreurs et corrections
 
@@ -1277,27 +1321,32 @@ dépendant d'une installation non faite par défaut).
 n'était pas "non fait" mais déjà implémenté sans le savoir --
 `FrozenCoreResidualSAE`/`ExtendedSAE` EST une implémentation de SAE Boost (même
 architecture : SAE résiduel sur l'erreur de reconstruction d'un core gelé, sommé à
-l'inférence). Deux écarts identifiés par la relecture du papier restent à tester :
-(1) leur étude de sensibilité montre qu'un `K_EXTRA` plus faible (k=5 optimal chez
-eux, contre 32 dans ce projet) améliore l'interprétabilité au prix d'un peu d'EV
-domaine -- non testé ; (2) leur étude montre qu'un budget de 100-200M tokens est
-nécessaire pour que le SAE résiduel converge sans dégrader la performance générale
-(jusqu'à -31% d'EV en dessous de 100M) -- notre ablation volume (100k-2M tokens)
-reste 50-100x en dessous de ce seuil, donc **notre conclusion "le volume ne change
-rien" n'est établie que dans un régime que leur étude qualifie d'insuffisant** ;
-elle ne peut pas être extrapolée sans un run à cette échelle, non lancé dans ce
-stage (coût GPU substantiel). Aucune comparaison chiffrée avec leurs baselines
+l'inférence). Deux écarts identifiés par la relecture du papier, **tous deux
+testés depuis** : (1) leur étude de sensibilité montre qu'un `K_EXTRA` plus
+faible (k=5 optimal chez eux, contre 32 dans ce projet) améliore
+l'interprétabilité au prix d'un peu d'EV domaine — **testé** (`RESULTS_TESTS.md`
+§25) : direction cohérente (54,7% vs 45,3%, +9,4 points) mais non significatif
+(z=-1,62) ; (2) leur étude montre qu'un budget de 100-200M tokens est nécessaire
+pour que le SAE résiduel converge sans dégrader la performance générale (jusqu'à
+-31% d'EV en dessous de 100M) — **testé partiellement** à 25M tokens (12x
+l'ablation initiale, toujours 50-100x en dessous du seuil du papier,
+`RESULTS_TESTS.md` §23.3) : même conclusion qualitative (pas d'effet
+significatif, +8,7 points non significatif), mais toujours pas de test au seuil
+exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis pour la contrainte
+mémoire rencontrée). Aucune comparaison chiffrée avec leurs baselines
 alternatives (Extended SAE random/most-active init, SAE Stitching, full
-fine-tuning) n'a été menée sur ce projet. Détail complet : `RESULTS_TESTS.md` §18.
+fine-tuning) n'a été menée sur ce projet.
 
-**Mise à jour (nouveau, testé, session pdf/)** : une question plus fondamentale a été
+**Mise à jour (testé, session pdf/)** : une question plus fondamentale a été
 posée par *Sanity Checks for Sparse Autoencoders* (Korznikov et al., 2026) --
 un SAE dont le décodeur est figé à une initialisation aléatoire (jamais entraîné)
 égale, dans leur étude, un SAE réellement entraîné sur interprétabilité automatique,
 sparse probing et édition causale. Reproduit sur ce projet
-(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf. `RESULTS_TESTS.md`
-§19 pour le protocole et le résultat (en cours au moment de la rédaction de cette
-version du rapport).
+(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf.
+`RESULTS_TESTS.md` §19 — l'interprétabilité odd-one-out résiste bien (45,3%
+entraîné vs 29,3% figé aléatoire, écart significatif) mais la classification en
+aval y résiste beaucoup moins (93,5% vs 91,2%), répliquant partiellement le
+constat du papier.
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -1465,8 +1514,11 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    (`RESULTS_TESTS.md` §14.2) — vue d'ensemble, UMAP interactif, features (avec
    exemples positifs/négatifs), diffing, recherche par mot-clé, urgence/robustesse.
    Limite : recherche par mot-clé sur les labels déjà attribués, pas une ré-inférence
-   BM25 live sur le vocabulaire latent complet (cf. `scripts/retrieval_demo.py` pour
-   cette dernière) ; pas de déploiement serveur persistant, lancement manuel.
+   BM25 live sur le vocabulaire latent complet (`src/sae/retrieval/latent_terms.py`,
+   évalué quantitativement en `RESULTS_TESTS.md` §26 — Precision@10 parfaite sur
+   2 intentions/4 mais échec complet sur une troisième, limite structurelle du
+   BM25 sur vocabulaire très parcimonieux) ; pas de déploiement serveur
+   persistant, lancement manuel.
 5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
    un cas d'usage concret de détection d'urgence/d'intention sur mails originaux~~
    **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
@@ -1510,12 +1562,17 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
     conditions envisagée par l'utilisateur peut être considérée en suite de stage.
 12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
-    (`RESULTS_TESTS.md` §18). Reste à faire : tester un `K_EXTRA` plus faible (proche
-    de leur k=5 optimal) et, si le budget GPU le permet, un run à 100-200M tokens
-    d'entraînement de l'extension pour vérifier si leur seuil de convergence
-    s'applique à ce projet (notre ablation actuelle reste 50-100x en dessous) ;
+    (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
+    k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non
+    significatif. ~~Un run à volume plus élevé pour vérifier le seuil de
+    convergence~~ **FAIT partiellement** (25M tokens, §23.3, 12x l'ablation
+    initiale mais toujours 50-100x en dessous du seuil du papier) : même
+    conclusion qualitative (+8,7 points, non significatif). Reste à faire : un
+    run au seuil exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis) ;
     comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
-    full fine-tuning) sur le corpus emails.
+    full fine-tuning) sur le corpus emails ; répliquer K_EXTRA=5 et le volume 25M
+    sur plusieurs seeds pour trancher si l'écart directionnel commun aux deux
+    (+8,7/+9,4 points, chacun non significatif seul) reflète un effet réel.
 13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
     (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`) — résultat **nuancé** :
     l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé

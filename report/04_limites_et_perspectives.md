@@ -76,27 +76,32 @@ dépendant d'une installation non faite par défaut).
 n'était pas "non fait" mais déjà implémenté sans le savoir --
 `FrozenCoreResidualSAE`/`ExtendedSAE` EST une implémentation de SAE Boost (même
 architecture : SAE résiduel sur l'erreur de reconstruction d'un core gelé, sommé à
-l'inférence). Deux écarts identifiés par la relecture du papier restent à tester :
-(1) leur étude de sensibilité montre qu'un `K_EXTRA` plus faible (k=5 optimal chez
-eux, contre 32 dans ce projet) améliore l'interprétabilité au prix d'un peu d'EV
-domaine -- non testé ; (2) leur étude montre qu'un budget de 100-200M tokens est
-nécessaire pour que le SAE résiduel converge sans dégrader la performance générale
-(jusqu'à -31% d'EV en dessous de 100M) -- notre ablation volume (100k-2M tokens)
-reste 50-100x en dessous de ce seuil, donc **notre conclusion "le volume ne change
-rien" n'est établie que dans un régime que leur étude qualifie d'insuffisant** ;
-elle ne peut pas être extrapolée sans un run à cette échelle, non lancé dans ce
-stage (coût GPU substantiel). Aucune comparaison chiffrée avec leurs baselines
+l'inférence). Deux écarts identifiés par la relecture du papier, **tous deux
+testés depuis** : (1) leur étude de sensibilité montre qu'un `K_EXTRA` plus
+faible (k=5 optimal chez eux, contre 32 dans ce projet) améliore
+l'interprétabilité au prix d'un peu d'EV domaine — **testé** (`RESULTS_TESTS.md`
+§25) : direction cohérente (54,7% vs 45,3%, +9,4 points) mais non significatif
+(z=-1,62) ; (2) leur étude montre qu'un budget de 100-200M tokens est nécessaire
+pour que le SAE résiduel converge sans dégrader la performance générale (jusqu'à
+-31% d'EV en dessous de 100M) — **testé partiellement** à 25M tokens (12x
+l'ablation initiale, toujours 50-100x en dessous du seuil du papier,
+`RESULTS_TESTS.md` §23.3) : même conclusion qualitative (pas d'effet
+significatif, +8,7 points non significatif), mais toujours pas de test au seuil
+exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis pour la contrainte
+mémoire rencontrée). Aucune comparaison chiffrée avec leurs baselines
 alternatives (Extended SAE random/most-active init, SAE Stitching, full
-fine-tuning) n'a été menée sur ce projet. Détail complet : `RESULTS_TESTS.md` §18.
+fine-tuning) n'a été menée sur ce projet.
 
-**Mise à jour (nouveau, testé, session pdf/)** : une question plus fondamentale a été
+**Mise à jour (testé, session pdf/)** : une question plus fondamentale a été
 posée par *Sanity Checks for Sparse Autoencoders* (Korznikov et al., 2026) --
 un SAE dont le décodeur est figé à une initialisation aléatoire (jamais entraîné)
 égale, dans leur étude, un SAE réellement entraîné sur interprétabilité automatique,
 sparse probing et édition causale. Reproduit sur ce projet
-(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf. `RESULTS_TESTS.md`
-§19 pour le protocole et le résultat (en cours au moment de la rédaction de cette
-version du rapport).
+(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf.
+`RESULTS_TESTS.md` §19 — l'interprétabilité odd-one-out résiste bien (45,3%
+entraîné vs 29,3% figé aléatoire, écart significatif) mais la classification en
+aval y résiste beaucoup moins (93,5% vs 91,2%), répliquant partiellement le
+constat du papier.
 
 ### Biais de génération résiduel dans le corpus augmenté
 
@@ -264,8 +269,11 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    (`RESULTS_TESTS.md` §14.2) — vue d'ensemble, UMAP interactif, features (avec
    exemples positifs/négatifs), diffing, recherche par mot-clé, urgence/robustesse.
    Limite : recherche par mot-clé sur les labels déjà attribués, pas une ré-inférence
-   BM25 live sur le vocabulaire latent complet (cf. `scripts/retrieval_demo.py` pour
-   cette dernière) ; pas de déploiement serveur persistant, lancement manuel.
+   BM25 live sur le vocabulaire latent complet (`src/sae/retrieval/latent_terms.py`,
+   évalué quantitativement en `RESULTS_TESTS.md` §26 — Precision@10 parfaite sur
+   2 intentions/4 mais échec complet sur une troisième, limite structurelle du
+   BM25 sur vocabulaire très parcimonieux) ; pas de déploiement serveur
+   persistant, lancement manuel.
 5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
    un cas d'usage concret de détection d'urgence/d'intention sur mails originaux~~
    **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
@@ -309,12 +317,17 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
     conditions envisagée par l'utilisateur peut être considérée en suite de stage.
 12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
-    (`RESULTS_TESTS.md` §18). Reste à faire : tester un `K_EXTRA` plus faible (proche
-    de leur k=5 optimal) et, si le budget GPU le permet, un run à 100-200M tokens
-    d'entraînement de l'extension pour vérifier si leur seuil de convergence
-    s'applique à ce projet (notre ablation actuelle reste 50-100x en dessous) ;
+    (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
+    k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non
+    significatif. ~~Un run à volume plus élevé pour vérifier le seuil de
+    convergence~~ **FAIT partiellement** (25M tokens, §23.3, 12x l'ablation
+    initiale mais toujours 50-100x en dessous du seuil du papier) : même
+    conclusion qualitative (+8,7 points, non significatif). Reste à faire : un
+    run au seuil exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis) ;
     comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
-    full fine-tuning) sur le corpus emails.
+    full fine-tuning) sur le corpus emails ; répliquer K_EXTRA=5 et le volume 25M
+    sur plusieurs seeds pour trancher si l'écart directionnel commun aux deux
+    (+8,7/+9,4 points, chacun non significatif seul) reflète un effet réel.
 13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
     (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`) — résultat **nuancé** :
     l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé

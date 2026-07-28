@@ -1478,10 +1478,43 @@ Relancé sous `results_v13_ablation_volume25m`
 FineWeb2-fr, `N_VOLUME_FILLER_TARGET_CHUNKS=540000` inchangé (la RAM n'en dépend
 plus, seul le plafond `N_TOKENS_EXTRA_TRAIN` compte désormais).
 
-*[Résultats en cours au moment de la rédaction. Cette section sera complétée avec
-le taux d'interprétabilité obtenu, les métriques de reconstruction, et la
-comparaison avec le run principal (45,3%) et l'ablation volume initiale
-(40,7%/45,3%/44,7% à 100k/500k/2M) dès la fin du job 41375.]*
+### 23.3. Résultats (job 41375, terminé en 18h17min21s)
+
+| Run | `N_TOKENS_EXTRA_TRAIN` | Filler FineWeb2-fr | Taux interp. (odd-one-out) | `clf_acc_email_axes` | `fve_pretrained` |
+|---|---|---|---|---|---|
+| Run principal, `results_v10_emails_main` | 500 000 | Non | **68/150 = 45,3%** | 93,5% | — |
+| Ablation initiale (2M), job 39662 | 2 000 000 | Non | 67/150 = 44,7% | — | — |
+| **Ce run**, `results_v13_ablation_volume25m`, job 41375 | 25 000 000 | Oui (~114M tokens visés, 3 shards) | **81/150 = 54,0%** | 91,3% | 0,831 |
+
+Comparaison statistique au run principal (test z sur deux proportions,
+n=150 de part et d'autre) : z=-1,50, **non significatif** au seuil conventionnel
+(\|z\|>1,96) malgré un écart numérique de +8,7 points. `clf_acc_email_axes` recule
+légèrement (93,5% → 91,3%, comme systématiquement observé dans les ablations qui
+ajoutent du contenu hors du bloc emails+augmentés au réservoir résiduel — cf.
+§17.5).
+
+**Lecture** : le volume porté à 25M tokens (12x l'ablation initiale, toujours
+50-100x en dessous du seuil 100-200M du papier SAE Boost) ne change pas la
+conclusion qualitative de §5/§12 — le taux d'interprétabilité reste dans une
+fourchette statistiquement indiscernable du run principal. L'écart numérique
+(+8,7 points, non significatif seul) va dans le **même sens et est du même ordre
+de grandeur** que celui observé indépendamment pour l'ablation K_EXTRA=5 (+9,4
+points, §25, également non significatif seule) — une coïncidence entre deux
+ablations testant des leviers complètement différents (volume de tokens vs
+capacité/parcimonie de l'extension) serait surprenante, mais rester prudent :
+deux résultats non significatifs qui pointent dans la même direction ne
+constituent pas une preuve combinée sans un test dédié (ex. répliquer sur
+plusieurs seeds). Piste à explorer si le temps du stage le permet : une
+réplication à seed multiple pour trancher si cet écart directionnel reflète un
+effet réel de petite taille ou une coïncidence entre deux ablations.
+
+Aucun signal de dégradation liée au filler générique (FineWeb2-fr, ~15-20% de
+précision qualitative sur le thème énergie, cf. §23.1) : le taux d'interprétabilité
+et `clf_acc_email_axes` restent dans la même fourchette que les runs sans filler,
+cohérent avec le fait que le filler n'alimente que le réservoir de tokens résiduels
+et jamais `train_texts`/la sélection de features (cf. §23.2) — le garde-fou conçu
+pour éviter de réintroduire le biais de domaine original semble avoir fonctionné
+comme prévu.
 
 ## 24. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
@@ -1541,3 +1574,88 @@ corrélation entre features propre à chaque intention, et peut aussi bien annul
 que renforcer l'intervention voulue. Toute utilisation future du steering comme
 méthode d'explication devrait mesurer cet effet par intention/concept plutôt que de
 supposer qu'une ablation en place et un steering décodé sont équivalents.
+
+## 25. Ablation `K_EXTRA=5` (SAE Boost, piste flaguée non testée en §18.2)
+
+Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un SAE
+résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en dessous de
+cette valeur (seulement testé plus haut, k=64, §17.5, direction opposée). Run
+`results_v13_ablation_k_extra5` (job 41404, terminé en 3h51min20s, pipeline
+complet rejoué depuis un `SAVE_DIR` neuf — mêmes conditions que le run principal
+sauf `K_EXTRA=5`, cf. `slurm/pipeline_runs/run_ablation_k_extra5.slurm`).
+
+| Run | `K_EXTRA` | Taux interp. (odd-one-out) | `clf_acc_email_axes` | `rho_sae` |
+|---|---|---|---|---|
+| Run principal, `results_v10_emails_main` | 32 | **68/150 = 45,3%** | 93,5% | 0,922 |
+| Ablation capacité, §17.5 | 64 | — | — | — |
+| **Ce run**, `results_v13_ablation_k_extra5`, job 41404 | 5 | **82/150 = 54,7%** | 91,2% | 0,849 |
+
+Comparaison statistique au run principal : z=-1,62, **non significatif** au seuil
+conventionnel (\|z\|>1,96) malgré un écart numérique de +9,4 points — le plus
+proche du seuil de significativité (p≈0,106 bilatéral) de toutes les ablations
+testées dans ce chapitre. `rho_sae` (proxy de fidélité de reconstruction du
+résidu) recule sensiblement (0,922 → 0,849), cohérent avec le fait qu'un budget de
+capacité par token beaucoup plus faible (k=5 vs 32) réduit mécaniquement la
+fraction du résidu reconstructible — attendu, et conforme à la logique du papier
+(k plus faible = code plus parcimonieux, quitte à moins bien reconstruire, en
+échange d'une meilleure interprétabilité par feature active).
+
+**Lecture** : direction cohérente avec l'hypothèse du papier (k plus faible →
+meilleure interprétabilité), mais non significatif isolément sur n=150. Voir
+§23.3 pour la discussion de la coïncidence directionnelle avec l'ablation volume
+(les deux ablations, indépendantes, pointent vers un gain d'interprétabilité du
+même ordre de grandeur — +9,4 et +8,7 points — sans qu'aucune des deux
+n'atteigne la significativité seule).
+
+## 26. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
+
+`src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
+entraîné par pure reconstruction, Clavié et al. 2026, arXiv:2605.29384) n'était
+exercé que via `scripts/retrieval_demo.py` (1-2 requêtes inspectées à l'œil, sur
+des données de substitution FineWeb2/Wikipedia — écrit sur une machine sans
+`Mails.tsv`) et le dashboard (parcours interactif, pas de métrique).
+
+**Protocole** (`scripts/latent_retrieval_precision_eval.py`, job 41484, terminé en
+1min12s — F2LLM-v2-80M + PhraseLevelSAE dédié dim320/8192/k16 entraîné sur les
+3480 mails originaux, pas de Gemma-3-12B) : pour 4 intentions déjà validées comme
+équilibrées (§16), une requête en langage naturel **paraphrasant** (pas copiant)
+le motif regex de l'intention (`INTENT_KEYWORDS_FR`), Precision@10/@20 contre le
+label faible d'intention comme vérité terrain, comparé à une baseline TF-IDF
+classique sur le même corpus.
+
+| Intention | Taux de base | P@10 Latent Terms | P@10 TF-IDF | P@20 Latent Terms | P@20 TF-IDF |
+|---|---|---|---|---|---|
+| réclamation | 54,7% | **1,00** | 1,00 | **1,00** | 1,00 |
+| remboursement | 14,3% | **1,00** | 0,00 | **1,00** | 0,20 |
+| information | 18,0% | **1,00** | 0,20 | **1,00** | 0,30 |
+| urgence | 29,4% | **0,00** | 0,80 | **0,00** | 0,60 |
+
+**Résultat, très hétérogène** : précision parfaite (1,00) pour 3 intentions sur 4,
+et nettement supérieure à TF-IDF sur remboursement/information malgré des requêtes
+qui ne reprennent PAS les mots exacts du motif regex (ex. "je souhaite être
+remboursé du montant que j'ai payé en trop" ne contient ni "trop-perçu" ni "avoir")
+— TF-IDF, qui ne peut matcher que des mots littéraux, échoue là où le retrieval
+latent généralise sémantiquement. Sur réclamation (taux de base déjà élevé, 54,7%),
+les deux méthodes atteignent le plafond.
+
+**Échec complet sur "urgence"** (0,00 aux deux k, contre 0,80/0,60 pour TF-IDF) —
+diagnostiqué en détail plutôt que pris tel quel : la requête active bien 31
+features latentes non nulles (pas un vecteur dégénéré), mais **un seul document
+sur 3480** dans tout le corpus partage une intersection non nulle avec ces 31
+features précises (`LatentTermsIndex.search` ne retourne que les documents à
+score `>0`) — et ce document n'est pas étiqueté "urgence". Ce n'est pas un bug de
+calcul ni un raté sémantique profond, mais une **limite structurelle du BM25 sur
+vocabulaire latent très parcimonieux** (k=16 activations par phrase) : si la
+combinaison précise de features activées par une requête est rare/idiosyncratique
+dans le corpus, le retrieval peut ne retourner presque rien, alors que TF-IDF
+dégrade en douceur (chevauchement partiel de mots toujours possible même sans
+intersection exacte).
+
+**Conclusion** : le retrieval Latent Terms généralise mieux que TF-IDF pour 2
+intentions sur 4 testées ici, mais son comportement n'est pas uniformément
+fiable — sa sensibilité à l'intersection exacte du "vocabulaire" latent (plutôt
+qu'à une similarité graduée) peut produire un échec complet et silencieux sur des
+requêtes dont le code latent ne recoupe presque aucun document, sans qu'aucun
+signal d'alerte n'indique que ce cas s'est produit (l'index retourne simplement
+peu ou pas de résultats). Toute utilisation en production devrait vérifier le
+nombre de documents à score non nul avant de faire confiance au classement.

@@ -536,12 +536,18 @@ le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
 supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
 monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
 
-*[Résultats en cours au moment de la rédaction — job en cours (extraction
-Gemma-3-12B sur ~330 000 textes, ~6-7h estimées). Cette section sera complétée
-avec le taux d'interprétabilité obtenu et la comparaison avec le run principal
-(45,3%) et l'ablation volume initiale (40,7%/45,3%/44,7% à 100k/500k/2M) dès la
-fin du job. Détail complet, y compris le diagnostic de l'incident OOM :
-`RESULTS_TESTS.md` §23.3.]*
+**Résultat** (job 41375, terminé en 18h17min) : **81/150 = 54,0%** d'interprétabilité
+(odd-one-out), contre 45,3% pour le run principal (500k tokens) et 44,7% pour
+l'ablation initiale à 2M — écart numérique de +8,7 points mais **non significatif**
+(test z sur deux proportions, z=-1,50, seuil \|z\|>1,96). `clf_acc_email_axes` recule
+légèrement (93,5% → 91,3%). Porter le volume à 25M tokens (12x l'ablation initiale,
+toujours 50-100x en dessous du seuil 100-200M de SAE Boost) ne change donc pas la
+conclusion qualitative : le problème diagnostiqué en §2 était bien le domaine du
+corpus, pas son volume brut. Fait notable : cet écart directionnel (+8,7 points,
+non significatif) est du même ordre de grandeur que celui observé indépendamment
+pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non significatif) — à
+prendre comme une piste à répliquer plutôt qu'un résultat établi. Détail complet,
+y compris le diagnostic de l'incident OOM : `RESULTS_TESTS.md` §23.3.
 
 ## 15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
@@ -574,3 +580,41 @@ fiable et prévisible à partir du simple test d'ablation en place — son effet
 dépend fortement de la structure de corrélation entre features propre à chaque
 intention. Détail complet (protocole, limite méthodologique du pooling par
 document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.
+
+## 16. Ablation `K_EXTRA=5` (SAE Boost, piste flaguée non testée)
+
+Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un SAE
+résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en dessous de
+cette valeur. Run `results_v13_ablation_k_extra5` (job 41404, terminé en
+3h51min) : **82/150 = 54,7%** d'interprétabilité contre 45,3% pour le run
+principal — écart de +9,4 points, **non significatif** (z=-1,62) mais le plus
+proche du seuil conventionnel de toutes les ablations de ce chapitre. `rho_sae`
+(fidélité de reconstruction du résidu) recule sensiblement (0,922 → 0,849),
+cohérent avec un budget de capacité par token plus faible. Direction cohérente
+avec l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
+directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md` §25.
+
+## 17. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
+
+`src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
+entraîné par pure reconstruction, Clavié et al. 2026) n'était exercé que par
+inspection visuelle sur données de substitution. Protocole quantitatif
+(`scripts/latent_retrieval_precision_eval.py`, job 41484) : Precision@10/@20
+contre les labels faibles d'intention (§8), sur 4 requêtes en paraphrase, comparé
+à une baseline TF-IDF, sur les 3480 mails originaux.
+
+| Intention | P@10 Latent Terms | P@10 TF-IDF |
+|---|---|---|
+| réclamation | 1,00 | 1,00 |
+| remboursement | 1,00 | 0,00 |
+| information | 1,00 | 0,20 |
+| urgence | 0,00 | 0,80 |
+
+Précision parfaite et nette supériorité sur TF-IDF pour 2 intentions sur 4
+(remboursement, information) malgré des requêtes ne reprenant pas les mots exacts
+du label — généralisation sémantique réelle. Échec complet sur urgence (0,00),
+diagnostiqué précisément : la requête active bien des features latentes non
+nulles, mais un seul document sur 3480 dans tout le corpus partage une
+intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
+latent très parcimonieux (k=16), pas un bug ni un raté sémantique. Détail
+complet : `RESULTS_TESTS.md` §26.
