@@ -1826,3 +1826,95 @@ la conclusion déjà établie que ce protocole d'évaluation est plafonné par
 autre chose que les paramètres d'échelle du SAE core, et renforce par contraste
 à quel point l'effet de l'échelle du MODÈLE (§28) est hors norme parmi tous les
 leviers testés dans ce projet.
+
+## 30. Audit de méthodologie statistique : tests plus appropriés jamais utilisés
+
+Question posée directement par l'utilisateur : le repo utilise-t-il tous les
+tests statistiques appropriés ? Audit du code (pas seulement de la prose des
+sections précédentes) et re-calcul rétroactif sur les données déjà en cache.
+
+### 30.1. Comparaisons appariées traitées comme indépendantes (McNemar jamais utilisé)
+
+`scripts/multilingual_judge_bias_test.py` et `scripts/judge_robustness_check.py`
+ne calculent eux-mêmes AUCUN test de significativité (juste des taux bruts) --
+tous les z de ce chapitre pour ces deux tests ont été calculés à la main, via un
+test z à deux proportions **indépendantes**. Or les deux comparent le MÊME
+ensemble de 150 features sous deux conditions (FR vs EN traduit ; décision
+single-shot vs vote majoritaire) -- un plan **apparié**, pas deux échantillons
+indépendants. Le test statistiquement approprié est **McNemar** (sur les paires
+discordantes), pas un test à deux proportions indépendantes.
+
+Recalcul à partir des paires discordantes déjà stockées en cache
+(`multilingual_judge_bias_results.json`, `p1_judge_robustness.json`) :
+
+| Test | Discordants (b/c) | z indépendant (déjà rapporté) | McNemar exact (binomial) |
+|---|---|---|---|
+| FR vs EN traduit (§22) | 27/29 | z=0,24 | **p=0,894** |
+| Single-shot vs vote majoritaire (§13.1) | 26/21 | (non calculé formellement) | **p=0,560** |
+
+**Aucun changement de conclusion** (les deux restent non significatifs), mais
+McNemar est le test correct pour ce plan d'expérience et aurait dû être utilisé
+depuis le début -- l'accord entre les deux approches ici est rassurant, pas une
+validation de la méthode utilisée jusqu'ici.
+
+### 30.2. Aucune correction multi-tests sur les ~15 comparaisons d'ablation
+
+`src/analysis/cooccurrence.py` applique déjà `statsmodels.stats.multitest.
+multipletests(..., method="fdr_bh")` -- mais UNIQUEMENT pour le test de diffing
+Fisher exact sur les features individuelles d'un run (des centaines
+d'hypothèses). Aucune correction n'a jamais été appliquée aux ~15 tests
+"d'ablation" de ce chapitre (seed, multilingue, robustesse, K_EXTRA, D_EXTRA×2,
+largeur×3, volume, échelle modèle×3, sanity check), chacun interprété
+individuellement à α=0,05. Avec 15 tests indépendants sous une hypothèse nulle
+globale, la probabilité qu'au moins un atteigne p<0,05 par pur hasard est
+`1-0,95^15 ≈ 54%` -- une correction (Holm, ou Benjamini-Hochberg si on accepte un
+contrôle du FDR plutôt que du FWER) serait la pratique rigoureuse. **Ne change
+aucune conclusion en pratique ici** : le seul résultat significatif (échelle du
+modèle, §28) est significatif à p<10⁻⁹, très loin de survivre n'importe quelle
+correction raisonnable ; les résultats déjà qualifiés de "non significatifs"
+(K_EXTRA=5 notamment, le plus proche du seuil à p≈0,106) le resteraient
+d'autant plus après correction (le seuil corrigé est PLUS strict, pas plus
+permissif). Reste une lacune méthodologique à corriger pour toute future
+extension de ce chapitre, où plusieurs résultats pourraient être plus proches
+du seuil.
+
+### 30.3. Trend test manquant pour l'effet dose-réponse (§28)
+
+Le résultat d'échelle du modèle (1b/4b/12b) a été analysé via 3 tests z par
+paires (1b-12b, 4b-12b, 1b-4b) -- techniquement correct mais statistiquement
+sous-optimal pour un plan dose-réponse à 3 niveaux ORDONNÉS : le test approprié
+est un test de tendance (Cochran-Armitage), qui donne UNE seule statistique
+condensant toute l'information de la tendance croissante, plus puissant que des
+comparaisons par paires (et évite le problème de correction multi-tests du
+§30.2 pour ce sous-groupe spécifique).
+
+Recalculé sur les 3 points (1b : 18/150, 4b : 42/150, 12b : 68/150) :
+
+| Pondération des groupes | z (Cochran-Armitage) | p |
+|---|---|---|
+| Scores linéaires (1, 2, 3) | 6,399 | **1,57×10⁻¹⁰** |
+| log(nombre de paramètres) | 6,375 | **1,83×10⁻¹⁰** |
+
+Confirme et renforce le résultat déjà rapporté au §28 (tendance monotone très
+significative), avec une statistique unique et plus rigoureusement adaptée au
+plan d'expérience, quasiment insensible au choix du barème de score (linéaire
+vs log-échelle) -- la conclusion est robuste au choix arbitraire d'espacement
+entre les trois points testés.
+
+### 30.4. Autres lacunes identifiées (non corrigées dans cette passe)
+
+- **Intervalles de confiance** jamais rapportés systématiquement à côté des
+  taux ponctuels (seulement point estimate + z + significatif/non) -- un
+  intervalle de Wilson ou Agresti-Coull serait plus informatif qu'un simple
+  verdict binaire, en particulier pour les résultats proches du seuil.
+- **Taille d'effet standardisée** jamais calculée (les écarts sont rapportés en
+  points de pourcentage bruts, qui mélangent taux de base et magnitude
+  d'effet) -- le h de Cohen pour proportions permettrait de comparer
+  l'ampleur des effets entre ablations à des taux de base différents (ex.
+  comparer l'effet K_EXTRA, parti de 45,3%, à l'effet largeur, parti de 45,3%
+  aussi ici donc pas un problème pour CE chapitre spécifiquement, mais le
+  deviendrait pour toute comparaison future à un taux de base différent).
+- **Analyse de puissance** jamais formalisée : à n=150 et taux de base ~45%,
+  quelle est la plus petite différence détectable à 80% de puissance ? Cadrerait
+  les attentes sur ce qui est raisonnable de chercher avec ce protocole plutôt
+  que de découvrir après coup qu'un écart de quelques points est indétectable.

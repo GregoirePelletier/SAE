@@ -59,6 +59,24 @@ pipeline de production dans cette session** — changerait le chiffre central du
 rapport (45,3%), nécessite de refaire tourner une validation à l'échelle comparable
 avant adoption.
 
+### Rigueur statistique des comparaisons d'ablation
+
+Audit rétroactif (`RESULTS_TESTS.md` §30) : deux comparaisons (biais
+multilingue §22, robustesse du juge §13.1) testent en réalité les MÊMES 150
+features sous deux conditions -- un plan apparié -- mais avaient été analysées
+avec un test à deux proportions indépendantes plutôt que McNemar. Recalcul
+avec le test approprié : mêmes conclusions (p=0,894 et p=0,560, non
+significatifs), mais méthodologiquement plus correct. Aucune correction pour
+comparaisons multiples n'a non plus été appliquée aux ~15 tests d'ablation de
+ce chapitre (contrairement au diffing par feature, qui utilise déjà
+Benjamini-Hochberg) -- sans conséquence sur les conclusions actuelles (le seul
+résultat significatif, l'échelle du modèle, l'est à p<10⁻⁹), mais une lacune à
+corriger pour toute extension future où des résultats plus proches du seuil
+pourraient apparaître. L'effet dose-réponse de l'échelle du modèle a par
+ailleurs été reconfirmé par un test de tendance dédié (Cochran-Armitage,
+p≈1,6×10⁻¹⁰), plus adapté qu'une série de tests par paires à un plan à niveaux
+ordonnés.
+
 ### Comparaisons avec l'état de l'art
 
 `Context.md` (règle n°2) demande une comparaison documentée et systématique avec
