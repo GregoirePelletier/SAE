@@ -1743,7 +1743,7 @@ K/D constant OU variable) ne changent le taux d'interprétabilité une fois le
 domaine du corpus corrigé -- ce protocole d'évaluation semble structurellement
 plafonné par autre chose que les paramètres d'échelle testés jusqu'ici.
 
-## 28. Ablation "échelle du modèle" : gemma-3-1b-it et -4b-it à la place de -12b-it
+## 28. Ablation "échelle du modèle" : un effet dose-réponse net et significatif
 
 Toutes les ablations précédentes (largeur, époques, capacité, volume, seed,
 K_EXTRA) gardent le modèle extracteur/juge fixé à gemma-3-12b-it. Jamais testé :
@@ -1756,33 +1756,73 @@ interprétation change AUSSI de modèle en même temps que l'extracteur (`MODEL_
 partagé par les deux rôles) -- confond structurellement "qualité des features
 extraites" et "qualité du juge", comme pour toute paire modèle+SAE GemmaScope.
 
-| Run | Modèle | `d_model` | Taux interp. | `clf_acc_email_axes` | `fve_pretrained` |
-|---|---|---|---|---|---|
-| Run principal | gemma-3-12b-it | 4096 | **68/150 = 45,3%** | 93,5% | — |
-| `results_v13_ablation_model_scale_1b`, job 41494 (terminé, 2h46min23s) | gemma-3-1b-it | 1152 | **18/150 = 12,0%** | 88,2% | 0,565 |
-| `results_v13_ablation_model_scale_4b`, job 41493 | gemma-3-4b-it | 2560 | *[en cours]* | *[en cours]* | *[en cours]* |
+| Run | Modèle | `d_model` | Taux interp. | z vs 12b | `clf_acc_email_axes` | `fve_pretrained` |
+|---|---|---|---|---|---|---|
+| `results_v13_ablation_model_scale_1b`, job 41494 (2h46min23s) | gemma-3-1b-it | 1152 | **18/150 = 12,0%** | 6,38 (sign.) | 88,2% | 0,565 |
+| `results_v13_ablation_model_scale_4b`, job 41493 (3h01min14s) | gemma-3-4b-it | 2560 | **42/150 = 28,0%** | 3,12 (sign.) | 92,0% | 0,633 |
+| Run principal | gemma-3-12b-it | 4096 | **68/150 = 45,3%** | — (référence) | 93,5% | — |
 
-**Résultat 1b, de très loin le plus important de tout ce chapitre** : z=6,38,
-**hautement significatif** (|z|>1,96 dépassé de plus de 3x) -- un effondrement de
-45,3% à 12,0% (−33,3 points), sans commune mesure avec les écarts de 1 à 9 points,
-tous non significatifs, observés sur TOUTES les autres ablations de ce chapitre
-(largeur, époques, capacité, volume, seed, K_EXTRA). C'est le premier levier testé
-dans ce projet qui déplace réellement le taux d'interprétabilité.
+**Résultat : un effet dose-réponse net, monotone, et significatif à chaque palier**
+-- 12,0% → 28,0% → 45,3%. Chaque comparaison deux-à-deux est significative :
+1b vs 12b (z=6,38), 4b vs 12b (z=3,12), et **1b vs 4b directement (z=-3,46,
+également significatif)** -- la progression n'est pas un artefact de comparaison
+au même run de référence, c'est une vraie tendance croissante avec l'échelle. De
+très loin le plus fort effet mesuré dans tout ce projet, sans commune mesure avec
+les écarts de 1 à 9 points, tous non significatifs, observés sur TOUTES les
+autres ablations de ce chapitre (largeur, époques, capacité, volume, seed,
+K_EXTRA) -- c'est le premier et seul levier testé qui déplace réellement le taux
+d'interprétabilité.
 
 Fait notable en faveur d'une origine "qualité du juge" plutôt que "qualité des
 features" : `clf_acc_email_axes` (séparabilité LINÉAIRE des axes de perturbation
-dans l'espace des codes SAE, une mesure indépendante du juge LLM) ne s'effondre
-PAS de la même façon (93,5% → 88,2%, seulement −5,3 points) -- les features
-elles-mêmes restent en grande partie utilisables pour la classification, alors
-que l'évaluation qualitative (odd-one-out) par le modèle 1B lui-même s'effondre
-beaucoup plus fortement. `diff_hypothesis` (texte libre généré par le modèle 1B)
-est qualitativement confus par rapport aux hypothèses cohérentes produites par le
-12B (ex. inversion illogique cause/conséquence entre "énergie" et "sport" dans le
-texte généré). `fve_pretrained` (0,565, très en dessous de 0,83 typique pour le
-12B) suggère aussi une fraction de variance expliquée par le core GemmaScope
-lui-même nettement dégradée à cette échelle.
+dans l'espace des codes SAE, indépendante du juge LLM) suit une pente BEAUCOUP
+plus douce (88,2% → 92,0% → 93,5%, seulement 5,3 points d'écart total) que le
+taux d'interprétabilité qualitatif (33,3 points d'écart total) -- les features
+elles-mêmes restent en grande partie utilisables pour la classification même à
+1B, alors que l'évaluation qualitative (odd-one-out, jugée par ce même modèle)
+s'effondre beaucoup plus fortement. `fve_pretrained` suit la même tendance
+monotone (0,565 → 0,633 → ~0,83 typique 12B), cohérent avec une fraction de
+variance expliquée par le core GemmaScope lui-même qui se dégrade avec l'échelle.
+Le texte `diff_hypothesis` (généré par chaque modèle) est qualitativement confus
+pour 1B (inversion logique cause/conséquence entre "énergie" et "sport"), plus
+cohérent mais encore limité pour 4B, pleinement cohérent pour 12B -- une lecture
+qualitative qui corrobore la tendance quantitative.
 
-**Conclusion (partielle -- 4b en cours)** : le plus fort effet mesuré dans tout ce
-projet vient du choix du modèle lui-même, pas des hyperparamètres du SAE. Reste à
-déterminer si 4b (échelle intermédiaire) montre une dégradation progressive ou un
-effet de seuil -- complété dans la prochaine mise à jour de cette section.
+**Conclusion** : le choix du modèle extracteur/juge est, de loin, le levier le
+plus déterminant testé dans ce projet pour le taux d'interprétabilité -- bien
+au-delà de tout hyperparamètre du SAE (largeur, capacité, volume, seed). La
+dissociation entre classification (robuste, dégradation modérée) et
+interprétation qualitative (fragile, dégradation sévère) suggère que la capacité
+de RAISONNEMENT du juge (formuler et vérifier un concept partagé entre 9
+exemples) est le facteur limitant à petite échelle, plus que la qualité des
+représentations latentes elles-mêmes. Piste directement actionnable pour la
+suite : séparer les rôles extracteur/juge (garder un modèle de taille modeste
+pour l'extraction, mais un juge plus capable) pour isoler laquelle des deux
+capacités domine réellement cet effet.
+
+## 29. Ablation largeur 262k (12b) : complète le balayage 16k/65k/262k
+
+Troisième et dernière largeur de SAE core GemmaScope-2-12b-it disponible
+localement (téléchargée initialement pour la mesure de couverture Neuronpedia,
+§17.0 : 262k -> seulement 5,3% de couverture, très en dessous de 16k/65k). Run
+`results_v13_ablation_width262k_only` (job 41487, terminé en 15h33min10s --
+nettement plus long que 16k/65k du fait de la taille du core SAE lui-même,
+262 144 dimensions).
+
+| Run | Largeur | Taux interp. | z vs 16k | `clf_acc_email_axes` | `fve_pretrained` |
+|---|---|---|---|---|---|
+| Run principal | 16k | 68/150 = 45,3% | — | 93,5% | — |
+| Largeur seule, job 40952 (§17.5) | 65k | 65/150 = 43,3% | — | — | — |
+| **Ce run**, 262k | 262k | **70/150 = 46,7%** | -0,23 (non sign.) | 91,4% | 0,806 |
+
+**Résultat** : aucun écart significatif (z=-0,23), cohérent avec 65k (déjà non
+significatif). La couverture Neuronpedia très dégradée à 262k (5,3%) n'affecte
+donc PAS le taux d'interprétabilité de l'EXTENSION (auto-labellisée par le juge,
+indépendante du catalogue Neuronpedia) -- seul le catalogue "Core" pré-existant
+en aurait souffert, sans impact sur la métrique suivie dans ce projet. Complète
+proprement le balayage de largeur du SAE core (16k/65k/262k) : **aucune des
+trois largeurs ne change significativement l'interprétabilité** -- cohérent avec
+la conclusion déjà établie que ce protocole d'évaluation est plafonné par
+autre chose que les paramètres d'échelle du SAE core, et renforce par contraste
+à quel point l'effet de l'échelle du MODÈLE (§28) est hors norme parmi tous les
+leviers testés dans ce projet.

@@ -619,23 +619,39 @@ intersection non nulle avec elles — limite structurelle du BM25 sur vocabulair
 latent très parcimonieux (k=16), pas un bug ni un raté sémantique. Détail
 complet : `RESULTS_TESTS.md` §26.
 
-## 18. Ablation "échelle du modèle" : le premier levier qui déplace vraiment le taux d'interprétabilité
+## 18. Ablation "échelle du modèle" : un effet dose-réponse net et significatif
 
 Toutes les ablations précédentes gardent le modèle extracteur/juge fixé à
-gemma-3-12b-it. Test avec gemma-3-1b-it (+ son propre GemmaScope, job 41494,
-terminé) : **18/150 = 12,0%** d'interprétabilité contre 45,3% pour le run
-principal — effondrement de −33,3 points, **z=6,38, hautement significatif**
-(largement au-delà du seuil |z|>1,96). C'est, de très loin, le premier levier
-testé dans ce projet qui déplace réellement le taux d'interprétabilité — tous les
-autres écarts mesurés (largeur, époques, capacité, volume, seed, K_EXTRA) restent
-entre 1 et 9 points et non significatifs.
+gemma-3-12b-it. Test avec gemma-3-1b-it et gemma-3-4b-it (+ leurs GemmaScope
+dédiés) à la place de 12b-it :
+
+| Modèle | Taux interp. | z vs 12b | `clf_acc_email_axes` |
+|---|---|---|---|
+| gemma-3-1b-it | **12,0%** (18/150) | 6,38 (significatif) | 88,2% |
+| gemma-3-4b-it | **28,0%** (42/150) | 3,12 (significatif) | 92,0% |
+| gemma-3-12b-it (run principal) | **45,3%** (68/150) | — référence | 93,5% |
+
+**Effet dose-réponse net, monotone et significatif à chaque palier** — 12,0% →
+28,0% → 45,3%, avec même la comparaison directe 1b vs 4b significative
+(z=-3,46). C'est, de très loin, le plus fort effet mesuré dans tout ce projet :
+tous les autres écarts (largeur, époques, capacité, volume, seed, K_EXTRA)
+restent entre 1 et 9 points, tous non significatifs.
 
 Indice que l'origine est plutôt la qualité du JUGE que celle des features
 elles-mêmes : `clf_acc_email_axes` (séparabilité linéaire des axes de
-perturbation, indépendante du juge LLM) recule beaucoup moins (93,5% → 88,2%,
-−5,3 points) que le taux d'interprétabilité qualitatif. Le texte d'hypothèse
-généré par le modèle 1B est qualitativement confus (inversion logique
-cause/conséquence) comparé aux hypothèses cohérentes du 12B. Résultat encore
-partiel : l'échelle intermédiaire (gemma-3-4b-it, job 41493) est en cours pour
-déterminer si la dégradation est progressive ou un effet de seuil. Détail
-complet : `RESULTS_TESTS.md` §28.
+perturbation, indépendante du juge LLM) suit une pente beaucoup plus douce
+(88,2% → 92,0% → 93,5%, 5,3 points d'écart total contre 33,3 points pour le
+taux d'interprétabilité). Lecture qualitative cohérente : le texte d'hypothèse
+généré est confus pour 1B (inversion logique cause/conséquence), plus solide
+pour 4B, pleinement cohérent pour 12B. Interprétation retenue : la capacité de
+RAISONNEMENT du juge (formuler et vérifier un concept partagé entre 9 exemples)
+est probablement le facteur limitant à petite échelle, plus que la qualité des
+représentations latentes elles-mêmes — piste actionnable pour la suite :
+séparer les rôles extracteur/juge pour isoler laquelle des deux capacités
+domine réellement cet effet. Détail complet : `RESULTS_TESTS.md` §28.
+
+Complète également le balayage de largeur du SAE core (16k/65k/262k, job
+41487) : 46,7% à 262k, aucun écart significatif (z=-0,23) — confirme qu'aucune
+largeur testée ne change l'interprétabilité, et souligne par contraste à quel
+point l'effet de l'échelle du MODÈLE ci-dessus est hors norme parmi tous les
+leviers testés dans ce projet. Détail complet : `RESULTS_TESTS.md` §29.
