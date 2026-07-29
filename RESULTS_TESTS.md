@@ -1918,3 +1918,49 @@ entre les trois points testés.
   quelle est la plus petite différence détectable à 80% de puissance ? Cadrerait
   les attentes sur ce qui est raisonnable de chercher avec ce protocole plutôt
   que de découvrir après coup qu'un écart de quelques points est indétectable.
+
+## 31. Balayage MATRYOSHKA_DIM (F2LLM-v2-160M) : dégradation graduelle, pas abrupte
+
+Question posée directement par l'utilisateur : `MATRYOSHKA_DIM` (troncature de
+l'embedding F2LLM, `src/config.py`, défaut 320) n'avait jamais été varié. Fait
+découvert en creusant : `F2LLM-v2-80M` a `hidden_size=320`, **exactement égal**
+au défaut -- la "troncature" était un no-op pur pour ce backbone dans toutes
+les comparaisons précédentes (§16.5-16.7), jamais remarqué. Seuls 160M
+(640→320) et 330M (896→320) tronquaient réellement, toujours au même point
+fixe. Ni la doc F2LLM (README HF, vérifié) ni ce projet n'ont jamais confirmé
+un entraînement avec objectif Matryoshka (MRL) au sens strict.
+
+4 runs sur F2LLM-v2-160M (hidden_size=640), `MATRYOSHKA_DIM` ∈ {64, 128, 320,
+640(complet, aucune troncature)}, jobs 41598/41599/41600 + point 320 déjà
+obtenu (`results_v10_p2_f2llm160m`) :
+
+| `MATRYOSHKA_DIM` | Fraction du complet | NMSE | dead% | `clf_acc_email_axes` | `clf_acc_sae` (diffing) |
+|---|---|---|---|---|---|
+| 64 | 10,0% | 0,0706 | 0,0% | 72,8% | 64,8% |
+| 128 | 20,0% | 0,0803 | 0,0% | 75,0% | 65,8% |
+| 320 (défaut) | 50,0% | 0,0727 | 0,77% | 76,9% | 67,0% |
+| 640 (complet) | 100% | 0,0697 | 3,31% | **77,4%** | **68,5%** |
+
+**Résultat** : `clf_acc_email_axes` et `clf_acc_sae` augmentent tous deux de
+façon MONOTONE avec la dimension, mais à rendements très décroissants
+(+2,2 → +1,9 → +0,5 points pour `clf_acc_email_axes`) -- **64/640 dimensions
+(10%) conservent déjà 94% de la performance du plein embedding** (72,8/77,4).
+Dégradation graduelle, pas de chute brutale à aucun point testé -- cohérent
+avec (sans le démontrer formellement, faute de confirmation MRL côté F2LLM) un
+comportement Matryoshka-like : les dimensions de tête de l'embedding portent
+disproportionnellement le signal utile à la classification.
+
+Le NMSE, à l'inverse, ne suit aucune tendance monotone (0,0706 / 0,0803 /
+0,0727 / 0,0697) -- vraisemblablement du bruit d'entraînement (un seul run par
+point de dimension, pas de répétition sur seed), et de toute façon pas une
+métrique directement comparable entre dimensions différentes (la variance du
+signal à reconstruire change elle-même avec la dimension d'entrée). `dead_pct`
+augmente avec la dimension (0,0% → 0,0% → 0,77% → 3,31%) -- à `D_SAE=8192`
+dictionnaire fixe, plus de dimensions d'entrée semble produire plus d'atomes
+redondants/inutilisés, une observation secondaire non creusée davantage ici.
+
+**Conclusion pratique** : si le volume de calcul/stockage devient un enjeu pour
+Pipeline 2, tronquer à 128 ou même 64 dimensions coûte peu en performance de
+classification (perte de 2 à 5 points) pour un gain de calcul/mémoire de 5x à
+10x -- un compromis a priori favorable si jamais nécessaire, bien qu'aucun des
+runs de ce projet n'ait été contraint par cette ressource à ce jour.

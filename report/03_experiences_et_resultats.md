@@ -655,3 +655,28 @@ Complète également le balayage de largeur du SAE core (16k/65k/262k, job
 largeur testée ne change l'interprétabilité, et souligne par contraste à quel
 point l'effet de l'échelle du MODÈLE ci-dessus est hors norme parmi tous les
 leviers testés dans ce projet. Détail complet : `RESULTS_TESTS.md` §29.
+
+## 19. Balayage `MATRYOSHKA_DIM` (F2LLM) : dégradation graduelle, pas abrupte
+
+`MATRYOSHKA_DIM` (troncature de l'embedding F2LLM, défaut 320) n'avait jamais
+été varié — fait notable découvert en creusant : F2LLM-80M a `hidden_size=320`,
+exactement égal au défaut, donc la "troncature" était un no-op pur pour ce
+backbone dans toutes les comparaisons précédentes (§16), jamais remarqué.
+4 runs sur F2LLM-160M (`hidden_size=640`), `MATRYOSHKA_DIM` ∈ {64, 128, 320,
+640(complet)} :
+
+| Dimension | Fraction du complet | `clf_acc_email_axes` |
+|---|---|---|
+| 64 | 10% | 72,8% |
+| 128 | 20% | 75,0% |
+| 320 (défaut) | 50% | 76,9% |
+| 640 (complet) | 100% | **77,4%** |
+
+Augmentation monotone mais à rendements très décroissants — 10% des dimensions
+conservent déjà 94% de la performance du plein embedding. Dégradation
+graduelle, pas de chute brutale à aucun point testé. Ni la documentation F2LLM
+ni ce projet ne confirment un entraînement Matryoshka (MRL) au sens strict,
+mais le comportement empirique est cohérent avec cette hypothèse. Conclusion
+pratique : tronquer à 64-128 dimensions coûterait peu en performance pour un
+gain de calcul/mémoire de 5-10x, si jamais nécessaire. Détail complet :
+`RESULTS_TESTS.md` §31.
