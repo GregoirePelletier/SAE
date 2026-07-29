@@ -764,21 +764,27 @@ def run_llm_max_pool_pipeline(
             
             if _need_residuals:
                 print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
-                raw_residuals_list = []
+                # Buffer préalloué (même correctif qu'en §C3 ci-dessous : plus de
+                # liste de chunks + torch.cat final, qui doublait transitoirement le
+                # pic mémoire à grande échelle, cf. RESULTS_TESTS.md §23.3).
+                _residuals_buf = torch.empty(N_TOKENS_EXTRA_TRAIN, D_MODEL, dtype=TORCH_DTYPE)
                 n_collected = 0
                 for _fid in fragment_ids[:n_train + n_filler]:
                     frag = load_fragment(token_fragments_dir, _fid)
                     if "raw_acts" in frag:
-                        raw_residuals_list.append(frag["raw_acts"])
-                        n_collected += frag["raw_acts"].shape[0]
+                        chunk = frag["raw_acts"]
+                        take = min(N_TOKENS_EXTRA_TRAIN - n_collected, chunk.shape[0])
+                        _residuals_buf[n_collected:n_collected + take] = chunk[:take]
+                        n_collected += take
                     if n_collected >= N_TOKENS_EXTRA_TRAIN:
                         break
-                if raw_residuals_list:
-                    raw_residuals = torch.cat(raw_residuals_list, dim=0)[:N_TOKENS_EXTRA_TRAIN]
+                if n_collected > 0:
+                    raw_residuals = _residuals_buf if n_collected >= N_TOKENS_EXTRA_TRAIN \
+                        else _residuals_buf[:n_collected]
                     torch.save(raw_residuals, cache_residuals_path)
                     print(f"  [P1] Résidus bruts d'apprentissage réinitialisés : {raw_residuals.shape}")
                     _need_residuals = False
-                    del raw_residuals_list
+                del _residuals_buf
         else:
             print("  [P1] Fragments disques incomplets. Re-extraction forcée.")
             _need_extraction = True
@@ -799,10 +805,15 @@ def run_llm_max_pool_pipeline(
         ).eval()
 
         all_doc_sae_acts = []
-        raw_residuals_list = []
         n_residuals_collected = 0
         n_residuals_seen = 0      # C3 : total de tokens train vus (dénominateur réservoir)
-        reservoir = None          # C3 : buffer [N_TOKENS_EXTRA_TRAIN, d_in] une fois plein
+        # C3 — buffer préalloué UNE SEULE FOIS à la taille finale (plus de liste de
+        # chunks + torch.cat final, qui doublait transitoirement le pic mémoire à
+        # ~2x N_TOKENS_EXTRA_TRAIN*D_MODEL*2 octets -- cause de l'OOM du job 41176,
+        # cf. RESULTS_TESTS.md §23.3). Rempli directement par tranches (phase 1) puis
+        # par écriture indexée (phase 2, Vitter) -- jamais plus d'une copie en RAM.
+        reservoir = (torch.empty(N_TOKENS_EXTRA_TRAIN, D_MODEL, dtype=TORCH_DTYPE)
+                     if USE_FROZEN_CORE else None)
 
         with torch.no_grad():
             for i in tqdm(range(0, len(all_texts), 4), desc="Extraction P1"):
@@ -864,22 +875,19 @@ def run_llm_max_pool_pipeline(
                     if USE_FROZEN_CORE and doc_global_idx < n_train + n_filler:
                         # C3 — Réservoir (Vitter, Algorithm R) : échantillon uniforme
                         # sur TOUS les tokens du split train, au lieu des seuls
-                        # premiers documents. Phase 1 : remplissage séquentiel ;
-                        # phase 2 : le m-ième token vu remplace reservoir[j],
-                        # j ~ U[0, m), ssi j < N. Vectorisé par chunk (les
-                        # collisions intra-chunk sont résolues last-write-wins,
+                        # premiers documents. Phase 1 : remplissage séquentiel du
+                        # buffer préalloué ; phase 2 : le m-ième token vu remplace
+                        # reservoir[j], j ~ U[0, m), ssi j < N. Vectorisé par chunk
+                        # (les collisions intra-chunk sont résolues last-write-wins,
                         # biais négligeable pour chunk << N).
                         x_new = filtered.cpu()
                         if n_residuals_collected < N_TOKENS_EXTRA_TRAIN:
                             take = min(N_TOKENS_EXTRA_TRAIN - n_residuals_collected, x_new.shape[0])
-                            raw_residuals_list.append(x_new[:take])
+                            reservoir[n_residuals_collected:n_residuals_collected + take] = x_new[:take]
                             n_residuals_collected += take
                             n_residuals_seen += take
                             x_new = x_new[take:]
                         if x_new.shape[0] > 0:
-                            if reservoir is None:
-                                reservoir = torch.cat(raw_residuals_list, dim=0)
-                                raw_residuals_list.clear()
                             m = n_residuals_seen + torch.arange(1, x_new.shape[0] + 1)
                             j = (torch.rand(x_new.shape[0]) * m).long()
                             hit = j < N_TOKENS_EXTRA_TRAIN
@@ -889,12 +897,13 @@ def run_llm_max_pool_pipeline(
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
         torch.save(all_doc_sae_acts, cache_acts_path)
 
-        if USE_FROZEN_CORE and (reservoir is not None or raw_residuals_list):
-            raw_residuals = reservoir if reservoir is not None \
-                else torch.cat(raw_residuals_list, dim=0)[:N_TOKENS_EXTRA_TRAIN]
+        if USE_FROZEN_CORE and reservoir is not None:
+            # Corpus plus petit que N_TOKENS_EXTRA_TRAIN : le buffer préalloué n'a
+            # été rempli que partiellement, tronquer au nombre réel de tokens vus.
+            raw_residuals = reservoir if n_residuals_collected >= N_TOKENS_EXTRA_TRAIN \
+                else reservoir[:n_residuals_collected]
             torch.save(raw_residuals, cache_residuals_path)
             print(f"  [P1] Résidus bruts d'apprentissage enregistrés : {raw_residuals.shape}")
-            del raw_residuals_list
             _need_residuals = False
             
         del llm, tokenizer
