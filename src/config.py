@@ -82,7 +82,14 @@ _PRESETS = {
     # manuellement, très en dessous) ; 1m -> HTTP 404, pas de labels hébergés.
     # 65k est donc la largeur retenue pour le run à grande échelle (meilleure des
     # deux métriques), remplaçant 16k comme choix par défaut ci-dessous.
-    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_65k_l0_medium", 24, 4096),
+    # d_model=3840 confirmé empiriquement (text_config.hidden_size du config.json de
+    # gemma-3-12b-it) -- corrige une valeur de 4096 restée fausse depuis l'ajout initial
+    # de ce preset (jamais exercée jusqu'ici : le seul code qui lit D_MODEL pour
+    # préallouer un buffer de cette forme exacte, saev5.py::run_llm_max_pool_pipeline,
+    # est une correction récente non encore testée en conditions réelles, cf.
+    # RESULTS_TESTS.md §23.3 -- tous les runs 12b antérieurs utilisaient l'ancienne
+    # implémentation par liste+cat, indifférente à D_MODEL).
+    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_65k_l0_medium", 24, 3840),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),
     "1b":   ("google/gemma-3-1b-it",  "gemma-scope-2-1b-it",  "layer_13_width_16k_l0_medium", 13, 1152),
     # google/gemma-3-270m-it (LM) + google/gemma-scope-2-270m-it (SAE, resid_post,
