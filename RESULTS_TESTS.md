@@ -68,7 +68,10 @@ sans réallocation ni parcours complet à chaque batch — la conversion finale
 `O(batch_size · d_sae)` par batch, comme attendu. `scatter_maxpool` elle-même n'a pas
 été touchée (reste correcte pour ses autres usages en appel unique dans
 `sae_shared.py`/`phrase_sae.py`, qui ne bouclent pas dessus par batch). Tests
-`pytest` re-passés (8/8 OK).
+`pytest` re-passés (8/8 OK -- décompte historique à ce stade du projet ; la suite
+compte 9 tests aujourd'hui après l'ajout ultérieur de `tests/test_interp_embed_diff.py`,
+toutes les mentions "8/8"/"8 passed" de ce document reflètent des instantanés
+antérieurs à cet ajout, pas une régression).
 
 **Job 39492** : `slurm/baseline_diffing/run_baseline_full.slurm` resoumis avec le fix → ✅ **COMPLETED en
 1h11min20s** (contre >4h de TIMEOUT sans rien produire avant le fix). Corpus complet
@@ -93,12 +96,19 @@ traité : 3474 mails originaux + 39 949 augmentés acceptés = 43 423 textes enc
 Sorties : `results_v9_test/cache_baseline_full/diff_<axe>__<niveau>.csv` + `.html`
 (26 fichiers) + `baseline_doc_acts_all.pt` (cache, 2.85 Go).
 
-**Note** : contrairement au run test (qui avait par chance obtenu quelques labels
-Neuronpedia), le run complet n'a pas pu joindre Neuronpedia (même erreur SSL réseau
-qu'avant, cluster offline) → toutes les features top sont des identifiants bruts
-`F{idx}` non labellisés. Dégradation gracieuse attendue (pas un crash), mais réduit
-l'interprétabilité immédiate des résultats — labels à générer hors-cluster via
-`fetch_neuronpedia_labels()` si besoin d'interprétation fine.
+**Correction (vérifié en relisant les CSV directement)** : l'affirmation initiale
+ici ("le run complet n'a pas pu joindre Neuronpedia, toutes les features top sont
+des identifiants bruts non labellisés") était **fausse** -- les labels utilisés
+proviennent du cache local (`local_data/neuronpedia_labels/`), peuplé hors-ligne
+avant ce run via `fetch_neuronpedia_labels()`, donc indépendants de toute
+connectivité réseau au moment de l'exécution du pipeline. En relisant directement
+les CSV de sortie (`results_v9_test/cache_baseline_full/diff_*.csv`) : **82,4%
+(36044/43751) des features significatives portent un vrai label Neuronpedia**,
+pas un identifiant brut `F{idx}` -- certaines features du tableau ci-dessus
+(F15531 = "roman numeral lists", F13696 = "repetition or repeating", etc.) ont
+d'ailleurs un label réel malgré leur affichage sous forme `F{idx}` dans ce
+tableau de synthèse (choix de présentation compact, indépendant de la présence
+effective d'un label dans les données).
 
 ---
 
@@ -159,8 +169,9 @@ complétées), aucune erreur/traceback, nouveau `SAVE_DIR=results_v9_full/` bien
 
 Comparé au dernier smoketest de référence (job 38896, volumes ×12 réduits) : ρ_SAE P1
 en hausse (0.91 vs 0.80), dead% en baisse (47% vs 58%), FVE_base comparable (0.74 vs
-0.72) — cohérent avec un SAE mieux entraîné sur plus de données. P2 dead%=0.0 (aucune
-feature morte sur les 8192, contre 0.24% en smoketest sur 2048) : bon signe de
+0.72) — cohérent avec un SAE mieux entraîné sur plus de données. P2 dead%=0,049%
+(4 features mortes sur les 8192, arrondi à 0,0 dans le tableau ci-dessus ; contre
+0,24% en smoketest sur 2048) : bon signe de
 capacité utilisée. **Point à noter** : `clusters=0` pour P2 (contre 2 en smoketest) —
 le clustering n'a trouvé qu'un seul cluster homogène sur le run complet, à
 creuser si l'analyse de clustering P2 est un livrable attendu.
@@ -627,7 +638,7 @@ d'intentions" avec un test indépendant du corpus augmenté synthétique.
 | `intent_reclamation` | 55,1% (1819/3300) | **97,7%** | 55,1% | **+42,6 pts** |
 | `intent_information` | 18,2% (599/3300) | 87,8% | 81,8% | +6,0 pts |
 | `intent_remboursement` | 14,5% (479/3300) | 84,5% | 85,5% | −1,0 pt |
-| `intent_resiliation` | 0,03% (1/3480) | — | — | ignoré (classe dégénérée) |
+| `intent_resiliation` | 0,03% (1/3300) | — | — | ignoré (classe dégénérée) |
 
 **Lecture** : les codes latents du SAE (Pipeline 1, 17 408 dimensions) séparent très
 nettement l'**urgence** (+27 points au-dessus de la baseline) et la **réclamation**
@@ -893,8 +904,9 @@ features "expliquant" un document ne sont elles-mêmes pas clairement monoséman
 aucune réextraction Gemma-3) : `find_interesting_pairs` (§15.3) a été ajoutée au
 pipeline principal APRÈS la production de `results_v10_emails_main/` — recalculée ici
 directement depuis `test_doc_acts` déjà en cache. Résultat : seulement **3 paires**
-retenues sur 26 579 arêtes du graphe de cooccurrence (3 395 nœuds), et 2 des 3 paires
-impliquent une feature non labellisée (`F17402`, `F17315`, `F43`) — résultat honnête
+retenues sur 26 579 arêtes du graphe de cooccurrence (3 395 nœuds), et les **3 des 3
+paires** impliquent une feature non labellisée (respectivement `F43`, `F17402`,
+`F17315`, chacune appariée à la feature 1873 = "gem mining history") — résultat honnête
 mais peu exploitable en l'état (impossible de juger si la corrélation est un artefact
 réel sans label sur au moins un des deux côtés). Piste de suite : élargir la plage de
 fréquence (`min_freq`/`max_freq` de `cooccurrence_graph`) ou prioriser les paires où
@@ -926,7 +938,7 @@ Deux tentatives nécessaires : la première a échoué à la toute dernière ét
 (`MODEL_ID` non défini explicitement pour le juge P2 -- même bug que §16.2 avant son
 premier correctif), mais l'entraînement complet du `PhraseLevelSAE` sur les
 embeddings F2LLM-330M était déjà en cache, la reprise (job 40745) a donc pu sauter
-directement à l'étape manquante (quelques secondes au lieu de ~10 minutes).
+directement à l'étape manquante (2min20s selon `sacct`, au lieu de ~10 minutes).
 
 | Métrique | F2LLM-v2-80M | F2LLM-v2-330M | Δ |
 |---|---|---|---|
