@@ -1160,7 +1160,7 @@ les tests de fidélité et de plausibilité ont été recalculés sur `results_v
 | Métrique | Run principal (v10, 16k) | Run v12 buggé (16k chargé à tort) | **Run v12 corrigé (65k)** |
 |---|---|---|---|
 | Plausibilité (choix forcé, 60 documents) | 71,7% (43/60) | 56,7% (34/60) | **88,3% (53/60)** |
-| Fidélité (ratio top/random, moyenne 4 intentions) | 250×-576 000× | *(non affecté, cosmétique)* | 251×-32 992× (même ordre de grandeur) |
+| Fidélité (ratio top/random, moyenne 4 intentions) | 250×-576 000× | *(non affecté, cosmétique)* | 890,9×-32 992,3× (même ordre de grandeur) |
 
 **La plausibilité progresse réellement et fortement** une fois le bug corrigé
 (71,7%→88,3%, +16,6 points) — contrairement au taux d'interprétabilité odd-one-out
@@ -1215,11 +1215,15 @@ en dessous de ce seuil. La conclusion tirée dans ce projet ("le volume de token
 change rien au-delà de 100k, une fois le domaine corrigé") est donc établie
 uniquement dans un régime que leur étude qualifie explicitement d'insuffisant pour
 observer un effet de convergence — **elle ne peut pas être extrapolée** au régime
-100M-200M sans le tester directement. Aucun run à ce volume n'a été lancé dans ce
-stage (coût GPU largement supérieur aux runs existants : leur budget est calibré
-sur un unique domaine à la fois, quand ce projet réextrait aussi les activations
-Gemma-3-12B à chaque configuration). Reste une limite explicitement documentée
-(`report/04_limites_et_perspectives.md`) plutôt qu'un résultat.
+100M-200M sans le tester directement.
+
+**Mise à jour** : un run à 25M tokens a depuis été mené (§23.4, +12x l'ablation
+initiale, toujours sans effet significatif) et un run visant 200M tokens (borne
+haute exacte du seuil du papier) a été lancé (§23.4, job 41658) une fois les
+deux obstacles bloquants résolus (mémoire hôte, volume de filler disponible) --
+en attente de démarrage au moment de la rédaction (cluster en incident de
+maintenance). Reste, en l'état, une limite partiellement levée plutôt
+qu'un résultat définitif tant que le job 200M n'a pas produit de résultat.
 
 ### 18.4. Baselines alternatives jamais comparées
 
@@ -1274,7 +1278,7 @@ d'`ExtendedSAE`) — comparaison à facteur unique directe.
 
 | Métrique | Run principal (`ExtendedSAE`, décodeur entraîné) | Frozen Decoder (décodeur figé aléatoire) | Écart | Significativité |
 |---|---|---|---|---|
-| Interprétabilité odd-one-out (n=150) | 45,3% (68/150) | **29,3%** (44/150) | −16,0 points | z=2,91 (p<0,01) |
+| Interprétabilité odd-one-out (n=150) | 45,3% (68/150) | **29,3%** (44/150) | −16,0 points | z=2,86 (p<0,01) |
 | `clf_acc_email_axes` (14 classes, n=2177 test) | 93,5% | **91,2%** | −2,3 points | z=2,86 (p<0,01) |
 | Features mortes (extension) | 0 | 0 | — | — |
 
@@ -1282,7 +1286,7 @@ d'`ExtendedSAE`) — comparaison à facteur unique directe.
 complète** :
 
 - **Interprétabilité odd-one-out : écart réel et substantiel** (16 points, très
-  au-delà de l'écart-type binomial ≈4,1pt à n=150, z=2,91). Contrairement au
+  au-delà de l'écart-type binomial ≈4,1pt à n=150, z=2,86). Contrairement au
   résultat du papier (leur baseline "Frozen Decoder" égalait leur SAE entraîné sur
   AutoInterp, 0,87 vs 0,90), **notre protocole odd-one-out distingue clairement un
   décodeur entraîné d'un décodeur aléatoire** sur ce projet -- un signal rassurant
@@ -1369,7 +1373,8 @@ features, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`).
 |---|---|---|---|
 | Interprétabilité odd-one-out | 45,3% (68/150) | 47,3% (71/150) | +2,0 points (z=0,35, non significatif) |
 | `clf_acc_email_axes` | 93,5% | 91,3% | −2,2 points |
-| Recouvrement EXACT des labels interprétables (chaîne de caractères) | — | **22/78 = 28,2%** | |
+| Recouvrement EXACT des labels interprétables (chaîne de caractères,
+normalisée : préfixe `[EXT]` retiré, insensible à la casse) | — | **22/78 = 28,2%** | |
 
 **Lecture** : au niveau AGRÉGÉ, le taux d'interprétabilité est parfaitement stable
 d'un seed à l'autre (45,3% vs 47,3%, écart non significatif) -- rassurant, ce
@@ -1463,7 +1468,7 @@ Le corpus emails+augmentés (~6M tokens) est très en dessous de 100M. Options
 "réclamations énergie" pur sur un corpus web générique français -- le registre
 "client mécontent" est partagé par de nombreux secteurs (télécom, e-commerce,
 assurance), pas spécifique à l'énergie. `UTILITY_COMPLAINT_KEYWORDS`
-(`src/data/keywords.py`, 33 phrases composées) retenu comme meilleur compromis
+(`src/data/keywords.py`, 34 phrases composées) retenu comme meilleur compromis
 disponible, avec sa limite de précision documentée explicitement plutôt que
 présentée comme un filtre propre.
 
@@ -1508,6 +1513,16 @@ largement au-delà des 180 Go demandés, et proche de la RAM totale du nœud a10
 (`raw_residuals_list` + `reservoir` coexistent brièvement au moment de la création
 du réservoir, L880-882), aggravant le pic mémoire réel au-delà même de 768 Go.
 
+**Mise à jour** : ce doublement transitoire a depuis été éliminé (commit `18cc204`,
+*"Élimine le doublement transitoire de mémoire du réservoir de résidus"*) : le
+buffer `reservoir` est désormais préalloué une seule fois à sa taille finale dès
+le début de l'extraction et rempli directement par tranches (phase 1) puis par
+écriture indexée (phase 2, Vitter), sans jamais coexister avec une structure
+intermédiaire de même taille. `raw_residuals_list` n'existe plus dans le code
+actuel. Cette correction, restée non documentée ici jusqu'à cette mise à jour, a
+été validée par un test isolé (tenseurs factices, corpus plus grand ET plus
+petit que la cible) avant d'être exploitée pour le run à 200M tokens (§23.4).
+
 Point notable : le run était par ailleurs sain — l'extraction progressait
 normalement (~3,5 batches/s, ~14 docs/s), le filler FineWeb2-fr avait produit
 286 316 chunks (sur les 540 000 visés, faute de matches suffisants sur les 3 shards
@@ -1533,7 +1548,7 @@ Relancé sous `results_v13_ablation_volume25m`
 FineWeb2-fr, `N_VOLUME_FILLER_TARGET_CHUNKS=540000` inchangé (la RAM n'en dépend
 plus, seul le plafond `N_TOKENS_EXTRA_TRAIN` compte désormais).
 
-### 23.3. Résultats (job 41375, terminé en 18h17min21s)
+### 23.4. Résultats (job 41375, terminé en 18h17min21s)
 
 | Run | `N_TOKENS_EXTRA_TRAIN` | Filler FineWeb2-fr | Taux interp. (odd-one-out) | `clf_acc_email_axes` | `fve_pretrained` |
 |---|---|---|---|---|---|
@@ -1570,6 +1585,31 @@ cohérent avec le fait que le filler n'alimente que le réservoir de tokens rés
 et jamais `train_texts`/la sélection de features (cf. §23.2) — le garde-fou conçu
 pour éviter de réintroduire le biais de domaine original semble avoir fonctionné
 comme prévu.
+
+### 23.5. Run à 200M tokens (borne haute exacte du seuil SAE Boost)
+
+Avec la soutenance repoussée d'environ deux mois, le temps disponible permet de
+viser directement la borne haute (200M) de la fourchette 100-200M du papier,
+plutôt que le compromis à 25M. Deux obstacles bloquants ont été levés avant ce
+lancement :
+
+- **Mémoire** : `N_TOKENS_EXTRA_TRAIN=200000000 × 3840 (hidden_size) × 2 octets
+  (bf16) ≈ 1,40 To` pour le seul buffer de résidus (préalloué, sans
+  doublement transitoire depuis §23.3 mise à jour ci-dessus). Toutes les
+  partitions utilisées jusqu'ici (a100, ~1 To de RAM total) sont insuffisantes
+  -- ce run cible `h100` (~2 To de RAM par nœud, `--mem=1800G`).
+- **Volume de filler disponible** : les 3 shards FineWeb2-fr existants (§23.1)
+  ne donnaient qu'environ 65-70M tokens exploitables -- insuffisant même pour
+  100M avec marge. 15 shards supplémentaires ont été téléchargés (18 au total,
+  ~87 Go), portant le pool estimé à ~350-400M tokens bruts de filler.
+
+Job **41658** (`slurm/pipeline_runs/run_ablation_volume_200m.slurm`,
+`results_v13_ablation_volume200m`) soumis : à ce jour, l'état est **PENDING**
+-- les trois nœuds du cluster (a100, h100, h100-bis) sont en incident de
+maintenance simultané (`Reason=Kill task failed`, non lié à ce projet), tous
+en état `drain`/`draining`. Le job démarrera automatiquement une fois le
+cluster rétabli, sans action supplémentaire requise. *[Résultats à compléter
+une fois le job terminé.]*
 
 ## 24. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
@@ -1641,7 +1681,7 @@ sauf `K_EXTRA=5`, cf. `slurm/pipeline_runs/run_ablation_k_extra5.slurm`).
 
 | Run | `K_EXTRA` | Taux interp. (odd-one-out) | `clf_acc_email_axes` | `rho_sae` |
 |---|---|---|---|---|
-| Run principal, `results_v10_emails_main` | 32 | **68/150 = 45,3%** | 93,5% | 0,922 |
+| Run principal, `results_v10_emails_main` | 32 | **68/150 = 45,3%** | 93,5% | 0,906 |
 | Ablation capacité, §17.5 | 64 | — | — | — |
 | **Ce run**, `results_v13_ablation_k_extra5`, job 41404 | 5 | **82/150 = 54,7%** | 91,2% | 0,849 |
 
@@ -1649,7 +1689,7 @@ Comparaison statistique au run principal : z=-1,62, **non significatif** au seui
 conventionnel (\|z\|>1,96) malgré un écart numérique de +9,4 points — le plus
 proche du seuil de significativité (p≈0,106 bilatéral) de toutes les ablations
 testées dans ce chapitre. `rho_sae` (proxy de fidélité de reconstruction du
-résidu) recule sensiblement (0,922 → 0,849), cohérent avec le fait qu'un budget de
+résidu) recule sensiblement (0,906 → 0,849), cohérent avec le fait qu'un budget de
 capacité par token beaucoup plus faible (k=5 vs 32) réduit mécaniquement la
 fraction du résidu reconstructible — attendu, et conforme à la logique du papier
 (k plus faible = code plus parcimonieux, quitte à moins bien reconstruire, en
@@ -1657,7 +1697,7 @@ fraction du résidu reconstructible — attendu, et conforme à la logique du pa
 
 **Lecture** : direction cohérente avec l'hypothèse du papier (k plus faible →
 meilleure interprétabilité), mais non significatif isolément sur n=150. Voir
-§23.3 pour la discussion de la coïncidence directionnelle avec l'ablation volume
+§23.4 pour la discussion de la coïncidence directionnelle avec l'ablation volume
 (les deux ablations, indépendantes, pointent vers un gain d'interprétabilité du
 même ordre de grandeur — +9,4 et +8,7 points — sans qu'aucune des deux
 n'atteigne la significativité seule).
@@ -1726,12 +1766,12 @@ identique au run principal sauf `D_EXTRA`.
 
 | Run | `D_EXTRA`/`K_EXTRA` | Taux interp. | `rho_sae` | `clf_acc_email_axes` |
 |---|---|---|---|---|
-| Run principal | 1024/32 | 68/150 = 45,3% | 0,922 | 93,5% |
+| Run principal | 1024/32 | 68/150 = 45,3% | 0,906 | 93,5% |
 | Capacité doublée (§17.5, job 40953) | 2048/64 | 60/150 = 40,0% | — | — |
 | **Ce run**, D_EXTRA seul | 2048/32 | **69/150 = 46,0%** | 0,925 | 91,2% |
 
 Comparaison statistique au run principal : z=-0,12, aucun écart mesurable. `rho_sae`
-s'améliore légèrement (0,922 → 0,925), cohérent avec plus d'atomes disponibles pour
+s'améliore légèrement (0,906 → 0,925), cohérent avec plus d'atomes disponibles pour
 reconstruire le résidu à budget de parcimonie identique.
 
 **Lecture** : élargir le dictionnaire seul, sans toucher au budget de parcimonie,
@@ -1760,7 +1800,7 @@ extraites" et "qualité du juge", comme pour toute paire modèle+SAE GemmaScope.
 |---|---|---|---|---|---|---|
 | `results_v13_ablation_model_scale_1b`, job 41494 (2h46min23s) | gemma-3-1b-it | 1152 | **18/150 = 12,0%** | 6,38 (sign.) | 88,2% | 0,565 |
 | `results_v13_ablation_model_scale_4b`, job 41493 (3h01min14s) | gemma-3-4b-it | 2560 | **42/150 = 28,0%** | 3,12 (sign.) | 92,0% | 0,633 |
-| Run principal | gemma-3-12b-it | 4096 | **68/150 = 45,3%** | — (référence) | 93,5% | — |
+| Run principal | gemma-3-12b-it | 3840 | **68/150 = 45,3%** | — (référence) | 93,5% | — |
 
 **Résultat : un effet dose-réponse net, monotone, et significatif à chaque palier**
 -- 12,0% → 28,0% → 45,3%. Chaque comparaison deux-à-deux est significative :
@@ -1938,12 +1978,12 @@ obtenu (`results_v10_p2_f2llm160m`) :
 |---|---|---|---|---|---|
 | 64 | 10,0% | 0,0706 | 0,0% | 72,8% | 64,8% |
 | 128 | 20,0% | 0,0803 | 0,0% | 75,0% | 65,8% |
-| 320 (défaut) | 50,0% | 0,0727 | 0,77% | 76,9% | 67,0% |
+| 320 (défaut) | 50,0% | 0,0727 | 0,77% | 76,8% | 67,0% |
 | 640 (complet) | 100% | 0,0697 | 3,31% | **77,4%** | **68,5%** |
 
 **Résultat** : `clf_acc_email_axes` et `clf_acc_sae` augmentent tous deux de
 façon MONOTONE avec la dimension, mais à rendements très décroissants
-(+2,2 → +1,9 → +0,5 points pour `clf_acc_email_axes`) -- **64/640 dimensions
+(+2,2 → +1,8 → +0,6 points pour `clf_acc_email_axes`) -- **64/640 dimensions
 (10%) conservent déjà 94% de la performance du plein embedding** (72,8/77,4).
 Dégradation graduelle, pas de chute brutale à aucun point testé -- cohérent
 avec (sans le démontrer formellement, faute de confirmation MRL côté F2LLM) un

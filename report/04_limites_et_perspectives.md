@@ -105,7 +105,7 @@ l'interprétabilité au prix d'un peu d'EV domaine — **testé** (`RESULTS_TEST
 pour que le SAE résiduel converge sans dégrader la performance générale (jusqu'à
 -31% d'EV en dessous de 100M) — **testé partiellement** à 25M tokens (12x
 l'ablation initiale, toujours 50-100x en dessous du seuil du papier,
-`RESULTS_TESTS.md` §23.3) : même conclusion qualitative (pas d'effet
+`RESULTS_TESTS.md` §23.4) : même conclusion qualitative (pas d'effet
 significatif, +8,7 points non significatif), mais toujours pas de test au seuil
 exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis pour la contrainte
 mémoire rencontrée). Aucune comparaison chiffrée avec leurs baselines
@@ -342,7 +342,7 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
     k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non
     significatif. ~~Un run à volume plus élevé pour vérifier le seuil de
-    convergence~~ **FAIT partiellement** (25M tokens, §23.3, 12x l'ablation
+    convergence~~ **FAIT partiellement** (25M tokens, §23.4, 12x l'ablation
     initiale mais toujours 50-100x en dessous du seuil du papier) : même
     conclusion qualitative (+8,7 points, non significatif). Reste à faire : un
     run au seuil exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis) ;

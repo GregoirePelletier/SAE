@@ -14,7 +14,7 @@ scripts/intent_urgency_probe.py, explanation_fidelity_test.py,
 steering_fidelity_test.py) comme vérité terrain de substitution.
 
 Protocole :
-  1. Corpus = mails originaux de Mails.tsv (3474 mails), 4 intentions déjà validées
+  1. Corpus = mails originaux de Mails.tsv (3480 mails), 4 intentions déjà validées
      comme suffisamment équilibrées (>=30 positifs) dans les tests précédents :
      réclamation, remboursement, information, urgence.
   2. Pour chaque intention, une requête en langage naturel PARAPHRASANT (pas copiant
@@ -22,14 +22,14 @@ Protocole :
      sémantique, pas juste le rappel de mots-clés exacts.
   3. Index Latent Terms (BM25 sur activations SAE de phrases, F2LLM-v2-80M +
      PhraseLevelSAE entraîné ICI par pure reconstruction sur ce corpus, dim320/8192/
-     k16 -- mêmes défauts que Pipeline 2) construit sur l'ensemble des 3474 mails.
+     k16 -- mêmes défauts que Pipeline 2) construit sur l'ensemble des 3480 mails.
   4. Baseline de comparaison : TF-IDF + cosinus sur le texte brut, mêmes requêtes,
      même corpus -- un système de retrieval "mots" classique et bien compris.
   5. Métrique : Precision@10 et Precision@20 (fraction de documents pertinents,
      au sens du label faible d'intention, dans le top-k), comparée au taux de base
      de l'intention dans le corpus (performance d'un tirage aléatoire).
 
-Coût : F2LLM-v2-80M sur ~3474 mails (quelques milliers de phrases après découpage,
+Coût : F2LLM-v2-80M sur ~3480 mails (quelques milliers de phrases après découpage,
 `split_into_phrases`) + entraînement d'un petit PhraseLevelSAE dédié -- GPU requis
 mais très rapide (quelques minutes), pas de Gemma-3-12B.
 

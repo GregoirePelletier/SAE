@@ -82,6 +82,11 @@ présente dans `report/README.md`.
   au chapitre 3, §12 (ablation de variance de seed) : taux agrégé stable (45,3% vs
   47,3%, non significatif) mais seulement 28,2% de recouvrement exact des libellés
   de features entre les deux graines, confirmant la thèse des deux papiers.
+- Clavié, B. et al. (2026). *Latent Terms: Sparse BM25-Style Retrieval over Sparse
+  Autoencoder Vocabularies* (arXiv:2605.29384). Méthode de retrieval BM25 sur le
+  vocabulaire latent d'un SAE — **implémentée et évaluée quantitativement** au
+  chapitre 3, §17 (Precision@10 parfaite sur 3 intentions/4, échec structurel
+  diagnostiqué sur la 4ᵉ, `RESULTS_TESTS.md` §26).
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
   Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
   cité en introduction.

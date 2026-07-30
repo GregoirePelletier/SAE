@@ -125,12 +125,16 @@ avec un profil `12b` (principal) et un profil `270m` (validation rapide, comment
 
 ### Choix du SAE GemmaScope-2 (largeur)
 
-Le preset `12b` cible **`layer_24_width_16k_l0_medium`** (16 384 features), pas la
-largeur 262k utilisée historiquement par `slurm/pipeline_runs/run_sae.slurm` : la couverture des labels
-Neuronpedia sur `24-gemmascope-2-res-262k` est faible (~10 000 features labellisées sur
-262 144, constaté manuellement), alors que 16k a une couverture bien plus dense en
-proportion (comparable à la couverture ~98% mesurée empiriquement sur `270m`/65k lors de
-la validation locale). `slurm/pipeline_runs/run_sae.slurm` a été mis à jour en conséquence.
+Le preset `12b` cible par défaut **`layer_24_width_65k_l0_medium`** (65 536
+features) : couverture Neuronpedia mesurée empiriquement la plus favorable des
+trois largeurs disponibles (16k : 82,6% de couverture ; **65k : 87,8%**, et
+~4,3x plus de features labellisées en absolu ; 262k : seulement 5,3%, cf.
+`RESULTS_TESTS.md` §17.0). Le run principal et la plupart des ablations
+comparatives de ce projet ont cependant été menés à 16k (`SAE_ID` explicite
+dans leurs scripts SLURM, pour rester comparables entre eux) ; les trois
+largeurs ont été testées en ablation isolée et **aucune ne change
+significativement le taux d'interprétabilité** une fois le domaine du corpus
+corrigé (`RESULTS_TESTS.md` §17.5, §29).
 
 ---
 

@@ -466,7 +466,7 @@ tokens) insuffisant pour l'extension SAE, ou à un autre facteur ?**
 
 ## 3.2. Diagnostic
 
-### 2.1. Élimination de l'hypothèse "features mortes"
+### 3.2.1. Élimination de l'hypothèse "features mortes"
 
 Un budget d'entraînement insuffisant se traduirait typiquement par des features
 d'extension qui ne s'activent jamais (`dead_feature`), auquel cas le juge ne peut même
@@ -476,7 +476,7 @@ pas être interrogé (`odd_one_out_judge` retourne directement `dead_feature` si
 exemples positifs disponibles. L'échec du test n'était donc pas un problème de features
 inactives.
 
-### 2.2. Inspection qualitative des exemples présentés au juge
+### 3.2.2. Inspection qualitative des exemples présentés au juge
 
 L'inspection directe des `pos_examples` stockés pour les features non interprétables a
 révélé le problème : les neuf exemples "positifs" présentés au juge pour une même
@@ -487,7 +487,7 @@ présentés ensemble comme activant fortement la même feature. Le test odd-one-
 peut, par construction, pas réussir dans ce cas : il n'y a pas de concept partagé à
 partir duquel identifier l'intrus.
 
-### 2.3. Cause racine
+### 3.2.3. Cause racine
 
 La lecture du code d'assemblage du corpus (`src/sae/saev5.py`, bloc `__main__`) a
 montré que le corpus utilisé pour échantillonner le réservoir de résidus servant à
@@ -538,7 +538,7 @@ observé (avec n=10, l'incertitude sur un taux observé est trop large pour conc
 
 ## 3.5. Résultats
 
-### 5.1. Taux d'interprétabilité (test odd-one-out)
+### 3.5.1. Taux d'interprétabilité (test odd-one-out)
 
 | Corpus | `N_TOKENS_EXTRA_TRAIN` | n features jugées | Features mortes | Taux d'interprétabilité |
 |---|---|---|---|---|
@@ -553,7 +553,7 @@ d'environ ±8 points). Les trois taux mesurés à corpus identique (40,7% / 45,3
 sont statistiquement indistinguables les uns des autres au regard de cette incertitude,
 malgré un facteur 20 entre le budget de tokens le plus faible et le plus élevé testés.
 
-### 5.2. Interprétation
+### 3.5.2. Interprétation
 
 - **Corriger le domaine du corpus (generic → emails), à volume comparable (500 000
   tokens), plus que double le taux d'interprétabilité (20,0% → 45,3%).** C'est le
@@ -567,7 +567,7 @@ malgré un facteur 20 entre le budget de tokens le plus faible et le plus élev�
   de **contenu/domaine du corpus** d'entraînement — les emails, cible réelle du
   projet, n'entraient jamais dans les données servant à entraîner l'extension SAE.
 
-### 5.3. Qualité des labels obtenus
+### 3.5.3. Qualité des labels obtenus
 
 Contraste direct entre les labels obtenus avant et après correction, pour les features
 qui passent le test :
@@ -579,7 +579,7 @@ qui passent le test :
   client` — des concepts directement alignés avec les objectifs métier du projet
   (détection d'urgence, détection d'intention, réclamations).
 
-### 5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
+### 3.5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
 
 Une sonde de classification logistique a été ajoutée pour mesurer si les codes latents
 du SAE permettent de séparer linéairement les 14 classes du corpus principal (13
@@ -618,7 +618,7 @@ plus directement aux objectifs métier du stage et à la limite identifiée au �
 (taux résiduel non expliqué) — toutes deux réutilisent des activations déjà en cache,
 sans calcul GPU supplémentaire pour la seconde.
 
-### 7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
+### 3.7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
 
 Le protocole odd-one-out (`odd_one_out_judge`) ne prend qu'une seule décision greedy
 par feature. Pour tester sa robustesse à l'ordre de présentation des exemples (un
@@ -642,7 +642,7 @@ une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre dif
 **Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
 protocole de jugement plutôt qu'un défaut réel des features testées.**
 
-### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
+### 3.7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
 
 Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
 complété par un test sur des labels **indépendants du corpus augmenté** : des labels
@@ -676,7 +676,7 @@ capacité globale du corpus) : pour UN document donné, l'explication produite p
 pipeline (les features les plus actives et leurs labels) est-elle une bonne
 explication ? Deux propriétés indépendantes ont été testées.
 
-### 8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
+### 3.8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
 
 Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails originaux par
 intention (urgence, réclamation, information, remboursement), correctement classés
@@ -695,7 +695,7 @@ réellement la décision (leur ablation fait s'effondrer la prédiction), contra
 à des features actives choisies au hasard (effet quasi nul). L'explication n'est pas
 une justification a posteriori déconnectée du mécanisme réel.
 
-### 8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
+### 3.8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
 
 Test par choix forcé au niveau document (`scripts/explanation_plausibility_test.py`,
 juge Gemma-3-12B-it — un jugement comparatif comme l'odd-one-out plutôt qu'une
@@ -710,7 +710,7 @@ au-dessus du hasard, mais loin d'être parfaite : dans 28,3% des cas le juge pr�
 décoy aléatoire, cohérent avec le taux d'interprétabilité résiduel (~45-55%) mesuré
 par ailleurs.
 
-### 8.3. Protocole d'évaluation complet du dépôt
+### 3.8.3. Protocole d'évaluation complet du dépôt
 
 Ces deux tests s'inscrivent dans un protocole plus large couvrant l'ensemble des
 méthodes du dépôt sous conditions fixées (`docs/evaluation_protocol.md`) : 16
@@ -770,7 +770,7 @@ d'évaluation, §8.3) :
 | `N_TOKENS_EXTRA_TRAIN` | 500 000 | 500 000 (inchangé) | — (déjà démontré non limitant, §5.2) |
 | Backbone Pipeline 2 | F2LLM-v2-80M | F2LLM-v2-330M | (condition fixée du protocole d'évaluation, §8.3) |
 
-### 10.1. Résultats du run combiné
+### 3.10.1. Résultats du run combiné
 
 | Métrique | Run principal (16k) | Run v12 (65k, échelle) |
 |---|---|---|
@@ -788,7 +788,7 @@ combine trois leviers à la fois (largeur, époques, nombre de features jugées)
 cohérent avec un plafond déjà proche pour cette tâche plutôt qu'un signal de
 dégradation.
 
-### 10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
+### 3.10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
 
 Analyse à coût nul (aucun calcul GPU, relecture de l'ordre de sélection déjà en
 cache) pour savoir si les 450 features supplémentaires labellisées par le scale-up
@@ -808,7 +808,7 @@ moyenne n'est donc pas un proxy fiable de l'interprétabilité potentielle d'une
 feature : restreindre la labellisation aux features de plus forte magnitude exclut
 systématiquement des candidates au moins aussi bonnes, voire meilleures.
 
-### 10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
+### 3.10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
 
 Le test de plausibilité (§8.2) donnait un résultat fortement dégradé sur ce run
 (56,7% contre 71,7% sur le run principal), en contradiction apparente avec la hausse
@@ -830,7 +830,7 @@ cosmétique des exemples exportés, restait numériquement valide (recalculé pa
 prudence, résultat dans le même ordre de grandeur). Détail complet dans
 `RESULTS_TESTS.md` §17.3/17.6.
 
-### 10.4. Décomposition largeur / époques / capacité (ablations isolées)
+### 3.10.4. Décomposition largeur / époques / capacité (ablations isolées)
 
 Trois runs à facteur unique, isolant respectivement la largeur du SAE core, le
 nombre d'époques et la capacité de l'extension (`D_EXTRA`/`K_EXTRA`, toutes choses
@@ -1120,7 +1120,7 @@ backbone dans toutes les comparaisons précédentes (§16), jamais remarqué.
 |---|---|---|
 | 64 | 10% | 72,8% |
 | 128 | 20% | 75,0% |
-| 320 (défaut) | 50% | 76,9% |
+| 320 (défaut) | 50% | 76,8% |
 | 640 (complet) | 100% | **77,4%** |
 
 Augmentation monotone mais à rendements très décroissants — 10% des dimensions
@@ -1412,7 +1412,7 @@ l'interprétabilité au prix d'un peu d'EV domaine — **testé** (`RESULTS_TEST
 pour que le SAE résiduel converge sans dégrader la performance générale (jusqu'à
 -31% d'EV en dessous de 100M) — **testé partiellement** à 25M tokens (12x
 l'ablation initiale, toujours 50-100x en dessous du seuil du papier,
-`RESULTS_TESTS.md` §23.3) : même conclusion qualitative (pas d'effet
+`RESULTS_TESTS.md` §23.4) : même conclusion qualitative (pas d'effet
 significatif, +8,7 points non significatif), mais toujours pas de test au seuil
 exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis pour la contrainte
 mémoire rencontrée). Aucune comparaison chiffrée avec leurs baselines
@@ -1649,7 +1649,7 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
     k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non
     significatif. ~~Un run à volume plus élevé pour vérifier le seuil de
-    convergence~~ **FAIT partiellement** (25M tokens, §23.3, 12x l'ablation
+    convergence~~ **FAIT partiellement** (25M tokens, §23.4, 12x l'ablation
     initiale mais toujours 50-100x en dessous du seuil du papier) : même
     conclusion qualitative (+8,7 points, non significatif). Reste à faire : un
     run au seuil exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis) ;

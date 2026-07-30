@@ -669,7 +669,7 @@ backbone dans toutes les comparaisons précédentes (§16), jamais remarqué.
 |---|---|---|
 | 64 | 10% | 72,8% |
 | 128 | 20% | 75,0% |
-| 320 (défaut) | 50% | 76,9% |
+| 320 (défaut) | 50% | 76,8% |
 | 640 (complet) | 100% | **77,4%** |
 
 Augmentation monotone mais à rendements très décroissants — 10% des dimensions

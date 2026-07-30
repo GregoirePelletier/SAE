@@ -17,7 +17,13 @@ comparaison de corpus, visualisation des concepts activés, explication des déc
 
 ```
 mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
-           → SAE GemmaScope-2 préentraîné (16 384 features, "core")
+           → SAE GemmaScope-2 préentraîné ("core", largeur configurable --
+             16 384 features pour le run principal et la plupart des
+             ablations comparatives, 65 536 par défaut dans `src/config.py`
+             depuis la vérification de couverture Neuronpedia, 262 144 testé
+             une fois -- aucune des trois largeurs ne change
+             significativement le taux d'interprétabilité, cf.
+             `RESULTS_TESTS.md` §17/§29)
            → [optionnel] FrozenCoreResidualSAE/ExtendedSAE (résidu core → 1024
              features "extra", TopK+AuxK)
            → max-pool documentaire (max sur les tokens du document)
