@@ -100,7 +100,7 @@ sur 12b. Détails et résultats de cette validation ci-dessous.
 ### Labellisation Neuronpedia (`src/sae/neuronpedia_labels.py`)
 - L'ancienne route REST `/api/explanation/export` était cassée (non fiable / retours
   vides). Remplacée par le téléchargement direct des lots `.jsonl.gz` publics sur le
-  bucket S3 `neuronpedia-datasets` (approche validée manuellement par l'utilisateur avant
+  bucket S3 `neuronpedia-datasets` (approche que j'ai validée manuellement avant
   la généralisation). Format de cache inchangé, aucun autre appelant à modifier.
 - **Validé empiriquement** : 64 377 labels récupérés pour `gemma-3-270m-it/12-gemmascope-2-res-65k`
   (~98% de couverture sur 65 536 features) ; ~10 000/262 144 pour
@@ -222,11 +222,15 @@ runs de validation dans `RESULTS_TESTS.md` §12. Résumé :
   n'est déjà plus limitant à 100k, et le porter à 2M n'apporte rien de mesurable. Le
   goulot d'étranglement observé était bien un problème de **contenu du corpus**, pas
   de **volume brut**.
-- **Effet de bord positif** : la sonde de classification sur les axes email (14
-  classes, nouvelle métrique `clf_acc_email_axes`) donne acc_SAE=93,5% (P1) / 79,3%
-  (P2) — les codes latents séparent très bien émotion/urgence/registre/original,
-  résultat encourageant pour les cas d'usage détection d'urgence/intention visés par
-  le projet (cf. section Objectif).
+- **Effet de bord positif, à relativiser** : la sonde de classification sur les axes
+  email (14 classes, nouvelle métrique `clf_acc_email_axes`) donne acc_SAE=93,5% (P1)
+  / 79,3% (P2). Audit du 2026-08-07 (`RESULTS_TESTS.md` §37) : un classifieur TF-IDF
+  sur le texte brut, sans aucune information sémantique, atteint déjà 87,0% sur le
+  même protocole -- le corpus augmenté contient un templating lexical fort par
+  instruction de génération (jusqu'à 100% des documents d'une classe partageant un
+  trigramme figé). Le SAE ajoute un gain réel mais modeste (+6,5 points), pas la
+  démonstration forte suggérée par 93,5% cité seul. Ne pas citer ce chiffre sans le
+  baseline lexical à côté.
 - **Reste non résolu** : ~55-59% des features d'extension restent non interprétables
   même corpus corrigé — piste à explorer : robustesse du protocole de jugement
   (génération greedy unique, pas de vote/ensemble) plutôt que le corpus ou le volume.
@@ -238,7 +242,9 @@ runs de validation dans `RESULTS_TESTS.md` §12. Résumé :
 ## Duplication
 
 Une partie du code existe déjà dans SAELens / interp_embed (règle n°1 — comparaison
-documentée requise, pas encore faite systématiquement). `src/analysis/metrics.py`
+documentée requise). Fait pour SAELens (`scripts/saelens_numeric_comparison.py`,
+désaccord de formule FVE trouvé, cf. `docs/references.md`) et pour interp_embed
+(`RESULTS_TESTS.md` §15). `src/analysis/metrics.py`
 réimplémente délibérément FVE/NMSE/L0 "en alignement strict avec SAELens et interp_embed"
 (justifié : nécessaire pour scorer à la fois un `SAE` natif sae-lens et le
 `FrozenCoreResidualSAE`/`ExtendedSAE` custom du projet).
@@ -355,22 +361,12 @@ Toute refactorisation doit passer les tests de non-régression.
 
 # Prochaines étapes
 
-1. ~~**Run complet sur Gemma-3-12B-it**~~ **FAIT** (session v10, cf. section
-   "Validation à l'échelle complète" ci-dessus + `RESULTS_TESTS.md` §12) : features
-   d'extension non `dead_feature`, taux d'interprétabilité 20%→~45% après correction
-   du corpus.
-2. ~~**`run_augmentation.py` puis `baseline_gemmascope.py`** sur la machine disposant du
-   vrai `Mails.tsv`~~ **FAIT** (`RESULTS_TESTS.md` §0 et §6-10 : corpus complet
-   augmenté — 45 240 générations, 39 949 acceptées — et baseline exécutés avec succès).
-3. **Piste ouverte par le diagnostic v10** : ~55-59% des features d'extension restent
-   non interprétables malgré le corpus corrigé, à volume de tokens non limitant —
-   investiguer la robustesse du protocole de jugement lui-même (`odd_one_out_judge`) :
-   vote majoritaire sur plusieurs générations plutôt qu'une décision greedy unique,
-   qualité du contrôle négatif, prompt/format de la question.
-4. Poursuivre la factorisation de `saev5.py` vers l'architecture cible (`src/models/`,
-   séparation training/extraction).
-5. Dashboard Streamlit (fonctionnalité future, non commencée).
-6. Comparaison documentée avec SAELens (règle n°2), pas encore faite systématiquement.
+Cette liste était stale (dashboard/comparaison SAELens marqués "non faits" alors
+qu'ils le sont depuis longtemps) -- la liste vivante et précisément sourcée est
+`report/04_limites_et_perspectives.md`, section "Perspectives pour la suite du
+stage" (items cochés `~~FAIT~~` avec renvoi `RESULTS_TESTS.md`, "Reste à faire"
+sinon). Ne pas dupliquer cette liste ici une deuxième fois pour éviter qu'elle
+ne se périme à nouveau des deux côtés à la fois.
 
 ---
 

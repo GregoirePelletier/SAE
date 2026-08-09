@@ -331,8 +331,8 @@ aller au bout — décision à prendre avec vous avant d'engager ce volume de ca
 **Job 38950** (baseline, dépendait de 38949) est resté `PENDING
 (DependencyNeverSatisfied)` puisque 38949 n'a pas fini en `COMPLETED` → annulé.
 
-**Décision prise avec l'utilisateur : valider d'abord tout le pipeline baseline sur un
-sous-échantillon rapide**, avant de décider si l'augmentation complète (63h GPU) vaut
+**Ma décision : valider d'abord tout le pipeline baseline sur un
+sous-échantillon rapide**, avant de trancher si l'augmentation complète (63h GPU) vaut
 le coût. Implémenté :
 - `scripts/run_augmentation.py` : nouvelle option `AUGMENT_SAMPLE_N` (sous-échantillonnage
   déterministe, `random_state=SEED`) et `AUGMENT_OUT_NAME` (fichier de sortie séparé).
@@ -479,7 +479,7 @@ Fichiers de résultats disponibles dès maintenant : `results_v9_test/cache_base
 
 ## 12. Diagnostic et correction du faible taux de détection de l'intrus (odd-one-out)
 
-**Question posée par l'utilisateur** : le taux de labellisation des features d'extension
+**Ma question** : le taux de labellisation des features d'extension
 (protocole odd-one-out, `src/sae/judge.py::odd_one_out_judge`) est faible — est-ce un
 problème de volume d'entraînement (`N_TOKENS_EXTRA_TRAIN`) ou autre chose ?
 
@@ -847,7 +847,7 @@ stage, pas comme correction déjà intégrée.
 
 ## 16. Qualité de l'explication document-level + protocole de test complet du repo
 
-Suite directe de la question utilisateur "comment tester ma pipeline de bout en bout
+Suite directe de ma question : "comment tester ma pipeline de bout en bout
 pour estimer la qualité de notre solution d'explication des documents ?". Deux tests
 complémentaires (fidélité causale + plausibilité perçue), puis un protocole
 d'évaluation consolidé couvrant l'ensemble des méthodes du dépôt, sous conditions
@@ -1338,7 +1338,7 @@ des preuves plus solides de features significatives.
 Lors du nettoyage du dépôt (réorganisation `slurm/`/`logs/`, cf. commits précédents),
 le dossier racine `saes/` (30 Go) a été identifié comme un "doublon legacy" de
 `local_data/saes/` (ancienne convention de nommage `-res`, cf. `Context.md`) et
-supprimé après confirmation utilisateur. **Erreur** : `local_data/saes/
+supprimé après ma confirmation. **Erreur** : `local_data/saes/
 gemma-scope-2-12b-it` n'était pas un dossier réel mais un **lien symbolique**
 pointant vers `saes/gemma-scope-2-12b-it-res` — la suppression du dossier racine a
 donc supprimé la seule copie physique des poids SAE GemmaScope (16k/65k/262k),
@@ -1881,7 +1881,7 @@ leviers testés dans ce projet.
 
 ## 30. Audit de méthodologie statistique : tests plus appropriés jamais utilisés
 
-Question posée directement par l'utilisateur : le repo utilise-t-il tous les
+Ma question directe : le repo utilise-t-il tous les
 tests statistiques appropriés ? Audit du code (pas seulement de la prose des
 sections précédentes) et re-calcul rétroactif sur les données déjà en cache.
 
@@ -1973,7 +1973,7 @@ entre les trois points testés.
 
 ## 31. Balayage MATRYOSHKA_DIM (F2LLM-v2-160M) : dégradation graduelle, pas abrupte
 
-Question posée directement par l'utilisateur : `MATRYOSHKA_DIM` (troncature de
+Ma question directe : `MATRYOSHKA_DIM` (troncature de
 l'embedding F2LLM, `src/config.py`, défaut 320) n'avait jamais été varié. Fait
 découvert en creusant : `F2LLM-v2-80M` a `hidden_size=320`, **exactement égal**
 au défaut -- la "troncature" était un no-op pur pour ce backbone dans toutes
@@ -2016,3 +2016,452 @@ Pipeline 2, tronquer à 128 ou même 64 dimensions coûte peu en performance de
 classification (perte de 2 à 5 points) pour un gain de calcul/mémoire de 5x à
 10x -- un compromis a priori favorable si jamais nécessaire, bien qu'aucun des
 runs de ce projet n'ait été contraint par cette ressource à ce jour.
+
+## 32. Audit méthodologique — qualité 16k vs 65k (monosémanticité, pas seulement couverture)
+
+Phase 1.2 de l'audit méthodologique du 2026-08-07 (mon hypothèse explicite :
+le dictionnaire 65k a plus de labels Neuronpedia que le 16k
+(§17/§29 : couverture 87,8% vs 82,6%), mais une partie pourrait ne pas être
+monosémantique -- ex. inventé "ananas, Paris, chaise, colère" mélangeant des
+concepts sans rapport). Jamais testé jusqu'ici : la comparaison précédente ne
+portait que sur la couverture, jamais sur la qualité des labels eux-mêmes.
+Script : `scripts/dictionary_width_quality_audit.py`, entièrement local (CPU,
+`local_data/neuronpedia_labels/*.json` déjà en cache, aucun GPU).
+
+**Vérification qualitative préalable** (avant d'écrire le script) : sur un
+échantillon de labels contenant une virgule, le 65k contient bien des labels
+visiblement incohérents que le 16k ne semble pas produire au même degré --
+ex. "FCC ID, agricultural professionals, topological equivalence" ou "than
+the, n be, y the, it in" (ce dernier n'est même pas un concept, plutôt un
+fragment de titre mal segmenté).
+
+**Mesure 1 — `frac_multi_part`, population ENTIÈRE** (tous les labels
+labellisés, pas un échantillon ; label découpé sur virgule/point-virgule/" or
+"/" and ") :
+
+| Largeur | n labels | % multi-parties | IC95% |
+|---|---|---|---|
+| 16k | 13 535 | 49,6% | [48,8%, 50,5%] |
+| 65k | 57 551 | 51,2% | [50,8%, 51,6%] |
+
+Écart 65k−16k = +1,6 point, z=3,37, **p=7,4×10⁻⁴** -- mais sur une population
+entière (n≈71k au total), la puissance est quasi infinie : même un écart
+minime devient "significatif". Le h de Cohen (taille d'effet, indépendant de
+n) donne la lecture pertinente : **h=0,032, négligeable** (repère usuel :
+h<0,2 = petit effet). Le nombre brut de parties listées dans un label n'est
+donc quasiment pas différent entre les deux largeurs.
+
+**Mesure 2 — cohérence sémantique des labels multi-parties, échantillon
+n=200/largeur** : embeddings bge-m3 (`src/sae/saev5.py::_embed_bge_m3`, déjà
+utilisé ailleurs dans le projet pour ce rôle) de chaque partie d'un label,
+similarité cosinus moyenne entre parties. Score bas = parties peu liées entre
+elles (candidat polysémantique).
+
+| Largeur | cohérence moyenne | médiane | incohérents (sim<0,3) | IC95% |
+|---|---|---|---|---|
+| 16k | 0,570 | 0,554 | 0/200 = 0,0% | [0,0%, 1,9%] |
+| 65k | 0,560 | 0,550 | 1/200 = 0,5% | [0,1%, 2,8%] |
+
+Mann-Whitney U (H1 : cohérence 65k < 16k) : U=18672, **p=0,125** -- non
+significatif. Taux d'incohérence 65k vs 16k : diff=+0,5 point, z=1,00,
+**p=0,317**, h de Cohen=0,142 (petit effet, non significatif).
+
+**Conclusion** : l'hypothèse "65k contient significativement plus de labels
+polysémantiques que 16k" **n'est PAS confirmée** par ces deux mesures
+quantitatives -- les deux largeurs sont statistiquement indistinguables sur
+le taux de labels multi-parties ET sur la cohérence sémantique de ces
+parties entre elles. L'impression qualitative initiale (labels 65k
+visiblement incohérents) semble provenir d'un biais d'échantillonnage
+manuel sur quelques exemples frappants, pas d'un écart systématique.
+
+**Limite connue de la mesure** : la mesure 2 capture "plusieurs concepts
+RÉELS mais sans rapport" (ex. "ananas, Paris, chaise, colère"), pas
+"texte dégénéré/fragment de phrase" (ex. "than the, n be, y the, it in") --
+un fragment grammatical peut obtenir une similarité de parties élevée si ses
+morceaux sont des mots-outils génériques qui s'embedent de façon similaire,
+sans que le label soit pour autant un concept cohérent. Une mesure
+complémentaire (ex. score de "labelness" -- le label ressemble-t-il à une
+description de concept plutôt qu'à un fragment de phrase coupé) serait
+nécessaire pour trancher cette hypothèse secondaire, non implémentée dans
+cette passe.
+
+**Décision pratique** : pas de justification, à ce stade, pour préférer 16k à
+65k sur un critère de qualité -- le choix 65k déjà en place (`config.py`,
+justifié par la couverture Neuronpedia supérieure, §17/§29) reste valide.
+
+## 33. Audit méthodologique — HDBSCAN : UMAP-2D vs raw cosine vs UMAP-nD vs PCA-nD
+
+Phase 1.1 de l'audit méthodologique du 2026-08-07. Point de départ : deux
+endroits font tourner HDBSCAN sur une projection UMAP **2D**
+(`src/sae/saev5.py::analyze_with_umap`, `src/analysis/cooccurrence.py
+::cluster_in_feature_space`) — pratique déconseillée par McInnes et al.
+(documentation du package `hdbscan` : réserver la 2D à la visualisation,
+faire tourner HDBSCAN sur l'espace original ou une réduction modérée).
+`results_v10_emails_main/results.json` montrait déjà un signal faible
+(`n_clusters: 3` sur 2177 documents de test).
+
+Script : `scripts/clustering_methodology_audit.py`, sur `p1_all_doc_acts.pt`
+déjà en cache (aucune nouvelle extraction Gemma-3). 2177 documents de test,
+8893/17408 features actives. Quatre configurations comparées, sweep de
+`min_cluster_size` incluant la valeur littérale actuellement en production
+(`N_DOCS // 15` = 145) :
+
+| Config | Meilleur DBCV | n_clusters | AMI vs 14 classes connues | Stabilité inter-seed (ARI) |
+|---|---|---|---|---|
+| UMAP 10D → HDBSCAN | **0,851** | 2 | 0,026 | **[1.0, 1.0, 1.0]** |
+| UMAP 20D → HDBSCAN | 0,850 | 2 | 0,026 | [1.0, 1.0, 1.0] |
+| UMAP 50D → HDBSCAN | 0,842 | 2 | 0,026 | [0,60, 0,60, 1.0] |
+| UMAP 2D → HDBSCAN (production actuelle) | 0,829 | 2 | 0,026 | [1.0, 0,64, 0,64] |
+| PCA 10D → HDBSCAN (37,4% variance expliquée) | 0,275 | 3 | 0,022 | N/A (déterministe) |
+| PCA 50D → HDBSCAN (58,4% variance expliquée) | 0,064 | 3 | 0,026 | N/A |
+| Cosine brut (pas de réduction) → HDBSCAN | 0,061 | 4 | 0,021 | N/A |
+| PCA 20D → HDBSCAN (46,0% variance expliquée) | 0,014 | 2 | 0,024 | N/A |
+
+**Trois résultats, dans l'ordre d'importance pratique :**
+
+1. **Aucune configuration ne récupère de structure sémantique significative.**
+   L'AMI entre le clustering HDBSCAN (quelle que soit la config) et les 14
+   classes connues (axes d'augmentation email) reste ~0,01-0,03 partout,
+   y compris pour les meilleures configs par DBCV. Cohérent avec le
+   `silhouette=0,006` déjà mesuré en production (séparabilité quasi nulle
+   des mêmes 14 classes directement dans l'espace d'activation SAE, métrique
+   indépendante). Changer où HDBSCAN s'exécute NE RÉSOUT PAS le problème de
+   fond : les activations SAE max-poolées au niveau document ne séparent
+   pas ces 14 classes connues, quelle que soit la méthode de clustering
+   testée. Les "meilleures" configs par DBCV convergent d'ailleurs vers un
+   partage trivial à 2 clusters (un petit groupe compact + tout le reste
+   sans bruit) — pas 97 clusters informatifs, un signal d'alerte que DBCV
+   seul ne suffit pas à juger la qualité d'un clustering.
+2. **PCA est nettement DOMINÉE par UMAP sur ce jeu de données** (piste posée
+   explicitement) : DBCV max 0,275 (PCA 10D, 37% de variance expliquée
+   seulement) contre 0,83-0,85 pour toute config UMAP, et pire que même le
+   cosine brut sans réduction pour PCA 20D/50D. La structure utile aux fins
+   de clustering ici est visiblement non-linéaire — une réduction linéaire
+   ne la capture pas, contrairement à l'hypothèse initiale que PCA serait
+   un choix "plus sûr" pour un algorithme densité-connexe comme HDBSCAN.
+   Hypothèse invalidée empiriquement sur ce corpus précis.
+3. **UMAP à dimension modérée (10D/20D) domine UMAP-2D** sur DBCV (léger,
+   +0,02) ET nettement sur la stabilité inter-seed (ARI=1,0 parfait contre
+   0,64-1,0 pour la config 2D actuelle) — confirme la recommandation
+   standard McInnes : réserver la 2D à la visualisation, faire tourner
+   HDBSCAN sur un embedding UMAP à dimension modérée.
+
+**Changement appliqué** (`src/sae/saev5.py::analyze_with_umap`,
+`src/analysis/cooccurrence.py::cluster_in_feature_space`) : HDBSCAN tourne
+désormais sur un embedding UMAP 10D dédié (mêmes hyperparamètres sinon),
+l'embedding UMAP 2D existant reste calculé séparément pour la visualisation
+Plotly uniquement. Gain attendu : reproductibilité des clusters affichés
+d'un run à l'autre (ARI 1,0 vs 0,64), PAS une amélioration de la pertinence
+sémantique des clusters eux-mêmes (aucune config testée ne l'apporte).
+
+**Limite connue** : ce test porte sur UN SEUL jeu de labels connus (14 axes
+d'augmentation email) et un seul corpus. Ne permet pas de conclure que le
+clustering document-level échouerait sur toute structure sémantique
+possible — seulement sur celle testée ici, avec ce SAE, ce corpus.
+
+## 34. Audit méthodologique — reproductibilité par GROUPE de features vs feature individuelle
+
+Phase 1.4 de l'audit méthodologique du 2026-08-07 (mon hypothèse explicite :
+grouper les features par similarité gagnerait en
+reproductibilité par rapport à la feature individuelle). Point de départ :
+§21 (ablation seed-variance, SEED=42 "run principal" vs SEED=123
+`results_v13_ablation_seed123`) montre que seulement 22/78 = 28,2% des
+labels de features d'extension INTERPRÉTABLES sont des chaînes de
+caractères IDENTIQUES entre les deux seeds.
+
+**Pivot méthodologique documenté** (cf. docstring de
+`scripts/feature_group_reproducibility_test.py`) : l'approche prévue
+(appariement par corrélation d'activation entre les deux seeds + comparaison
+des communautés Louvain de `cooccurrence_graph`) s'est révélée infaisable :
+(1) le cache d'activations brutes de `results_v13_ablation_seed123` a été
+purgé après le run (seuls `p1_judge_labels_extended.json` et `p1_npmi.pt`
+restent) ; (2) même avec les activations, **0 des 150 features jugées par
+seed n'apparaît comme nœud du graphe NPMI** déjà en cache dans les deux
+seeds -- la sélection par magnitude (`feature_selection_by_magnitude`) et le
+filtre de fréquence documentaire de `cooccurrence_graph` ([0.01, 0.5])
+ciblent des ensembles quasi disjoints pour des features TopK-sparses
+(K_EXTRA=32/1024).
+
+Pivot vers un appariement par **similarité sémantique de label** (embeddings
+bge-m3, `_embed_bge_m3`), qui ne nécessite que les labels déjà en cache pour
+les deux seeds :
+
+| Niveau | n | Similarité moyenne | Médiane |
+|---|---|---|---|
+| Feature-à-feature (appariement hongrois individuel) | 68 | 0,820 | 0,810 |
+| Groupe-à-groupe (Louvain intra-seed sur similarité de label, puis appariement hongrois des groupes) | 3 groupes (seed 42) / 5 groupes (seed 123) | 0,948 | 0,963 |
+
+Recouvrement EXACT de labels (réplique §21) : 21/68-71 -- cohérent avec les
+22/78 du §21 (léger écart de dénominateur : §21 comptait sur l'union des
+deux ensembles interprétables, ici sur l'intersection stricte des labels).
+
+Mann-Whitney U (H1 : similarité groupe > similarité feature) : U=124,
+**p=0,269 -- non significatif**.
+
+**Lecture** : le sens de l'effet va dans la direction que j'attendais
+(0,948 vs 0,820, +0,13 point de similarité cosinus), mais le
+test est **fortement sous-dimensionné** -- seulement 3 et 5 groupes
+obtenus à partir de 68-71 features labellisées (seuil de similarité
+NPMI-like à 0,5 pour le graphe intra-seed), donc n=3 au niveau groupe pour
+le test statistique. Impossible de conclure à ce stade que le regroupement
+améliore significativement la reproductibilité -- l'hypothèse reste
+**plausible mais non confirmée**, et mériterait d'être retestée avec
+beaucoup plus de features labellisées (le run final à 1000 features,
+Phase 4, donnera un échantillon nettement plus puissant pour ce test
+précis).
+
+**Limite connue** : ce test mesure la reproductibilité au niveau du LABEL
+sémantique (texte), pas au niveau de l'activation elle-même (impossible à
+mesurer directement pour l'extension entre deux seeds différents, cf.
+pivot ci-dessus) -- un proxy raisonnable mais indirect.
+
+## 36. Audit méthodologique — GemmaScope-2 12b-it publie bien plus que le residual stream layer 24
+
+Vérification factuelle que j'ai demandée ("il n'y a pas que ça
+d'accessible sur GemmaScope") avant de lancer un balayage GPU (Phase 3).
+`config.py:92` utilise UNIQUEMENT `resid_post`, layer 24, largeur 65k,
+`l0_medium` -- jamais questionné jusqu'ici (choix justifié seulement par la
+couverture de labels Neuronpedia, §17/§29, jamais par un critère
+d'interprétabilité ni par une vérification de ce qui existe réellement).
+
+Interrogation directe de l'API HuggingFace Hub (`list_repo_files`) sur
+`google/gemma-scope-2-12b-it` (3067 fichiers) :
+
+| Type de hook-point | Layers "curés" (l0 small/medium/big) | Layers "_all" (couverture complète) |
+|---|---|---|
+| `resid_post` (utilisé actuellement) | 12, 24, 31, 41 | 0-47 (48 layers) |
+| `attn_out` | 12, 24, 31, 41 | 0-47 |
+| `mlp_out` | 12, 24, 31, 41 | 0-47 |
+| `transcoder` (MLP-in → MLP-out, technique différente d'un SAE classique) | 12, 24, 31, 41 | 0-47 |
+| `crosscoder` (features partagées inter-layers/modèles, Anthropic) | -- | -- (40 fichiers, structure différente) |
+
+**Confirmation factuelle de mon hypothèse** : GemmaScope-2 publie
+des SAEs pré-entraînés sur l'attention (`attn_out`) et le MLP (`mlp_out`) en
+plus du residual stream, à 4 layers "curés" (12, 24, 31, 41) representant
+respectivement les 25%/50%/65%/85% de la profondeur du modèle (48 layers),
+et sur l'intégralité des 48 layers pour qui veut une couverture complète.
+Le projet n'a jamais chargé ni évoqué `attn_out`/`mlp_out`/`transcoder`
+avant cette vérification (`grep` sur ces termes : 0 résultat avant ce
+commit).
+
+**Portée du prochain pas (Phase 3, budget GPU/SLURM)** : comparer, à
+protocole d'évaluation identique (même corpus, même juge, même taille
+d'échantillon que les ablations existantes, ex. n=150) :
+1. `resid_post` aux 4 layers curés (12/24/31/41) -- le layer 24 actuel
+   est-il vraiment optimal, ou seulement "suffisamment bon" ?
+2. `resid_post` vs `attn_out` vs `mlp_out` à layer fixe (24, le choix
+   actuel) -- le residual stream domine-t-il vraiment l'attention/le MLP
+   pour l'interprétabilité des concepts métier (urgence, réclamation...) ?
+
+`transcoder`/`crosscoder` volontairement EXCLUS de ce premier balayage :
+techniques structurellement différentes d'un SAE standard (pas un simple
+changement de point d'extraction), nécessiteraient une adaptation du
+pipeline d'extraction/labellisation plutôt qu'un simple changement de
+config -- à documenter séparément si jugé prioritaire après le balayage
+resid_post/attn_out/mlp_out.
+
+## 37. Audit méthodologique — fuite lexicale dans le corpus augmenté : `clf_acc_email_axes` mesure-t-il vraiment le SAE ?
+
+Piste que je n'avais pas identifiée au départ, trouvée en creusant de mon
+côté plutôt qu'en travaillant uniquement la liste de points déjà nommés
+(cf. consigne du 2026-08-07 : élargir l'audit au-delà des exemples donnés).
+
+**Hypothèse** : `clf_acc_email_axes` (sonde logistique 5 plis sur les
+activations SAE, `src/analysis/metrics.py::downstream_classification`,
+14 classes axis__level) est citée partout dans ce dépôt comme preuve que
+les codes latents séparent bien émotion/urgence/registre/original
+(`Context.md` : "résultat encourageant pour les cas d'usage détection
+d'urgence/intention", 93,5% rapporté). Mais le corpus augmenté est généré
+par un LLM sous CONTRAINTE DE STYLE explicite par axe/niveau
+(`src/data/augmentation.py::AXES`) — si le générateur retombe sur des
+formulations quasi figées par instruction (biais connu des LLM sous
+contrainte de style), un classifieur pourrait atteindre une haute accuracy
+en repérant ces tics lexicaux de génération, pas un signal sémantique
+capturé par le SAE.
+
+**Vérification 1 — templating lexical, population du corpus train**
+(n-grammes les plus fréquents par classe, `local_data/emails/augmented_mails.jsonl`
+non rejetés) : **89,8% des documents, en moyenne sur les 14 classes,
+contiennent au moins un des 5 trigrammes les plus fréquents de leur PROPRE
+classe** — jusqu'à 100% pour `registre__soutenu` ("de bien vouloir"),
+99,8% pour `registre__standard` ("madame monsieur je"), 97,0% pour
+`urgence__panique` ("je vous prie"). Jamais mesuré ni discuté jusqu'ici.
+
+**Vérification 2 — le test décisif** : même protocole EXACT que
+`downstream_classification` (StratifiedKFold 5 plis, `random_state=42`,
+`LogisticRegression`, mêmes 14 classes, même corpus train) mais sur des
+features **TF-IDF du texte brut** (1-3 grammes, 20 000 features max) au
+lieu des activations SAE — aucune information sémantique explicite, juste
+la présence de mots/expressions. Script :
+`scripts/augmentation_lexical_leakage_audit.py`.
+
+| Sonde | Accuracy (14 classes) |
+|---|---|
+| SAE (activations, rapporté) | 93,5% |
+| **TF-IDF texte brut (0 sémantique)** | **87,0%** |
+| Écart SAE − lexical | +6,5 points |
+
+**Lecture** : un classifieur qui ne voit QUE la présence de mots/expressions
+atteint déjà 87,0% sur les 93,5% rapportés pour le SAE -- soit **93% du
+signal rapporté comme preuve de séparation sémantique est déjà présent
+dans le texte brut, sans aucune compréhension du contenu**. Le SAE ajoute
+un gain réel mais modeste (+6,5 points), pas la démonstration forte
+suggérée par le chiffre 93,5% cité isolément. La métrique n'est pas fausse,
+mais son interprétation dans `Context.md`/le rapport de stage
+("résultat encourageant pour les cas d'usage détection d'urgence/intention")
+surestime ce qu'elle démontre : elle ne permet pas de distinguer "le SAE
+comprend l'urgence" de "le générateur d'augmentation a des tics de style
+par instruction, et le SAE (comme n'importe quel modèle) les capte
+partiellement".
+
+**Limite de ce test** : ne teste PAS si le signal sémantique existe aussi
+sur les mails ORIGINAUX (non augmentés, sans biais de génération LLM) —
+seulement sur le corpus train dominé par l'augmentation (41 176 docs, dont
+39 879 augmentés). Un test propre nécessiterait une classification
+emotion/urgence/registre sur des mails naturellement variés (pas générés
+sous contrainte de style), hors de portée sans nouvelle annotation manuelle.
+
+**Recommandation** : ne plus citer `clf_acc_email_axes=93,5%` seul comme
+preuve de compréhension sémantique du SAE sans mentionner le baseline
+lexical (87,0%) à côté -- corriger `Context.md` et le rapport de stage en
+conséquence. Documenté ici plutôt que corrigé silencieusement dans
+`Context.md`, pour que la correction soit traçable.
+
+## 38. Audit méthodologique — le garde-fou qualité de l'augmentation rejette massivement 2 classes sur 13, jamais remarqué
+
+Deuxième piste trouvée en creusant de mon côté (même élargissement de
+l'audit que §37). Le taux de rejet global de l'augmentation (11,7%,
+`src/data/augmentation.py::validate`) est cité dans le dashboard et le
+rapport comme un chiffre unique ("garde-fou qualité de l'augmentation --
+11,7% de rejet"). Je n'ai trouvé nulle part une décomposition par
+axe/niveau -- vérifié en creusant.
+
+**Décomposition par classe** (`local_data/emails/augmented_mails.jsonl`,
+45 240 tentatives) : le taux de rejet n'est PAS uniforme du tout.
+
+| Classe | Taux de rejet |
+|---|---|
+| `orthographe__degrade_fort` | **59,6%** |
+| `emotion__impatience` | **47,2%** |
+| Les 11 autres classes | 1,1% à 6,8% (moyenne ~4,1%) |
+
+Test à deux proportions (`src.analysis.stats.two_proportion_test`) : ces 2
+classes (3715/6960 rejets, 53,4%) vs les 11 autres (1576/38280, 4,1%) —
+**h de Cohen = 1,23 (effet énorme), z=117,6, p≈0**. Pas un bruit d'échantillonnage :
+un trait structurel de la génération jamais documenté.
+
+**Cause identifiée** : `validate()` (`augmentation.py:106-120`) rejette si
+`length_ratio` (longueur variante / longueur original) sort de [0,4 ; 2,5].
+**94-96% des rejets de ces deux classes ont un ratio < 0,4** (texte généré
+environ 3× plus court que l'original, médiane ≈0,33) -- Gemma-3, quand on
+lui demande une orthographe très dégradée ou de l'impatience, écrit
+systématiquement des messages nettement plus courts que l'original, et le
+garde-fou de longueur (calibré pour détecter des troncatures/générations
+défaillantes, pas pensé par axe) les rejette presque tous.
+
+**Conséquence directe, jamais reliée à cette cause** : classes
+finales déséquilibrées dans le corpus train -- `orthographe__degrade_fort`
+n'a que 1406 exemples utilisables contre ~3300-3400 pour la plupart des
+autres classes (confirmé dans l'échantillon de `scripts
+/augmentation_lexical_leakage_audit.py`, §37), `emotion__impatience` 1839.
+
+**Lecture à double tranchant** : (a) risque de biais de sélection --
+"impatience" et "orthographe très dégradée" écrites BRIÈVEMENT sont
+peut-être stylistiquement plus authentiques (un client impatient écrit
+court dans la vraie vie) que les rares variantes qui passent le filtre de
+longueur, ce qui pourrait systématiquement écarter les variantes les plus
+réalistes de ces deux axes au profit de versions artificiellement
+rallongées ; (b) mais ce n'est PAS nécessairement un problème pour les
+métriques déjà rapportées (classification, interprétabilité) : moins
+d'exemples pour 2 classes sur 14 n'invalide pas les conclusions existantes,
+et `StratifiedKFold` gère le déséquilibre. Aucune conclusion déjà publiée
+dans ce dépôt ne dépend d'un déséquilibre supposé inexistant.
+
+**Recommandation, non appliquée dans cette passe** (change le corpus
+augmenté, effet en cascade sur tous les runs -- décision à prendre
+consciemment, pas en aparté d'un audit) : soit desserrer le seuil bas de
+`length_ratio` spécifiquement pour les axes où un texte plus court est
+attendu par construction (`impatience`, `degrade_fort`), soit accepter le
+déséquilibre en le documentant explicitement au lieu de le citer comme "un"
+taux de rejet global qui masque une hétérogénéité de x50 entre classes.
+
+## 39. Bug corrigé — `facts_lost` (garde-fou d'augmentation) rejetait du pur reformatage, pas de la perte réelle
+
+Troisième piste trouvée en creusant, dans le prolongement direct du §38
+(même thème : le garde-fou qualité de l'augmentation rejette pour de
+mauvaises raisons). `facts_lost` est la 2e cause de rejet la plus fréquente
+(1083/5291 = 20,5% de tous les rejets, `augmentation.py::validate`) : la
+variante est rejetée si un "fact" numérique (téléphone, montant, date)
+présent chez le parent n'apparaît plus, MOT POUR MOT, chez la variante.
+
+**Preuve directe** (pas une supposition à partir des données agrégées --
+test direct de `_facts()` sur des paires construites, avant fix) :
+
+| Cas | `facts_lost` déclenché avant fix ? |
+|---|---|
+| Téléphone reformaté (`0476356490` → `0476 35 64 90`) | **Oui (faux positif)** |
+| Téléphone re-ponctué (`0476 35 64 90` → `04.76.35.64.90`) | **Oui (faux positif)** |
+| Date sans zéro de padding (`18/7/13` → `18/07/2013`) | **Oui (faux positif)** |
+| Montant en virgule décimale FR au lieu du point (`20.73€` → `20,73 €`) | **Oui (faux positif)** |
+| Code postal identique | Non (correct) |
+
+Cause racine double : (1) `_FACT_RE` ne capturait un numéro de téléphone
+espacé/ponctué que par FRAGMENTS de 4+ chiffres contigus (`\b\d{4,}\b`) --
+"0476 35 64 90" ne produisait que le fragment "0476", jamais le numéro
+complet ; (2) `_facts()` comparait les sous-chaînes CAPTURÉES littéralement,
+sans normaliser séparateurs, padding ou style décimal. Un échantillon des
+raisons `facts_lost` stockées (`local_data/emails/augmented_mails.jsonl`)
+montre exactement ce pattern : fragments de téléphone isolés
+(`['0567', '417756']`), dates sans padding (`'18/7/13'`, `'24/2/2023'`),
+montants en point (`'20.73€'`) -- cohérent avec des reformatages légitimes
+plutôt que des pertes réelles, sur la majorité des cas inspectés.
+
+**Fix appliqué** (`src/data/augmentation.py`) : `_FACT_RE` capture désormais
+un numéro de téléphone FR complet quel que soit son espacement/ponctuation
+(`\b0\d(?:[ .\-]?\d{2}){4}\b`, en tête d'alternative pour primer sur le
+fallback générique) ; `_normalize_fact()` (nouveau) normalise avant
+comparaison : séparateurs retirés pour les nombres purs, virgule décimale
+unifiée pour les montants, année 2 chiffres étendue à 4 chiffres pour les
+dates. 6 tests (`tests/test_augmentation_facts_normalization.py`) : les 4
+faux positifs ci-dessus corrigés, ET vérification que la perte réelle
+(numéro de contrat disparu, date effectivement changée) reste détectée.
+
+**Limite non corrigée, documentée plutôt que masquée** : une date réécrite
+en toutes lettres ("18 juillet 2013") n'est pas normalisable sans parsing
+NLP des noms de mois -- reste flaguée `facts_lost` (choix conservateur :
+mieux vaut sur-rejeter que risquer un faux négatif non vérifiable).
+
+**Portée du fix** : corrige `validate()` pour toute future génération
+d'augmentation -- **ne change PAS rétroactivement** le corpus déjà généré
+(`augmented_mails.jsonl`, 45 240 tentatives déjà figées). Combien des 1083
+rejets `facts_lost` existants étaient des faux positifs reste inconnu sans
+regénération (nécessite GPU, hors de portée de cette passe) -- piste
+ajoutée au plan (cf. section Prochaines étapes) plutôt que traitée ici.
+
+## 40. Validation de `find_interesting_pairs` par injection synthétique (résultat positif)
+
+Piste "reste à faire" de `report/04_limites_et_perspectives.md` point 8 :
+valider `find_interesting_pairs`/`cooccurrence_graph` (`src/analysis/
+cooccurrence.py`) contre un signal connu, à la manière de la validation par
+injection synthétique du papier de référence interp_embed (Appendix E.2). Le
+biais réel "Objet:" n'est plus reproductible tel quel (déjà corrigé dans le
+pipeline de génération) -- réplique le PRINCIPE : `scripts/
+interesting_pairs_synthetic_validation.py` construit un corpus synthétique
+(2000 docs, 200 features, bruit de fond sparse aléatoire) avec UNE paire de
+features injectée en co-occurrence parfaite (actives ensemble dans ~40% des
+docs, jamais l'une sans l'autre) et des labels délibérément dissimilaires
+(embeddings orthogonaux), plus des features "quasi-doublons" de contrôle
+négatif (labels proches, ne doivent PAS être remontées).
+
+**Résultat : validation positive.** La paire injectée est retrouvée
+(NPMI=1,000, seule arête du graphe formée sur ce signal de fond aléatoire) et
+c'est l'unique paire "intéressante" détectée (rang 1/1) -- aucun faux positif
+parmi les features de contrôle à labels proches. `tests/
+test_interesting_pairs_synthetic.py` : régression ajoutée.
+
+**Limite** : valide que la fonction fonctionne sur un signal fort et propre,
+pas sa sensibilité sur un signal faible/bruité comme celui rencontré en
+pratique (§16.3 : seulement 3 paires "intéressantes" trouvées sur le corpus
+réel, dont 2/3 avec une feature non labellisée) -- un test de sensibilité au
+bruit (dégrader progressivement le taux de co-occurrence injecté) serait le
+prolongement naturel, non fait ici.

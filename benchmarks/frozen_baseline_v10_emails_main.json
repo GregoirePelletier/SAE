@@ -1,0 +1,23 @@
+{
+  "_comment": "Baseline gele du run principal (SEED=42, resultats_v10_emails_main, cf. RESULTS_TESTS.md section 12). Cree le 2026-08-07 pour servir de point de comparaison stable (guardrail : evite la derive silencieuse constatee auparavant, ou chaque ablation se comparait au run principal courant plutot qu'a un point fixe verse en commit). Ne pas modifier ce fichier sans une raison explicite documentee dans RESULTS_TESTS.md -- c'est le but meme d'un baseline gele.",
+  "source_run": "results_v10_emails_main",
+  "source_job": "run_sae_v10_emails.slurm job 39660",
+  "frozen_on": "2026-08-07",
+  "config": {
+    "model": "gemma-3-12b-it",
+    "sae_id": "layer_24_width_65k_l0_medium",
+    "n_features_to_label": 150,
+    "seed": 42,
+    "corpus_split_seed": 42
+  },
+  "metrics": {
+    "extension_interp_rate": {"n_interp": 68, "n_total": 150, "rate": 0.4533},
+    "rho_sae": 0.9063321316375426,
+    "fve_pretrained": 0.8308627605438232,
+    "silhouette_email_axes": 0.006083039101213217,
+    "dead_pct": 52.751606702804565,
+    "l0_mean": 2446.7451171875,
+    "active_features": 8225,
+    "clf_acc_sae_diffcorpus": 0.6
+  }
+}

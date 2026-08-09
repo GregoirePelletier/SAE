@@ -102,3 +102,4 @@ slurm-*.err
 # Force l'exclusion de tous les dossiers de résultats
 results/
 results_*/
+CLAUDE.md

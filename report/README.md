@@ -1,23 +1,39 @@
 # Matériel de rapport de stage
 
-Ce dossier contient le rapport de stage de M2 assemblé (**`RAPPORT_DE_STAGE.md`**),
-ainsi que ses fichiers sources modulaires, mis à jour à chaque évolution importante
-(cf. `Context.md`, section "Rapport de recherche").
+## Livrables finaux (LaTeX, deux versions)
 
-## Rapport assemblé
+Le document destiné au jury et à l'entreprise existe en **deux versions LaTeX**,
+dérivées d'un même contenu de base mais divergentes dans leur portée et leur niveau
+de détail :
 
-**[`RAPPORT_DE_STAGE.md`](RAPPORT_DE_STAGE.md)** — document complet prêt à relire/
-convertir (ex. pandoc → PDF/Word) : page de garde, résumé FR/EN, sommaire,
-introduction générale, 5 chapitres numérotés, conclusion générale, bibliographie.
-Généré par concaténation/renumérotation des fichiers sources ci-dessous — **ne pas
-éditer directement** ; éditer la source puis régénérer (script d'assemblage inline,
-cf. historique git de ce fichier pour la commande exacte utilisée).
+- **[`RAPPORT_STAGE_UNIVERSITE.tex`](RAPPORT_STAGE_UNIVERSITE.tex)** — version
+  soumise au jury M2 Mathématiques et IA, structurée et calibrée pour respecter les
+  consignes officielles (`pdf/RapportSoutenancesDS-2024-M2-MathsetIA.pdf`) :
+  Introduction (~3p), Méthodes/état de l'art (~5-7p), Contribution (~5-7p),
+  Résultats (~5-7p), Discussion et conclusion (~2p). Coupe le contenu non essentiel
+  au jury (ex. panorama exhaustif des modèles d'embeddings français) et évite toute
+  narration chronologique systématique des étapes du stage.
+- **[`RAPPORT_STAGE_ENTREPRISE.tex`](RAPPORT_STAGE_ENTREPRISE.tex)** — version sans
+  contrainte de longueur pour EDF R\&D, qui conserve/ajoute le détail technique et
+  les quelques bascules de trajectoire du stage utiles à un lecteur interne
+  (panorama complet des embeddings, corrections d'infrastructure notables,
+  ex. bug `d_model`/préallocation mémoire).
 
-**Champs restant à compléter par l'auteur** (marqués `[... — à compléter]` dans le
-fichier) : nom de l'établissement/spécialité de Master, nom du auteur à confirmer,
-noms des tuteurs (entreprise/académique), dates exactes de stage, remerciements. La
-§3.10 (ablation de mise à l'échelle v12) est un placeholder à compléter avec les
-résultats une fois la chaîne de jobs SLURM terminée.
+Les deux versions partagent les mêmes chiffres et conclusions scientifiques ; seules
+la portée et la profondeur de détail diffèrent. **Ne pas compiler** (pas de
+`pdflatex` disponible sur cette machine au moment de la rédaction) sans vérifier au
+préalable le nombre de pages réel de la version université, et le niveau de
+confidentialité à valider avec le maître de stage avant remise.
+
+## Rapport assemblé (matériel de travail, pas un livrable final)
+
+**[`RAPPORT_DE_STAGE.md`](RAPPORT_DE_STAGE.md)** — concaténation brute des fichiers
+sources ci-dessous, plus proche d'un journal chronologique détaillé que d'un rapport
+académique final : utile comme matériel de travail/traçabilité, mais **ce n'est pas
+le document à remettre** (voir les deux `.tex` ci-dessus). Généré par
+concaténation/renumérotation des fichiers sources ci-dessous — ne pas éditer
+directement ; éditer la source puis régénérer (script d'assemblage inline, cf.
+historique git de ce fichier pour la commande exacte utilisée).
 
 ## Fichiers sources
 

@@ -143,6 +143,12 @@ def cluster_in_feature_space(
     """
     HDBSCAN sur profils d'activation SAE (binarisés puis TF-IDF-pondérés) —
     et non sur embeddings bruts. Retourne (labels, UMAP 2D pour visu).
+
+    HDBSCAN tourne sur un embedding UMAP 10D dédié, PAS sur `emb2d` (réservé
+    à la visualisation) : audit méthodologique RESULTS_TESTS.md §33
+    (2026-08-07) — UMAP-10D domine UMAP-2D sur la stabilité inter-seed du
+    clustering à DBCV quasi identique ; PCA et l'espace cosine brut, testés
+    en alternative, sont nettement dominés par UMAP sur ce corpus.
     """
     import umap
     import hdbscan
@@ -150,6 +156,14 @@ def cluster_in_feature_space(
 
     X = sparse.csr_matrix((doc_acts > 1e-6).float().cpu().numpy())
     X = TfidfTransformer().fit_transform(X)               # downweight features denses
+    n_docs = X.shape[0]
     emb2d = umap.UMAP(n_components=2, metric=metric, random_state=0, n_jobs=1).fit_transform(X)
-    labels = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size).fit_predict(emb2d)
+    if n_docs <= 12:
+        cluster_embedding = emb2d
+    else:
+        n_components = min(10, n_docs - 2)
+        cluster_embedding = umap.UMAP(
+            n_components=n_components, metric=metric, random_state=0, n_jobs=1
+        ).fit_transform(X)
+    labels = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size).fit_predict(cluster_embedding)
     return labels, emb2d

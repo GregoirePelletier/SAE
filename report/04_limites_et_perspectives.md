@@ -173,8 +173,8 @@ paires où les deux features sont labellisées.
 ### Qualité de l'explication document-level (nouveau, testé)
 
 Question distincte de tout ce qui précède (qui évalue une feature isolée ou une
-capacité globale), directement issue d'une demande utilisateur : pour UN document
-donné, l'explication produite (features actives + labels) est-elle bonne ?
+capacité globale) : pour UN document donné, l'explication produite (features
+actives + labels) est-elle bonne ?
 - **Fidélité** (`scripts/explanation_fidelity_test.py`, ablation) : chute de 58 à 100
   points de probabilité en ablatant les 10 features "explicatives", chute quasi nulle
   (<0,4 point) en ablatant des features aléatoires ou peu contributives (ratios de
@@ -337,7 +337,7 @@ d'implémentation plus substantiel que les corrections déjà apportées :
     `docs/evaluation_protocol.md` + `scripts/consolidate_evaluation_report.py` +
     onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette
     passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
-    conditions envisagée par l'utilisateur peut être considérée en suite de stage.
+    conditions que j'envisage peut être considérée en suite de stage.
 12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
     (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
     k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non

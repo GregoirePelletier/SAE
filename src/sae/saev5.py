@@ -515,35 +515,48 @@ def analyze_with_umap(
     # un TypeError — bascule sur une init aléatoire (moins de structure globale mais
     # robuste) plutôt que de planter.
     init = "spectral" if N_DOCS >= 15 else "random"
-    reducer = umap.UMAP(
-        n_components=2,
-        metric="cosine",
-        n_neighbors=min(30, max(2, N_DOCS - 1)),
-        min_dist=0.1,
-        random_state=SEED,
-        n_jobs=1,   # random_state force déjà n_jobs=1 ; explicite → supprime le UserWarning
-        init=init,
-    )
-    try:
-        coords = reducer.fit_transform(sae_active)
-    except TypeError as e:
-        print(f"  [WARN] UMAP spectral init a échoué ({e}) — retry avec init='random'.")
+
+    def _fit_umap(n_components: int) -> np.ndarray:
         reducer = umap.UMAP(
-            n_components=2, metric="cosine",
+            n_components=n_components,
+            metric="cosine",
             n_neighbors=min(30, max(2, N_DOCS - 1)),
-            min_dist=0.1, random_state=SEED, n_jobs=1, init="random",
+            min_dist=0.1,
+            random_state=SEED,
+            n_jobs=1,   # random_state force déjà n_jobs=1 ; explicite → supprime le UserWarning
+            init=init,
         )
-        coords = reducer.fit_transform(sae_active)
+        try:
+            return reducer.fit_transform(sae_active)
+        except TypeError as e:
+            print(f"  [WARN] UMAP spectral init a échoué ({e}) — retry avec init='random'.")
+            reducer = umap.UMAP(
+                n_components=n_components, metric="cosine",
+                n_neighbors=min(30, max(2, N_DOCS - 1)),
+                min_dist=0.1, random_state=SEED, n_jobs=1, init="random",
+            )
+            return reducer.fit_transform(sae_active)
+
+    coords = _fit_umap(2)  # réservé à la visualisation Plotly (x/y)
+    # HDBSCAN tourne sur un embedding UMAP 10D dédié, PAS sur les coordonnées 2D de
+    # visualisation : audit méthodologique RESULTS_TESTS.md §33 (2026-08-07) — UMAP-10D
+    # domine UMAP-2D sur la stabilité inter-seed du clustering (ARI 1,0 vs 0,64-1,0 à
+    # DBCV quasi identique, 0,851 vs 0,829) ; PCA et l'espace cosine brut, testés en
+    # alternative, sont nettement dominés par UMAP (DBCV <= 0,275). Aucune config ne
+    # récupère de structure sémantique alignée sur des labels connus (AMI ~0,01-0,03
+    # partout) — ce changement améliore la reproductibilité des clusters affichés d'un
+    # run à l'autre, pas leur pertinence sémantique.
+    cluster_embedding = coords if N_DOCS <= 12 else _fit_umap(min(10, N_DOCS - 2))
 
     # Libération immédiate des copies denses (N_DOCS × n_active en fp32, potentiellement
-    # plusieurs Go à width 262k) : UMAP a fini, seuls `coords` (2D) et `sae_acts`
-    # (torch, partagé avec l'appelant) restent nécessaires.
-    del sae_np, sae_active, reducer
+    # plusieurs Go à width 262k) : UMAP a fini, seuls `coords`/`cluster_embedding` et
+    # `sae_acts` (torch, partagé avec l'appelant) restent nécessaires.
+    del sae_np, sae_active
     _trim_host_memory()
 
     min_cs = max(2, N_DOCS // 15)
     clusterer = HDBSCAN(min_cluster_size=min_cs, min_samples=max(1, min_cs // 2), copy=True)
-    clusters = clusterer.fit_predict(coords)
+    clusters = clusterer.fit_predict(cluster_embedding)
 
     df = pd.DataFrame({
         "x": coords[:, 0], "y": coords[:, 1],

@@ -94,7 +94,9 @@
 {\LARGE Interprétabilité automatique de mails clients par\\ Sparse Autoencoders\par}
 \vspace{0.3cm}
 {\Large\itshape Application à l'analyse interprétable de la\\ correspondance client d'EDF\par}
-\vspace{2.5cm}
+\vspace{0.6cm}
+{\normalsize\itshape Version soumise au jury --- Master 2 Mathématiques et IA, Université Paris-Saclay\par}
+\vspace{1.9cm}
 
 \begin{tabular}{ll}
 \textbf{Auteur} & Grégoire Pelletier \\[0.3em]
@@ -198,9 +200,18 @@ LLM auto-interpretation.
 \begin{description}[leftmargin=3.2cm, style=nextline]
   \item[SAE] Sparse Autoencoder (autoencodeur creux) : réseau qui reconstruit un
     vecteur d'entrée à partir d'une représentation intermédiaire parcimonieuse.
+  \item[Feature] Une coordonnée du code latent produit par un SAE. Dans
+    l'idéal, chaque feature s'active pour un unique concept sémantique
+    identifiable (\emph{ex.} \og{}réclamation liée à la facturation\fg{}), et
+    seulement pour lui --- c'est cette correspondance, quand elle est
+    vérifiée, qui rend le modèle interprétable.
   \item[LLM] Large Language Model (grand modèle de langage).
   \item[GemmaScope] Famille de SAE préentraînés par Google DeepMind sur les
     activations des modèles Gemma/Gemma-2/Gemma-3 \cite{lieberum2024gemmascope}.
+  \item[Neuronpedia] Plateforme externe hébergeant un catalogue de labels
+    (générés par LLM, parfois validés humainement) déjà associés à chaque
+    feature de nombreux SAE publiés, dont GemmaScope --- utilisée ici comme
+    source de labels initiaux, complétée par le juge LLM local de ce stage.
   \item[L0] Pseudo-norme comptant le nombre de coordonnées non nulles d'un
     vecteur --- mesure la parcimonie effective d'un code SAE.
   \item[NMSE] Normalized Mean Squared Error --- erreur de reconstruction
@@ -264,16 +275,23 @@ l'interprétabilité mécanique rendent la position purement sceptique de moins
 en moins tenable, à condition d'articuler ces résultats à un cadre théorique de
 la compréhension. Les Sparse Autoencoders proposent précisément de réapprendre
 une représentation parcimonieuse et de plus haute dimension dans laquelle
-chaque direction correspond, dans l'idéal, à un concept isolé et nommable en
-langage naturel \cite{bricken2023monosemanticity, cunningham2023sparse}.
+chaque direction --- désormais appelée \textbf{feature} --- correspond, dans
+l'idéal, à un concept isolé et nommable en langage naturel
+\cite{bricken2023monosemanticity, cunningham2023sparse}. C'est cette
+correspondance entre feature et concept que ce rapport cherche à mesurer,
+via le taux d'\textbf{interprétabilité} : la proportion de features pour
+lesquelles un concept partagé et identifiable est effectivement retrouvé.
 
 \subsection{Objectifs du stage}
 
 L'énoncé initial fixe l'ambition de construire une plateforme d'analyse de
 mails permettant : l'indexation et la recherche par concept, le clustering
 interprétable de documents, la détection d'urgence et d'intention, la
-comparaison de corpus (diffing), la visualisation des concepts activés, le
-retrieval par propriétés, et l'explication des décisions prises en aval de ces
+comparaison de corpus (\emph{diffing} : repérer automatiquement les features
+dont l'activation moyenne diffère significativement entre deux sous-corpus,
+\emph{ex.} les mails \og{}urgents\fg{} contre le reste, pour faire émerger ce
+qui les distingue), la visualisation des concepts activés, le retrieval par
+propriétés, et l'explication des décisions prises en aval de ces
 représentations --- avec la contrainte explicite de réutiliser au maximum
 l'existant (SAELens, GemmaScope, la littérature sur l'interprétation
 d'embeddings documentaires) plutôt que de réimplémenter, et de documenter
@@ -303,31 +321,19 @@ dérivent, pas leur authenticité.
 
 \subsection{Démarche et plan du rapport}
 
-Le stage a suivi une progression en cinq grandes phases :
-
-\begin{enumerate}
-  \item \textbf{Audit et fiabilisation} du pipeline existant (chargement des
-    SAE préentraînés, récupération des labels Neuronpedia, précision
-    numérique, robustesse) et validation de bout en bout sur un modèle réduit
-    avant tout passage à l'échelle.
-  \item \textbf{Diagnostic et correction} du problème central identifié en
-    début de stage : un taux de succès très faible (20\%) du protocole
-    d'auto-interprétation, déterminé par ablation contrôlée comme un défaut de
-    conception du corpus, non un manque de volume d'entraînement.
-  \item \textbf{Relecture critique face à la littérature de référence} pour
-    identifier les écarts méthodologiques restants (retrieval, clustering,
-    protocole de labellisation) et les corriger ou les documenter comme
-    limites assumées.
-  \item \textbf{Mise à l'échelle et consolidation} : tests de qualité de
-    l'explication document-level, protocole d'évaluation sous conditions
-    fixées, dashboard interactif, première ablation de mise à l'échelle
-    (largeur, époques, nombre de features labellisées).
-  \item \textbf{Campagne d'ablations exhaustive} couvrant systématiquement les
-    modèles et paramètres restants (échelle du modèle extracteur/juge,
-    capacité et parcimonie de l'extension isolées, dimension d'embedding,
-    backbones alternatifs), avec un audit de la rigueur statistique des
-    comparaisons effectuées.
-\end{enumerate}
+Après une phase d'audit et de fiabilisation du pipeline existant, le travail
+s'est structuré autour d'un même fil directeur, répété à chaque étape :
+diagnostiquer par ablation contrôlée plutôt que par intuition, puis valider
+statistiquement avant de généraliser. Cette démarche a d'abord permis
+d'identifier et de corriger la cause du taux d'interprétabilité initial très
+faible (20\%, \emph{cf.}~\S\ref{subsec:diagnostic-initial}), puis de la
+réappliquer systématiquement à une large campagne d'ablations
+d'hyperparamètres, jusqu'à un audit rétroactif de la méthodologie statistique
+elle-même. Ce rapport suit une organisation thématique et non
+chronologique : les choix d'architecture et les résultats sont présentés dans
+leur forme aboutie, les étapes intermédiaires n'étant mentionnées que
+lorsqu'elles éclairent directement une décision (\emph{cf.} notamment
+\S\ref{subsec:diagnostic-initial} et \S\ref{subsec:sae-boost-litt}).
 
 Le chapitre~\ref{sec:etat-art} positionne le projet par rapport à l'état de
 l'art. Le chapitre~\ref{sec:contribution} décrit l'architecture et la
@@ -355,7 +361,11 @@ $W_\text{dec} \in \mathbb{R}^{d_\text{model} \times d_\text{hidden}}$
 $f : \mathbb{R}^{d_\text{model}} \rightarrow \mathbb{R}^{d_\text{hidden}}$
 produisant un vecteur d'activation latent $z = f(h(x))$ tel que la
 reconstruction $\hat{h}(x) = W_\text{dec}\, z + b_\text{dec} \approx h(x)$ soit
-fidèle, tandis que $z$ reste très parcimonieux ($\|z\|_0 \ll d_\text{hidden}$).
+fidèle, tandis que $z$ reste très parcimonieux ($\|z\|_0 \ll d_\text{hidden}$) :
+chaque coordonnée $z_j$ est l'activation de la $j$-ième \textbf{feature}
+(\emph{cf.}~glossaire), et sa nullité pour la quasi-totalité des entrées est
+précisément ce qui rend chaque feature active potentiellement spécifique et
+interprétable, plutôt que diffuse sur l'ensemble du corpus.
 
 \begin{definitionbox}[Convention $W_\text{dec}$ --- nota bene]
 Dans ce rapport, $W_\text{dec} \in \mathbb{R}^{d_\text{model} \times d_\text{hidden}}$
@@ -373,9 +383,28 @@ alors $\hat{x} = \texttt{sae.W\_dec.T} \mathbin{@} z + \texttt{sae.b\_dec}$.
   z = \text{ReLU}(W_\text{enc}(x - b_\text{pre}) + b_\text{enc}), \qquad
   \mathcal{L}_\text{Standard} = \|x - \hat{x}\|_2^2 + \lambda \|z\|_1
 \]
-Le gradient $\lambda\,\text{sgn}(z)$ induit un biais de rétrécissement
-(\emph{shrinkage}) et une vulnérabilité maximale aux latents morts
+Le gradient $\lambda\,\text{sgn}(z)$ pousse continûment chaque activation
+active vers zéro, quelle que soit son amplitude réelle : $z$ sous-estime donc
+systématiquement l'intensité du signal qu'il devrait porter, un biais dit de
+\textbf{rétrécissement} (\emph{shrinkage}). Ce même gradient, en poussant
+aussi les poids d'entrée vers zéro dès qu'une feature devient rarement
+active, rend le Standard SAE particulièrement vulnérable aux latents morts
 \cite{cunningham2023sparse}.
+
+
+\subsubsection{Le problème des latents morts}
+
+Un latent $j$ est dit \emph{mort} si son activation reste nulle sur un
+horizon de batches consécutifs. Pour un Standard SAE, le gradient de la
+pénalité $L_1$ pousse monotoniquement les poids vers zéro dès que la
+pré-activation devient négative sur tout le batch, ce qui sature
+irréversiblement la ReLU. Le diagnostic empirique se fait via
+$\rho_\text{dead} = \frac{1}{d_\text{hidden}} \sum_j \ind[\max_x z_j(x) = 0]$ ;
+un $\rho_\text{dead} > 5\%$ signale une compression excessive. Chaque
+architecture propose son propre mécanisme anti-mort (séparation porte/magnitude
+pour Gated, perte AuxK pour Top-K/BatchTopK, \emph{pre-act loss} et
+initialisation de seuil pour JumpReLU) --- \emph{cf.}~état de l'art complet en
+annexe des sources bibliographiques du stage.
 
 \subsubsection{Gated SAE}
 Sépare la décision d'activation (\emph{gate}) de sa magnitude
@@ -438,75 +467,23 @@ Matryoshka & BatchTopK + nesting                        & $\sum_{m\in M}\|\cdot\
 \end{tabular}
 \end{table}
 
-\subsubsection{Le problème des latents morts}
+\subsection{Choix du backbone d'embedding du second pipeline}
 
-Un latent $j$ est dit \emph{mort} si son activation reste nulle sur un
-horizon de batches consécutifs. Pour un Standard SAE, le gradient de la
-pénalité $L_1$ pousse monotoniquement les poids vers zéro dès que la
-pré-activation devient négative sur tout le batch, ce qui sature
-irréversiblement la ReLU. Le diagnostic empirique se fait via
-$\rho_\text{dead} = \frac{1}{d_\text{hidden}} \sum_j \ind[\max_x z_j(x) = 0]$ ;
-un $\rho_\text{dead} > 5\%$ signale une compression excessive. Chaque
-architecture propose son propre mécanisme anti-mort (séparation porte/magnitude
-pour Gated, perte AuxK pour Top-K/BatchTopK, \emph{pre-act loss} et
-initialisation de seuil pour JumpReLU) --- \emph{cf.}~état de l'art complet en
-annexe des sources bibliographiques du stage.
-
-\subsection{Panorama des modèles d'embeddings de texte français}
-
-\subsubsection{CamemBERT 2.0}
-Publié par l'équipe ALMAnaCH (Inria) \cite{martin2024camembert}, CamemBERTav2 (base DeBERTaV3, 184M
-paramètres) combine un masquage MLM agressif (40\%), un mécanisme
-\emph{Disentangled Attention}, et une spécialisation sur des corpus techniques
-et scientifiques français (HALvesting). Il constitue l'état de l'art
-encodeur pour le français technique en dessous de 200M paramètres.
-
-\subsubsection{Alternatives multilingues (MTEB)}
-Le benchmark MTEB-French \cite{kerboua2024mtebfrench} et son extension
-multilingue MMTEB \cite{enevoldsen2025mmteb} standardisent l'évaluation sur 8
-catégories de tâches. Le panorama dressé en phase préliminaire (Table
-\ref{tab:mteb}) couvrait la famille F2LLM-v2 (du 80M au 8B de paramètres,
-support natif du \emph{Matryoshka Representation Learning}), Qwen3-Embedding,
-multilingual-e5, et CamemBERTav2.
-
-\begin{table}[h!]
-\centering
-\caption{Panorama des modèles d'embeddings candidats pour le français (relevé bibliographique préliminaire)}
-\label{tab:mteb}
-\vspace{0.4em}\small
-\begin{tabular}{@{}llll@{}}
-\toprule
-\textbf{Modèle} & \textbf{Params} & \textbf{Points forts} & \textbf{Utilisé dans ce stage ?} \\ \midrule
-F2LLM-v2-8B/14B & 8-14B & SOTA global multilingue & Non (contrainte de calcul) \\
-Qwen3-Embedding & 0.6-8B & MRL natif, instruction-based & Non \\
-CamemBERTav2 & 184M & SOTA $<$200M, français technique & Non \\
-\textbf{bge-m3} & 560M & Multilingue, pooling [CLS] & \textbf{Oui} (Pipeline 2) \\
-\textbf{F2LLM-v2-80/160/330M} & 80-330M & MRL, léger, déployable & \textbf{Oui} (Pipeline 2) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{diagnosticbox}[Écart entre relevé bibliographique et choix effectif]
-Le relevé bibliographique préliminaire du stage plaçait CamemBERTav2 comme
-candidat privilégié pour un corpus français technique. En pratique,
-l'architecture retenue s'appuie sur \textbf{GemmaScope} (SAE préentraîné sur
-Gemma-3, disponible \emph{prêt à l'emploi} avec un catalogue de labels
-Neuronpedia déjà constitué) pour le pipeline principal, et sur
-\textbf{F2LLM-v2}/\textbf{bge-m3} pour le second pipeline --- CamemBERTav2 n'a
-finalement pas été intégré, faute d'un SAE préentraîné équivalent disponible
-pour ce backbone (l'intégralité de l'écosystème GemmaScope/Neuronpedia, qui
-motive le choix de Gemma-3, n'existe pas pour CamemBERT). Ce choix, motivé par
-la disponibilité d'infrastructure plutôt que par un score MTEB, est assumé et
-documenté comme limite au chapitre~\ref{sec:discussion}.
-\end{diagnosticbox}
-
-\subsubsection{Matryoshka Representation Learning et architectures décodeurs}
-Le MRL \cite{kusupati2022mrl} entraîne un modèle d'embeddings de sorte que des
-sous-vecteurs de dimensions imbriquées soient tous des points d'ancrage
-sémantiques valides, via une perte contrastive multi-résolution
-$\mathcal{L}_{MRL} = \sum_{d \in \mathcal{D}} \omega_d \cdot \mathcal{L}_\text{contrastive}(z_{1:d})$.
-F2LLM-v2 en bénéficie nativement, ce qui a directement motivé le test empirique
-de troncature d'embedding présenté au chapitre~\ref{sec:resultats}.
+Le second pipeline (embeddings de phrase, indépendant de GemmaScope) s'appuie
+sur \textbf{bge-m3} et la famille \textbf{F2LLM-v2} (80--330M paramètres),
+retenus pour leur légèreté et, pour F2LLM-v2, leur support natif du
+\textbf{Matryoshka Representation Learning} (MRL) \cite{kusupati2022mrl} : un
+entraînement contrastif multi-résolution
+($\mathcal{L}_{MRL} = \sum_{d \in \mathcal{D}} \omega_d \cdot
+\mathcal{L}_\text{contrastive}(z_{1:d})$) qui rend chaque préfixe de
+dimensions de l'embedding directement exploitable, sans réentraînement --- une
+propriété testée empiriquement au chapitre~\ref{sec:resultats} et qui a
+inspiré, dans la littérature SAE, l'architecture Matryoshka SAE (\emph{cf.}
+Table~\ref{tab:sae-archs}). Le pipeline principal s'appuie quant à lui sur
+GemmaScope, disponible \emph{prêt à l'emploi} avec un catalogue de labels
+Neuronpedia déjà constitué --- un choix motivé par la disponibilité de cet
+écosystème plutôt que par un score MTEB, discuté au
+chapitre~\ref{sec:discussion}.
 
 \subsection{Le SAE résiduel à cœur gelé : deux généalogies concurrentes}
 \label{subsec:sae-boost-litt}
@@ -524,9 +501,22 @@ en parallèle par ce projet et, dans la littérature publiée, par
 
 Koriagin et al. rapportent des gains de +25\% à +59\% en variance expliquée
 sur des domaines cibles (chimie, russe, débats ONU) pour moins de 1\% de
-dégradation sur le domaine général. Cette architecture résout l'interférence
-de routage \emph{par construction} : aucun budget de sparsité n'est partagé
-entre cœur et extension. C'est l'architecture concrètement implémentée et
+dégradation sur le domaine général.
+
+\begin{definitionbox}[Pourquoi geler le cœur plutôt que réentraîner un SAE unique ?]
+Si l'on réentraînait ou affinait un unique SAE partagé sur un mélange de texte
+générique et de texte du domaine cible, les concepts des deux origines se
+disputeraient le même budget fixe de features actives ($k$ dans BatchTopK).
+Le SAE, pour minimiser son erreur de reconstruction, tend alors à
+\textbf{réutiliser une même feature pour plusieurs concepts non liés} plutôt
+que d'en dédier une par concept --- c'est cette \textbf{interférence de
+routage} qui dégrade la monosémanticité, pour le domaine cible comme pour le
+domaine général. Geler le cœur et n'entraîner qu'une extension sur le résidu
+non reconstruit élimine ce partage \emph{par construction} : aucun budget de
+sparsité n'est jamais mis en concurrence entre cœur et extension.
+\end{definitionbox}
+
+C'est l'architecture concrètement implémentée et
 validée à l'échelle dans ce stage (\emph{cf.}~\S\ref{subsec:frozencore}) ---
 et non une architecture Matryoshka pleinement hiérarchique et emboîtée, la
 piste initialement envisagée en phase bibliographique préliminaire mais dont
@@ -626,7 +616,7 @@ l'extension reste quasi-inactive, préservant la géométrie de base. Cette
 architecture correspond exactement à celle décrite pour SAE Boost
 (\S\ref{subsec:sae-boost-litt}) : les résultats de ce stage constituent donc,
 \emph{de facto}, une réplication indépendante et une extension empirique de
-cette architecture sur un nouveau domaine (emails clients français) et à une
+cette architecture sur un nouveau domaine (embeddings emails clients français plutôt qu'activation de LLM) et à une
 échelle de modèle non couverte par la publication d'origine
 (1B/4B/12B~paramètres, \emph{cf.}~\S\ref{subsec:model-scale}).
 
@@ -891,22 +881,49 @@ et non de simples labels plausibles sans lien :
 
 \subsection{Fidélité du steering (\texttt{steer\_and\_decode})}
 
-Le steering (amplifier ou supprimer une feature puis décoder le résultat)
-n'avait jamais été testé au-delà d'une vérification géométrique superficielle.
-Un test dédié, suppriment les 10 features les plus explicatives d'une
-intention puis décodant/ré-encodant le résultat, révèle un comportement
-\textbf{très hétérogène selon l'intention} : le \emph{round-trip}
-decode/ré-encode neutralise quasiment l'intervention pour 2 intentions sur 4
-testées (ratio 0,00--0,02$\times$ par rapport à l'ablation directe en espace de
-code), la préserve pour une troisième (0,90$\times$), et l'amplifie pour la
-dernière (1,74$\times$). Le steering décodé n'est donc \textbf{pas} un
-mécanisme d'intervention causale fiable et prévisible à partir du simple test
-d'ablation en espace de code.
+Le \textbf{steering} consiste à intervenir directement sur l'activation d'une
+feature (l'amplifier ou la supprimer) pour en observer l'effet causal sur le
+comportement du modèle, plutôt que de se contenter de la corrélation
+observationnelle qu'établit l'auto-interprétation. Deux protocoles de mesure
+ont été comparés, qui n'évaluent pas la même chose : l'\textbf{ablation en
+espace de code} mesure l'effet de l'intervention directement sur le vecteur
+latent modifié, sans jamais repasser par une sortie réelle --- un test
+idéalisé, isolé du bruit de génération. Le \textbf{round-trip
+decode/ré-encode} pousse la vérification plus loin : le vecteur modifié est
+d'abord décodé (reconverti vers l'espace d'origine, voire vers du texte), puis
+ce résultat est ré-encodé et son activation mesurée à nouveau --- ce protocole
+teste si l'intervention \emph{survit} au passage par une sortie effectivement
+utilisable, et non plus seulement dans l'espace latent interne du SAE. Le
+ratio round-trip / ablation directe quantifie cette survie : proche de 0,
+l'intervention est effacée dès qu'elle repasse par une sortie réelle (steering
+inutilisable en pratique pour cette intention, quel que soit son effet
+apparent en espace de code) ; proche de 1, elle est intégralement préservée ;
+au-delà de 1, elle est amplifiée par le passage en sortie réelle.
+
+Ce protocole de steering n'avait jamais été testé au-delà d'une vérification
+géométrique superficielle. Un test dédié, supprimant les 10 features les plus
+explicatives d'une intention puis appliquant ce round-trip, révèle un
+comportement \textbf{très hétérogène selon l'intention} : le round-trip
+neutralise quasiment l'intervention pour 2 intentions sur 4 testées (ratio
+0,00--0,02$\times$), la préserve pour une troisième (0,90$\times$), et
+l'amplifie pour la dernière (1,74$\times$). Le steering n'est donc \textbf{pas}
+un mécanisme d'intervention causale fiable et prévisible en sortie réelle à
+partir du seul test d'ablation en espace de code : une intervention qui paraît
+efficace dans l'espace latent peut s'avérer, selon l'intention visée, sans
+effet une fois le résultat effectivement produit.
 
 \subsection{Retrieval quantitatif (Latent Terms)}
 
-Une évaluation quantitative --- jamais réalisée jusqu'ici --- du retrieval
-BM25 sur vocabulaire latent SAE \cite{clavie2026latentterms} montre une
+\textbf{Latent Terms} \cite{clavie2026latentterms} détourne BM25 --- une
+fonction de pertinence classique en recherche d'information, conçue pour
+classer des documents à partir de mots-clés --- en remplaçant les mots-clés
+par des \textbf{indices de features SAE} : chaque document est représenté par
+l'ensemble de ses features actives (son \og{}vocabulaire latent\fg{}), une
+requête en langage naturel est elle-même encodée puis réduite à ses features
+actives, et BM25 classe les documents par recouvrement de features avec la
+requête --- exactement comme il classerait des documents par recouvrement de
+mots avec une requête textuelle. Une évaluation quantitative de ce protocole
+--- jamais réalisée jusqu'ici --- montre une
 \textbf{précision parfaite (1,00)} sur 3 intentions testées sur 4, nettement
 supérieure à une baseline TF-IDF classique sur des requêtes reformulées (pas
 de reprise littérale des mots-clés) --- généralisation sémantique réelle. Un
@@ -1027,13 +1044,23 @@ donnent des résultats positifs ou, à défaut, honnêtement nuancés (steering)
     préentraîné équivalent à GemmaScope --- une comparaison chiffrée directe
     reste à faire si l'équipe souhaite objectiver ce choix par rapport au
     score MTEB plutôt que par la disponibilité d'infrastructure.
-  \item Le pipeline micro/macro dual-SAE avec alignement AlignedUMAP, la
-    modélisation par graphe biparti, et le protocole d'annotation humaine
-    (Fleiss $\kappa$) envisagés en phase préliminaire restent des pistes non
-    explorées, faute de temps.
+  \item Plusieurs pistes envisagées en phase préliminaire restent
+    inexplorées, faute de temps : un pipeline micro/macro à deux SAE alignés
+    par \emph{AlignedUMAP} (une projection 2D qui contraint les positions à
+    rester comparables d'un sous-corpus à l'autre, pour visualiser leur
+    évolution) ; une modélisation par graphe biparti (documents et features
+    comme deux ensembles de nœuds reliés par les activations, pour en
+    exploiter la structure de communautés) ; et un protocole d'annotation
+    humaine avec calcul du $\kappa$ de Fleiss (mesure d'accord inter-annotateurs
+    corrigée du hasard), pour remplacer le juge LLM par une validation humaine
+    d'un sous-échantillon.
   \item Aucune comparaison chiffrée directe n'a été menée contre les
     baselines alternatives de SAE Boost (Extended SAE à initialisation
     aléatoire/most-active, SAE Stitching, fine-tuning complet).
+  \item L'ablation de volume, sans effet mesurable jusqu'à 25M tokens
+    (Table~\ref{tab:synthese}), est étendue à 200M tokens --- la borne haute
+    exacte du seuil de convergence revendiqué par SAE Boost --- dans un run en
+    cours au moment de la rédaction de ce rapport.
 \end{itemize}
 
 \subsection{Conclusion générale}
@@ -1116,21 +1143,6 @@ similaire d'interprétabilité appliquée.
   (Anonyme).
   \textit{Decoding Dense Embeddings: Sparse Autoencoders for Interpreting and Discretizing Dense Retrieval}.
   arXiv:2506.00041, 2025.
-
-\bibitem{martin2024camembert}
-  Martin, L. et al.
-  \textit{CamemBERT 2.0: A Smarter French Language Model Aged to Perfection}.
-  arXiv:2411.08868, Inria/ALMAnaCH, 2024.
-
-\bibitem{kerboua2024mtebfrench}
-  Kerboua, I. et al.
-  \textit{MTEB-French: Resources for French Sentence Embedding Evaluation and Analysis}.
-  arXiv:2405.20468, 2024.
-
-\bibitem{enevoldsen2025mmteb}
-  Enevoldsen, K. et al.
-  \textit{MMTEB: Massive Multilingual Text Embedding Benchmark}.
-  ICLR 2025. arXiv:2502.13595.
 
 \bibitem{kusupati2022mrl}
   Kusupati, A. et al.

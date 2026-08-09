@@ -96,11 +96,46 @@ def _sha1(s: str) -> str:
 
 # ─── 3. Garde-fous factuels ───────────────────────────────────────────────────
 
-_FACT_RE = re.compile(r"\b\d{4,}\b|\b\d+[.,]\d{2}\s*€|\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+_FACT_RE = re.compile(
+    r"\b0\d(?:[ .\-]?\d{2}){4}\b"       # téléphone FR (10 chiffres, séparateurs optionnels) --
+                                         # DOIT précéder le fallback générique ci-dessous : sinon
+                                         # un numéro espacé/pointé n'est capturé QUE par fragments
+                                         # de 4+ chiffres contigus (ex. "0476" sur "0476 35 64 90"),
+                                         # jamais comme un seul fact, cf. RESULTS_TESTS.md §39.
+    r"|\b\d+[.,]\d{2}\s*€"
+    r"|\b\d{1,2}/\d{1,2}/\d{2,4}\b"
+    r"|\b\d{4,}\b"
+)
+
+
+def _normalize_fact(m: str) -> str:
+    """Normalise un fact capturé pour une comparaison robuste au reformatage
+    pur (pas de perte réelle de contenu) : audit méthodologique du 2026-08-07
+    (`RESULTS_TESTS.md` §39) -- `_facts()` comparait les sous-chaînes brutes,
+    donc rejetait `facts_lost` un numéro de téléphone reformaté ("0476356490"
+    -> "0476 35 64 90" ou "04.76.35.64.90"), une date sans zéro de padding
+    ("18/7/13" -> "18/07/2013"), ou un montant en virgule décimale française
+    au lieu du point ("20.73€" -> "20,73 €") -- des faux positifs prouvés
+    directement sur `_facts()`, pas de simples suppositions. Normalisation :
+    séparateur décimal unifié (virgule), séparateurs de regroupement (espaces,
+    points, tirets) retirés des séquences numériques pures (téléphones),
+    composantes de date entières (jour/mois/année) comparées sans padding.
+    Reste hors de portée : une date réécrite en toutes lettres ("18 juillet
+    2013") n'est pas normalisable par cette fonction (nécessiterait un
+    parsing NLP des mois) -- limite connue, documentée plutôt que masquée."""
+    if "/" in m:
+        day, month, year = m.split("/")
+        year_int = int(year)
+        if len(year) == 2:  # "13" -> "2013" (corpus 2020s, ambiguïté négligeable)
+            year_int += 2000
+        return f"{int(day)}/{int(month)}/{year_int}"
+    if "€" in m:
+        return m.replace(" ", "").replace(".", ",")
+    return re.sub(r"[ .\-]", "", m)
 
 
 def _facts(text: str) -> set[str]:
-    return {m.replace(" ", "") for m in _FACT_RE.findall(text)}
+    return {_normalize_fact(m) for m in _FACT_RE.findall(text)}
 
 
 def validate(parent: str, variant: str, spec: PerturbationSpec) -> Optional[str]:

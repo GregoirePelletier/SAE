@@ -252,8 +252,11 @@ def page_email_comparison() -> None:
             st.markdown(f"**{row['level']}**")
             if row.get("rejected"):
                 # Variante rejetée au contrôle qualité de la génération (texte non
-                # stocké, motif conservé pour audit) -- ~11,7% du corpus augmenté
-                # (5291/45240), cf. src/data/augmentation.py.
+                # stocké, motif conservé pour audit) -- ~11,7% du corpus augmenté EN
+                # MOYENNE (5291/45240), mais très hétérogène par classe : 59,6%
+                # (orthographe__degrade_fort) et 47,2% (emotion__impatience) contre
+                # ~4% pour les 11 autres classes, presque toujours par length_ratio
+                # trop bas -- cf. src/data/augmentation.py, RESULTS_TESTS.md §38.
                 st.caption(f"Rejetée au contrôle qualité : `{row['rejected']}`")
             else:
                 st.text_area(row["aug_id"], row["text"], height=300, disabled=True,
