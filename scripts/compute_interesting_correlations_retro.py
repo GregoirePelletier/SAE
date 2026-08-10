@@ -17,7 +17,7 @@ import torch
 
 from src.analysis.cooccurrence import cooccurrence_graph, find_interesting_pairs
 from src.data.preparation import build_email_train_test_corpus
-from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH
+from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, NEURONPEDIA_LABELS_PATH, CORPUS_SPLIT_SEED
 
 
 def load_label_map(cache_dir: str) -> dict[int, str]:
@@ -40,7 +40,7 @@ def main():
 
     print("[retro-corr] Reconstruction du split train/test (déterministe, pas de GPU)...")
     train_texts, _, test_texts, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=42,
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
     )
     n_train, n_test = len(train_texts), len(test_texts)
     print(f"[retro-corr] n_train={n_train}, n_test={n_test}")

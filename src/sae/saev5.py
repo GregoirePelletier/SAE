@@ -156,12 +156,6 @@ except ImportError:
         compute_npmi, corpus_diff_stats, cooccurrence_graph, find_interesting_pairs,
     )
 
-# Labels GemmaScope officiels (Neuronpedia) — cache JSON obligatoire (cluster offline)
-try:
-    from src.sae.neuronpedia_labels import merge_with_judge_labels  # noqa: F401
-except ImportError:
-    merge_with_judge_labels = None
-
 import ctypes
 
 def _trim_host_memory():
@@ -803,9 +797,9 @@ def run_llm_max_pool_pipeline(
             _need_extraction = True
 
     if _need_extraction:
-        print(f"  [P1] Extraction activations Gemma-3 ({MODEL_ID}, layer {LAYER})...")
+        print(f"  [P1] Extraction activations Gemma-3 ({MODEL_ID}, layer {LAYER}, hook {HOOK_TYPE})...")
         os.makedirs(token_fragments_dir, exist_ok=True)
-        
+
         tokenizer = AutoTokenizer.from_pretrained(
             MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         )
@@ -816,6 +810,28 @@ def run_llm_max_pool_pipeline(
             MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
+
+        # Balayage layer/hook-point (RESULTS_TESTS.md §36) : output_hidden_states
+        # n'expose QUE le residual stream (HF standard) -- attn_out/mlp_out
+        # n'existent nulle part dans cette API, il faut un hook direct sur le
+        # sous-module concerné. Points de hook vérifiés empiriquement sur les
+        # config.json GemmaScope-2 réels (pas devinés) :
+        #   attn_out : entrée de self_attn.o_proj (pré-projection de sortie)
+        #   mlp_out  : sortie de post_feedforward_layernorm (après le MLP, avant l'add résiduel)
+        _hook_capture = {}
+        _hook_handle = None
+        if HOOK_TYPE == "attn_out":
+            def _capture_attn_in(module, args, kwargs):
+                _hook_capture["acts"] = args[0] if args else kwargs["input"]
+            _hook_handle = llm.model.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
+                _capture_attn_in, with_kwargs=True)
+        elif HOOK_TYPE == "mlp_out":
+            def _capture_mlp_out(module, args, output):
+                _hook_capture["acts"] = output
+            _hook_handle = llm.model.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
+                _capture_mlp_out)
+        elif HOOK_TYPE != "resid_post":
+            raise ValueError(f"HOOK_TYPE={HOOK_TYPE!r} non supporté (resid_post/attn_out/mlp_out).")
 
         all_doc_sae_acts = []
         n_residuals_collected = 0
@@ -842,8 +858,16 @@ def run_llm_max_pool_pipeline(
                 # sans logits_to_keep, cf. RESULTS_TESTS.md). Pas encore déclenché ici
                 # (H100 80GB + batch_size=4 + volumes réduits du smoketest) mais même
                 # gaspillage latent avant un run à l'échelle complète.
-                outputs = llm(**inputs, output_hidden_states=True, logits_to_keep=1)
-                acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
+                if HOOK_TYPE == "resid_post":
+                    outputs = llm(**inputs, output_hidden_states=True, logits_to_keep=1)
+                    acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
+                else:
+                    llm(**inputs, logits_to_keep=1)
+                    acts_raw = _hook_capture["acts"].detach().to(TORCH_DTYPE)
+                    assert acts_raw.shape[-1] == D_MODEL, (
+                        f"HOOK_TYPE={HOOK_TYPE} : shape captée {acts_raw.shape} != D_MODEL={D_MODEL} "
+                        "-- mauvais point de hook, à corriger avant de faire confiance au run."
+                    )
 
                 acts = acts_raw
                 # B7 résolu — implémentation UNIQUE du masquage :
@@ -919,6 +943,8 @@ def run_llm_max_pool_pipeline(
             print(f"  [P1] Résidus bruts d'apprentissage enregistrés : {raw_residuals.shape}")
             _need_residuals = False
             
+        if _hook_handle is not None:
+            _hook_handle.remove()
         del llm, tokenizer
         _trim_host_memory()
 

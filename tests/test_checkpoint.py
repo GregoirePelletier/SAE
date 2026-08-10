@@ -1,3 +1,5 @@
+"""Smoke-test PyTorch générique (save/load state_dict) -- ne teste aucun code
+du dépôt (AUDIT_REPO_2026-08-07.md §4.3)."""
 import torch
 
 def test_save_load(tmp_path):

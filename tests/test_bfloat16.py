@@ -1,3 +1,6 @@
+"""Smoke-test PyTorch générique (dtype bf16) -- ne teste aucun code du dépôt
+(AUDIT_REPO_2026-08-07.md §4.3). La garantie bf16 réelle du projet (pas
+d'overflow sur les activations massives Gemma-3) n'a pas de test dédié."""
 import torch
 
 def test_bfloat16_roundtrip():

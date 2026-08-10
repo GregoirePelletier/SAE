@@ -1,3 +1,6 @@
+"""Smoke-test PyTorch générique (retrieval cosinus) -- ne teste PAS
+src/sae/retrieval/latent_terms.py (BM25 sur vocabulaire latent), malgré le nom
+(AUDIT_REPO_2026-08-07.md §4.3)."""
 import torch
 
 def test_cosine_retrieval():

@@ -37,7 +37,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
 
-from src.config import MODEL_ID, HF_TOKEN, DTYPE, SAVE_DIR, LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH
+from src.config import MODEL_ID, HF_TOKEN, DTYPE, SAVE_DIR, LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, CORPUS_SPLIT_SEED
 from src.sae.judge import (
     build_feature_examples_with_control, extract_causal_context, _apply_chat_and_extract,
 )
@@ -127,7 +127,7 @@ def main():
 
     print("[contrastive] Reconstruction du split train/test (déterministe, pas de GPU)...")
     train_texts, _, _, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=SEED,
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
     )
     n_train = len(train_texts)
 

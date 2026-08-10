@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR
+from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, CORPUS_SPLIT_SEED
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
 from src.analysis.metrics import downstream_classification
@@ -67,7 +67,7 @@ def main():
 
     # Vérification croisée : build_email_train_test_corpus doit annoncer le même compte.
     train_texts, train_labels, _, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=SEED,
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
     )
     n_original_train = sum(1 for l in train_labels if l == "original")
     assert n_original_train == k_train_original, (

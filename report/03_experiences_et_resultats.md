@@ -589,7 +589,7 @@ cette valeur. Run `results_v13_ablation_k_extra5` (job 41404, terminé en
 3h51min) : **82/150 = 54,7%** d'interprétabilité contre 45,3% pour le run
 principal — écart de +9,4 points, **non significatif** (z=-1,62) mais le plus
 proche du seuil conventionnel de toutes les ablations de ce chapitre. `rho_sae`
-(fidélité de reconstruction du résidu) recule sensiblement (0,922 → 0,849),
+(fidélité de reconstruction du résidu) recule sensiblement (0,906 → 0,849),
 cohérent avec un budget de capacité par token plus faible. Direction cohérente
 avec l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
 directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md` §25.

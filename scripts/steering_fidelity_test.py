@@ -51,7 +51,7 @@ from sklearn.linear_model import LogisticRegression
 
 from src.config import (
     LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, NEURONPEDIA_LABELS_PATH,
-    RELEASE_ID, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT,
+    RELEASE_ID, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT, CORPUS_SPLIT_SEED,
 )
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
@@ -98,7 +98,7 @@ def load_real_email_acts_and_intents():
     k_train_original = len(train_positions)
 
     train_texts, train_labels, _, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=SEED,
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
     )
     n_original_train = sum(1 for l in train_labels if l == "original")
     assert n_original_train == k_train_original, "Incohérence de correspondance -- cf. intent_urgency_probe.py"

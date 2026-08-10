@@ -35,7 +35,6 @@ import io
 import json
 import logging
 import os
-import time
 from typing import Optional
 
 import requests
@@ -111,36 +110,3 @@ def fetch_neuronpedia_labels(
     return labels
 
 
-def fetch_single_feature(
-    idx: int,
-    model_id: str = "gemma-3-12b-it",
-    layer: int = 24,
-    width: str = "16k",
-    api_key: Optional[str] = None,
-    sleep: float = 0.2,
-) -> dict:
-    """Détail d'une feature : explications + top activating examples (pour la visu)."""
-    headers = {"x-api-key": api_key} if api_key else {}
-    r = requests.get(f"{NP_BASE}/feature/{model_id}/{np_source(layer, width)}/{idx}",
-                     headers=headers, timeout=60)
-    r.raise_for_status()
-    time.sleep(sleep)  # politesse rate-limit
-    return r.json()
-
-
-def neuronpedia_deep_link(idx: int, model_id: str = "gemma-3-12b-it",
-                          layer: int = 24, width: str = "16k") -> str:
-    """URL de la page feature — injectée dans les hovers Plotly (visu refondue)."""
-    return f"https://www.neuronpedia.org/{model_id}/{np_source(layer, width)}/{idx}"
-
-
-def merge_with_judge_labels(np_labels: dict[int, str],
-                            judge_labels_path: str) -> dict[int, str]:
-    """Priorité : labels juge internes (contexte français EDF) > Neuronpedia > F{idx}.
-    Les features d'extension (idx >= d_core, ex. 16384 pour la largeur 16k par défaut ;
-    dépend de SAE_ID/config.py) n'existent pas sur Neuronpedia → juge only."""
-    merged = dict(np_labels)
-    if os.path.exists(judge_labels_path):
-        with open(judge_labels_path, encoding="utf-8") as f:
-            merged.update({int(k): v for k, v in json.load(f).items()})
-    return merged

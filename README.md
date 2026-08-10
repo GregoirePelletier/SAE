@@ -408,5 +408,7 @@ résumé :
 - **Comparaison chiffrée avec SAELens** (règle n°2 de `Context.md`) : faite —
   désaccord numérique important entre notre FVE et les deux formules de variance
   expliquée de `sae_lens.evals`, causé par les activations massives de Gemma-3
-  (cf. `docs/references.md`). Reste non faite : comparaison avec `interp_embed`
-  (partielle) et "SAE Boost" (non identifié).
+  (cf. `docs/references.md`). `FrozenCoreResidualSAE`/`ExtendedSAE` s'est avéré
+  être une implémentation de "SAE Boost" (Koriagin et al., COLM 2025), identifiée
+  a posteriori (`RESULTS_TESTS.md` §18, `docs/references.md`). Comparaison avec
+  `interp_embed` : partielle.

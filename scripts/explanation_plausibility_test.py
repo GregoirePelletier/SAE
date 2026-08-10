@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
 
 from src.config import (
     LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, MODEL_ID, HF_TOKEN, DTYPE,
-    NEURONPEDIA_LABELS_PATH,
+    NEURONPEDIA_LABELS_PATH, CORPUS_SPLIT_SEED,
 )
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
@@ -78,7 +78,7 @@ def load_real_emails_and_acts():
     k_train_original = len(train_positions)
 
     train_texts, train_labels, _, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=SEED,
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
     )
     n_original_train = sum(1 for l in train_labels if l == "original")
     assert n_original_train == k_train_original, "Incohérence de correspondance"

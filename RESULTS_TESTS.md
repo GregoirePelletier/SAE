@@ -812,36 +812,40 @@ déjà en cache, aucune réextraction) sur les mêmes 150 features déjà jugée
   littéralement comme label pour 48/82 features originellement non-interprétables
   (bug de prompt, pas un résultat). Taux de récupération apparent avant correction :
   100% (biaisé par cet artefact).
-- **2e run** (prompt corrigé, placeholders non-ambigus) : plus aucun echo de
-  template. Sur les 82 features originellement non-interprétables (odd-one-out
-  échoué), tous obtiennent un label spécifique et distinct — inspection qualitative
-  d'un large échantillon : labels cohérents et directement pertinents pour le
-  domaine EDF (`Mise en service énergie`, `Numéro de contrat`, `Demande de
-  résiliation`, `Informations bancaires`, `Réclamation de facture`, `Sentiment
-  d'urgence`, `Nom de famille en fin`...), pas de contenu générique ou incohérent
-  détecté par échantillonnage manuel.
-- **Limite méthodologique confirmée** : le champ `confident` auto-rapporté par le
-  LLM (censé permettre de refuser un label quand aucune propriété cohérente n'existe)
-  est resté `true` pour 150/150 features dans les deux runs, y compris pour les
-  quelques cas encore incertains à l'inspection manuelle — l'auto-évaluation de
-  confiance du LLM n'est **pas un signal fiable en l'état** (cohérent avec le biais
-  de complaisance documenté pour les LLM en général, et avec le résultat de §13.1 sur
-  la fiabilité limitée du jugement LLM sur ce protocole).
+- **2e run** (prompt corrigé) : plus aucun echo de template. Les 82 features
+  originellement non-interprétables obtiennent chacune un label -- mais
+  **"chacune obtient un label" ne veut pas dire "82 labels distincts"**, et la
+  lecture initiale ("labels cohérents et directement pertinents, spécifiques et
+  distincts") était fausse. Vérification systématique (pas un échantillon à
+  l'œil) sur les 82 labels : **58 chaînes distinctes seulement -- 13 labels
+  dupliqués, 37/82 features (45%) partagent leur label avec au moins une
+  autre**. `"Demande d'action"` apparaît 7 fois, `"Expression de
+  mécontentement"` 6 fois, `"Demande de résiliation"`/`"Coordonnées de
+  contact"` 3 fois chacun. Deux paires (`16720`/`16949` : 8/9 exemples
+  positifs identiques ; `16720`/`16852` : 7/9) ont d'abord semblé être des
+  doublons de dictionnaire (*feature splitting*) -- **vérifié directement sur
+  les activations et infirmé** : corrélation ≈0 entre ces paires, pas de
+  quasi-redondance. Le vrai bug : `F16949` a une fréquence d'activation de
+  **0,0000%** sur les 41176 documents train (feature quasi-morte) mais reçoit
+  quand même un label spécifique et confiant avec des exemples positifs
+  identiques à ceux de `F16720` -- la sélection d'exemples de
+  `contrastive_labeling_test.py` ne reflète pas l'activation réelle de la
+  feature pour ce cas, pas encore diagnostiqué au niveau code.
+- `confident` auto-rapporté reste `true` pour 150/150 features dans les deux
+  runs, y compris les doublons ci-dessus -- signal inutilisable, cohérent
+  avec le biais de complaisance connu des LLM juges.
 
-**Conclusion et recommandation** : la génération de labels ne devrait **pas** être
-gatée par le test odd-one-out — celui-ci est plus fiable comme **score
-d'interprétabilité diagnostique indépendant** (avec vote majoritaire, §13.1) que
-comme filtre de labellisation. Recommandation retenue pour un futur refactor de
-`src/sae/judge.py` : (1) toujours générer un label par contraste direct (10 positifs
-+ 10 négatifs non marqués, instructions détaillées façon Appendix C), (2) évaluer
-l'interprétabilité séparément par vote majoritaire odd-one-out (déjà validé, §13.1),
-(3) ne **pas** se fier au champ `confident` auto-rapporté comme filtre de qualité —
-lui substituer soit une validation croisée (ex. ρ_interp, déjà implémenté), soit une
-revue humaine sur échantillon. **Ce changement n'a pas été appliqué au pipeline de
-production dans cette session** (implique de refaire tourner les 3 runs de
-validation §12 pour un nombre comparable avant de remplacer le chiffre 45,3% déjà
-publié dans le rapport) — documenté ici comme piste well-evidenced pour la suite du
-stage, pas comme correction déjà intégrée.
+**Verdict** : le "100% de récupération" n'est pas une preuve que le protocole
+contrastif retrouve du signal réel sur les features non-interprétées -- c'est
+en bonne partie l'artefact attendu d'un LLM complaisant qui produit toujours
+une étiquette plausible piochée dans un vocabulaire étroit de tropes email
+client (urgence, résiliation, coordonnées, mécontentement), sans gate pour
+refuser. Le protocole odd-one-out reste le seul chiffre publiable en l'état ;
+la labellisation contrastive n'est pas prête à le remplacer sans (1) un gate
+de similarité inter-labels/inter-exemples pour éliminer les doublons avant
+comptage, (2) une revue humaine sur échantillon plutôt que `confident`.
+**Aucun changement appliqué au pipeline de production** -- le chiffre 45,3%
+publié reste la référence.
 
 ---
 
@@ -2465,3 +2469,72 @@ pratique (§16.3 : seulement 3 paires "intéressantes" trouvées sur le corpus
 réel, dont 2/3 avec une feature non labellisée) -- un test de sensibilité au
 bruit (dégrader progressivement le taux de co-occurrence injecté) serait le
 prolongement naturel, non fait ici.
+
+## 41. Erreur juge vs erreur SAE : lecture indépendante sur 30 features non-interprétées
+
+Le résidu non-interprété (~55-59%) est attribué depuis §12 soit au protocole
+de jugement (bruit d'ordre, §13.1 : 31,3% de décisions instables), soit aux
+features elles-mêmes -- jamais tranché. Sur les 30 features (échantillon
+aléatoire des 82 rejetées, §15/39) je juge moi-même, à partir des seuls MOTS
+CIBLÉS (`<<...>>`) des exemples positifs -- pas du label LLM proposé, pour
+éviter l'ancrage -- si un déclencheur cohérent existe.
+
+**Verdict, sans détour** : sur 30, **8 erreurs juge nettes** (déclencheur
+cohérent et évident : "vous demande de/d'annuler/d'examiner..." pour
+`F16497` ; "J'attends/J'attendais" pour `F16549` ; nom de famille en fin de
+message pour le triplet `F16720`/`F16949`/`F16852`...), 3 bordeline (motif
+réel mais faible), et **19 erreurs SAE** -- les mots ciblés ne partagent
+AUCUN déclencheur cohérent (`F16662` : "le", "un", "ce", "du" -- de la
+ponctuation/déterminants comme "concept" ; `F17221` labellisée
+"mécontentement" mais un exemple cible "bénéficié", sentiment positif
+contradictoire ; `F16546` : cinq "l'..." génériques sur six). **Majorité
+nette (63%) côté SAE, pas côté juge.** Le résidu non-interprété n'est donc
+PAS principalement un artefact du protocole de jugement -- la plupart de ces
+features n'ont simplement pas de concept token-level cohérent à trouver,
+juge parfait ou non.
+
+**Limite** : échantillon de 30/82 (une passe complète sur les 82 donnerait un
+intervalle plus serré), et je voyais le label contrastif proposé en même
+temps que les exemples (risque d'ancrage) -- atténué par le fait que
+plusieurs verdicts CONTREDISENT frontalement le label proposé (`F17221`,
+`F16411`, `F17312`) plutôt que de le confirmer par défaut.
+
+## 42. Juge par échantillonnage (temp=0,7) : stable, contrairement au réordonnancement
+
+`scripts/judge_sampling_ensemble_test.py` : 5 générations par feature, MÊME
+ordre d'exemples à chaque fois (isole la variance de génération de la
+variance d'ordre déjà mesurée en §13.1). Taux single-shot 45,3%, vote
+majoritaire 52,7% (+7,4 points), **accord moyen 0,992** entre les 5 tirages.
+
+**Contraste net avec §13.1** (réordonnancement seul : 30,7% de décisions
+unanimes) : la variance de température, à ordre fixe, est quasi nulle --
+le juge est stable face à l'échantillonnage, instable face à l'ordre de
+présentation. Le bruit du protocole est donc spécifiquement un biais de
+POSITION, pas un artefact de décodage stochastique. Confirme et précise
+§13.1 plutôt que de le contredire.
+
+## 43. Séparation juge/extraction : gemma-3-4b-it juge 2x moins de features interprétables
+
+`scripts/judge_model_separation_test.py` : mêmes 150 features, mêmes
+exemples, juge alternatif gemma-3-4b-it (déjà en cache) au lieu de
+gemma-3-12b-it (le modèle habituellement rechargé deux fois -- extraction
+ET jugement, jamais un vrai second modèle jusqu'ici).
+
+| Juge | Taux interp. |
+|---|---|
+| gemma-3-12b-it (= modèle d'extraction) | 45,3% |
+| gemma-3-4b-it | **24,7%** |
+
+Accord 56,7% (85/150), 48 features basculent interprétable→non avec le
+petit juge contre seulement 17 dans l'autre sens -- **asymétrie nette, pas
+un simple bruit symétrique**. Ne tranche PAS, avec cette seule comparaison,
+entre deux explications concurrentes : (a) gemma-3-4b-it est simplement un
+moins bon juge (capacité de raisonnement inférieure sur une tâche
+odd-one-out à 10 items), ou (b) gemma-3-12b-it bénéficie d'un biais de
+auto-préférence en jugeant ses propres représentations internes. Un juge
+de capacité comparable mais famille différente (Llama, Mistral, Qwen)
+serait nécessaire pour isoler (b) -- non fait ici (aucun modèle de cette
+taille/famille en cache local). **Ce que cette comparaison établit
+fermement** : le chiffre 45,3% n'est PAS robuste au choix du juge -- il ne
+doit plus être cité comme une propriété intrinsèque du SAE sans préciser
+le juge utilisé.

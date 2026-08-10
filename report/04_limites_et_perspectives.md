@@ -307,12 +307,13 @@ d'implémentation plus substantiel que les corrections déjà apportées :
    `RESULTS_TESTS.md` §15.1-15.3) — validés sur les activations déjà en cache, pas
    encore par un run complet à l'échelle (aucun changement des activations
    elles-mêmes, seulement de la sélection de latents en aval).
-7. Adopter le protocole de labellisation contrastive directe (§15.4) comme
-   alternative/complément au gate odd-one-out — well-evidenced (labels qualitativement
-   plausibles récupérés sur 100% d'un échantillon de features rejetées) mais nécessite
-   (a) une validation croisée de la qualité des labels (le champ `confident`
-   auto-rapporté n'est pas fiable), (b) un run de validation à l'échelle comparable
-   aux 3 runs de `RESULTS_TESTS.md` §12 avant de remplacer le chiffre 45,3% publié.
+7. ~~Adopter le protocole de labellisation contrastive directe (§15.4)~~
+   **ÉCARTÉ** : validation croisée faite (comptage systématique des 82 labels,
+   pas un échantillon) -- 45% partagent leur label avec un autre. Le
+   "100% de récupération" est un artefact de complaisance du LLM juge, pas un
+   signal de qualité (un cas trouvé de feature quasi-morte, freq=0%, recevant
+   quand même un label confiant). Le protocole odd-one-out reste la seule
+   référence publiable.
 8. ~~Calculer `find_interesting_pairs` (corrélations)~~ **FAIT** (rétroactivement,
    sans réextraction, `RESULTS_TESTS.md` §16.3) — résultat peu concluant (3 paires
    seulement, 2/3 avec une feature non labellisée). Reste à faire : comparer à des
