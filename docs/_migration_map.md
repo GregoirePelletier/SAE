@@ -153,19 +153,23 @@ configuration de référence unique (Étape 3.3) : la largeur diffère entre le
 run principal (16k) et le run de mise à l'échelle (65k), ce n'est pas la même
 condition expérimentale.
 
-### B.5. Tailles de corpus — ⚠ INCOHÉRENT (mineur)
+### B.5. Tailles de corpus — RÉSOLU, pas une incohérence (correction de l'Étape 0)
 
-**Valeur canonique (observée directement à l'exécution, logs de job
-consultés le jour même) : 3 474 emails originaux**, 39 879 variantes
-augmentées acceptées, 41 176 documents train / 2 177 test.
+Deux dénominateurs distincts coexistent légitimement, tous deux confirmés par
+des logs d'exécution :
 
-**⚠ `docs/experiments.md` L16 cite « 3480 mails »** (au lieu de 3474) pour le
-calcul « 3480 mails × 13 axes = 45 240 » — cette multiplication ne tombe
-d'ailleurs juste ni avec 3474 ni avec 3480 exactement (13×3474=45162,
-13×3480=45240) : la valeur 45 240 générations elle-même est correcte et
-répétée de façon cohérente ailleurs (`report/04_*` L225), donc l'erreur est
-localisée au facteur « 3480 » de cette seule ligne, pas à 45 240. → à corriger
-en 3474 (Étape 3.4), sourcé sur l'exécution réelle plutôt que recalculé.
+- **3 480** : nombre total de mails dans `Mails.tsv` avant tout split
+  (confirmé par `logs/analysis/latent_retrieval_precision_eval_41484.log` :
+  « 3480 mails originaux » ; cohérent avec `docs/experiments.md` L16,
+  13×3480=45 240 générations exactement — la multiplication tombe juste).
+- **3 474** : sous-ensemble des mails originaux retenus côté train après le
+  split group-aware (`RESULTS_TESTS.md`, 41 176 documents train / 2 177 test
+  au total avec les variantes augmentées) — un dénominateur différent, pas une
+  erreur sur le premier.
+
+L'analyse initiale de l'Étape 0 avait proposé à tort de remplacer 3480 par
+3474 dans `docs/experiments.md` ; les deux chiffres sont corrects dans leur
+contexte respectif, aucune correction nécessaire.
 
 ### B.6. Longueur de `src/sae/saev5.py` — ⚠ INCOHÉRENT (obsolète, à supprimer plutôt que corriger)
 
