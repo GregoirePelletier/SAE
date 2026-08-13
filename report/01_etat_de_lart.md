@@ -25,20 +25,21 @@ Ce projet utilise deux variantes :
 
 ## GemmaScope-2
 
-GemmaScope ([google-deepmind/gemma-scope](https://github.com/google-deepmind/gemma-scope))
+GemmaScope ([huggingface.co/google/gemma-scope](https://huggingface.co/google/gemma-scope))
 est une collection de SAE préentraînés par DeepMind sur les modèles de la famille
 Gemma, à plusieurs couches et plusieurs largeurs (nombre de features). Le projet utilise
 GemmaScope-2 (variante pour Gemma-3) sur le residual stream, couche 24 pour le modèle
-12B. Le choix de la **largeur** du SAE (parmi 16k/65k/262k/1m disponibles) est un
+12B -- un choix de layer fondé uniquement sur la couverture Neuronpedia (ci-dessous),
+jamais sur un critère d'interprétabilité mesuré empiriquement avant le balayage du
+chapitre 3, §20-21, qui montre un layer alternatif (31) significativement meilleur.
+Le choix de la **largeur** du SAE (parmi 16k/65k/262k/1m disponibles) est un
 arbitrage documenté empiriquement dans ce projet, sur le critère de couverture des
 labels Neuronpedia (fraction des features disposant d'une explication en langage
 naturel) : **65k** offre la meilleure couverture pour ce modèle (87,8%, 57 551/65 536
 features labellisées), devant 16k (82,6%, 13 535/16 384), très loin devant 262k (5,3%,
 13 851/262 144, confirmant une première estimation manuelle ~10 000/262 144) ; la
 largeur 1m n'est pas hébergée par Neuronpedia pour ce modèle (aucune donnée
-disponible). 16k a été le choix initial du projet (comparé uniquement à 262k au
-démarrage du stage) ; 65k, non vérifié à l'origine, a été adopté après cette
-vérification systématique pour le run de mise à l'échelle final (chapitre 3).
+disponible). 65k est donc retenue pour le run de mise à l'échelle final (chapitre 3).
 
 ## Neuronpedia et l'auto-interprétation des features
 
@@ -62,9 +63,13 @@ Le projet reprend le protocole *odd-one-out* (utilisé notamment dans SAEBench) 
 3. Si succès : demander au même LLM de nommer/décrire le concept commun aux exemples
    positifs (le label final).
 4. Mesurer ρ_interp : corrélation de Spearman entre un score d'intensité attribué par
-   le LLM à chaque exemple et l'activation réelle mesurée — une feature bien détectée
-   par le juge devrait aussi bien *classer* les exemples par intensité, pas seulement
-   trouver l'intrus.
+   le LLM à chaque exemple et le rang de l'exemple dans l'ordre de sélection par
+   magnitude d'activation (implémentation actuelle, `src/sae/judge.py::odd_one_out_judge`
+   — un proxy de rang, pas la valeur d'activation continue réelle, et calculé sur les
+   mêmes `pos_examples` que ceux ayant servi à l'auto-interprétation, pas un échantillon
+   tenu à l'écart) — une feature bien détectée par le juge devrait aussi bien *classer*
+   les exemples par intensité, pas seulement trouver l'intrus. Écart avec le protocole
+   de Bills et al. (2023), qui utilise la magnitude réelle sur un échantillon distinct.
 
 C'est ce protocole, et son taux de succès mesuré sur ce projet, qui fait l'objet du
 chapitre expérimental principal (`03_experiences_et_resultats.md`).
@@ -83,15 +88,9 @@ l'autre :
   nettement inférieur et une granularité différente (phrase plutôt que token).
 
 Cette architecture à deux niveaux (SAE généraliste + extension spécifique au domaine)
-a longtemps été documentée dans ce projet comme un apport spécifique par rapport à un
-usage "out of the box" de GemmaScope ou de SAELens (`Context.md`, règle n°3 :
-"Conserver `FrozenCoreResidualSAE` — spécifique au projet"). Une relecture tardive de
-la littérature de référence a établi qu'il s'agit en réalité d'une implémentation de
-**SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs New Domain Tricks with
-Boosting*) — une des quatre méthodes explicitement listées dans le cadrage initial du
-stage (`Context.md`, objectif n°4), marquée "non fait" dans `docs/references.md`
-depuis le début : le projet l'avait en réalité déjà implémentée et validée à
-l'échelle, sans jamais l'identifier ni la citer comme telle. `FrozenCoreResidualSAE`/
+est une implémentation de **SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs
+New Domain Tricks with Boosting*) — une des méthodes de domain adaptation identifiées
+dans le cadrage initial du stage. `FrozenCoreResidualSAE`/
 `ExtendedSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
 résiduel entraîné sur l'erreur de reconstruction `e = x - x̂` d'un SAE core gelé,
 sommé à l'inférence) — y compris la taille de dictionnaire résiduel (1024), identique
@@ -140,4 +139,4 @@ tests de fidélité/plausibilité, chapitre 3 §8). Ce projet couvre bien les de
 familles de métriques, mais uniquement le versant *input-based* des méthodes
 d'explication : le steering (`steer_activations`/`steer_and_decode`,
 `src/sae/sae_shared.py`) existe déjà dans le dépôt mais n'a jamais été évalué comme
-méthode d'explication à part entière — piste documentée au chapitre 5.
+méthode d'explication à part entière — piste documentée au chapitre 4.

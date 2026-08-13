@@ -1,20 +1,9 @@
 """
-src/analysis/stats.py — Module de tests statistiques partagé (Phase 1.3 de
-l'audit méthodologique, plan approuvé 2026-08-07).
-
-Contexte : `RESULTS_TESTS.md` §30 (audit de méthodologie statistique du
-2026-07-29) a trouvé et corrigé rétroactivement 3 lacunes (McNemar sur
-données appariées au lieu d'un test à 2 proportions indépendantes,
-correction multi-test manquante malgré `fdr_bh` déjà disponible dans
-`cooccurrence.py`, tendance dose-réponse testée par Cochran-Armitage plutôt
-qu'une régression naïve) — mais chaque test a été recalculé ad-hoc, une
-seule fois, sans module réutilisable. §30.4 liste explicitement 3 lacunes
-non corrigées à cette passe : IC (Wilson) jamais rapportés systématiquement,
-taille d'effet standardisée (h de Cohen) jamais calculée, analyse de
-puissance jamais formalisée. Ce module consolide les tests déjà utilisés
-UNE fois + comble ces 3 lacunes, pour que tout nouveau script d'audit
-(Phase 1.2, 1.4, 2, 3) les utilise par défaut au lieu de réinventer un test
-par script.
+src/analysis/stats.py — Module de tests statistiques partagé (McNemar sur
+données appariées, correction multi-test Benjamini-Hochberg, tendance
+dose-réponse Cochran-Armitage, IC de Wilson, taille d'effet standardisée --
+h de Cohen, analyse de puissance) : point d'entrée unique pour tout script
+d'ablation, plutôt que de réinventer un test par script.
 
 Aucune réimplémentation de calcul statistique de bas niveau : tout délègue à
 `statsmodels`/`scipy` (déjà dépendances du projet, `pyproject.toml`). Ce
@@ -55,7 +44,7 @@ class ProportionResult:
 
 def proportion_with_ci(n_success: int, n_total: int, alpha: float = 0.05) -> ProportionResult:
     """Intervalle de Wilson (recommandé sur l'IC normal classique pour n modeste
-    ou taux proche de 0/1 — cf. lacune identifiée RESULTS_TESTS.md §30.4)."""
+    ou taux proche de 0/1)."""
     lo, hi = proportion_confint(n_success, n_total, alpha=alpha, method="wilson")
     return ProportionResult(rate=n_success / n_total, ci_low=lo, ci_high=hi, n=n_total)
 
@@ -96,9 +85,9 @@ class McNemarResult:
 
 def paired_mcnemar_test(b: int, c: int) -> McNemarResult:
     """McNemar sur table 2x2 appariée. `b`/`c` = les deux cellules discordantes
-    (A réussit/B échoue ; A échoue/B réussit) — PAS les totaux. Utiliser
+    (A réussit/B échoue ; A échoue/B réussit) — PAS les totaux. Utilise
     l'exact binomial si b+c < 25 (recommandation statsmodels), sinon
-    l'approximation chi². Convention adoptée dans RESULTS_TESTS.md §30.1-30.2."""
+    l'approximation chi²."""
     table = [[0, b], [c, 0]]
     exact = (b + c) < 25
     res = _mcnemar(table, exact=exact, correction=not exact)
@@ -117,10 +106,10 @@ def cochran_armitage_trend_test(
     successes: list[int], totals: list[int], scores: list[float] | None = None,
 ) -> CochranArmitageResult:
     """Test de tendance de Cochran-Armitage (k groupes ordonnés, ex. tailles de
-    modèle 1b/4b/12b, cf. RESULTS_TESTS.md §30.3). Pas d'implémentation directe
-    dans statsmodels/scipy — formule standard (Agresti, *Categorical Data
-    Analysis*, §3.4.2), vectorisée ici une seule fois plutôt que recopiée par
-    script. `scores` : espacement des groupes (défaut = linéaire 0..k-1,
+    modèle 1b/4b/12b). Pas d'implémentation directe dans statsmodels/scipy --
+    formule standard (Agresti, *Categorical Data Analysis*, §3.4.2), vectorisée
+    ici une seule fois plutôt que recopiée par script. `scores` : espacement
+    des groupes (défaut = linéaire 0..k-1,
     §30.3 a vérifié la robustesse au choix linéaire vs log)."""
     successes = np.asarray(successes, dtype=float)
     totals = np.asarray(totals, dtype=float)

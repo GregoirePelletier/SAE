@@ -3,15 +3,16 @@ scripts/intent_urgency_probe.py — Les codes latents du SAE prédisent-ils l'ur
 l'intention (labels faibles par regex, src/data/dataset.py::INTENT_KEYWORDS_FR) sur les
 MAILS ORIGINAUX (pas les variantes augmentées) ?
 
-Objectif du projet (Context.md) : "détection d'urgence", "détection d'intentions".
-Le probe de classification déjà ajouté (RESULTS_TESTS.md §12) mesure la séparabilité
-des AXES D'AUGMENTATION synthétiques (colère, urgence simulée, etc.) -- ce script
-mesure la même chose mais sur les intentions/urgence RÉELLES des mails originaux
-(détectées par regex sur le texte brut, indépendamment de toute perturbation
-artificielle), un test plus proche du cas d'usage final.
+Objectif du projet : "détection d'urgence", "détection d'intentions". Le
+probe de classification déjà ajouté (RESULTS_TESTS.md §12) mesure la
+séparabilité des AXES D'AUGMENTATION synthétiques (colère, urgence simulée,
+etc.) -- ce script mesure la même chose mais sur les intentions/urgence
+RÉELLES des mails originaux (détectées par regex sur le texte brut,
+indépendamment de toute perturbation artificielle), un test plus proche du
+cas d'usage final.
 
-Zéro calcul GPU : réutilise les activations déjà mises en cache par
-run_sae_v10_emails.slurm (job 39660) -- p1_all_doc_acts_ext_d1024.pt.
+Zéro calcul GPU : réutilise les activations déjà mises en cache
+(p1_all_doc_acts_ext_d1024.pt).
 
 Usage :
     PYTHONPATH=. .venv/bin/python scripts/intent_urgency_probe.py

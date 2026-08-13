@@ -1,15 +1,13 @@
 """
 scripts/compare_to_frozen_benchmark.py — comparaison à un baseline GELÉ,
-plutôt qu'au "run principal" courant (dérive silencieuse identifiée dans
-l'audit méthodologique du 2026-08-07 : chaque ablation de ce dépôt s'est
-jusqu'ici comparée à `results_v10_emails_main` en le relisant à chaque fois,
-sans jamais figer un point de référence versionné — si ce run venait à
-changer ou être remplacé, toutes les comparaisons passées perdraient leur
-sens sans qu'on s'en aperçoive).
+plutôt qu'au "run principal" courant relu depuis le disque à chaque
+comparaison : sans point de référence versionné, un changement ou
+remplacement du run principal ferait perdre son sens à toute comparaison
+passée, sans qu'on s'en aperçoive.
 
 `benchmarks/frozen_baseline_v10_emails_main.json` fige les métriques clés du
-run principal (SEED=42) au 2026-08-07. Ce script compare un NOUVEAU run à ce
-baseline figé (jamais au run principal courant relu depuis le disque) :
+run principal (SEED=42). Ce script compare un NOUVEAU run à ce baseline figé
+(jamais au run principal courant relu depuis le disque) :
   - `extension_interp_rate` : test à deux proportions + h de Cohen
     (`src/analysis/stats.py::two_proportion_test`) — la seule métrique dont
     on connaît le n, donc la seule testable statistiquement au sens strict.

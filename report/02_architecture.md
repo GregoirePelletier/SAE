@@ -52,9 +52,8 @@ stage (`scripts/run_augmentation.py`, Gemma-3-12B-it) à partir de ces mails
 "originaux". **Aucune des deux couches du corpus n'est donc constituée de données
 réelles au sens strict** — le terme "original" désigne uniquement leur statut de
 donnée d'entrée (antérieure et externe à ce stage) par rapport aux variantes
-augmentées qui en dérivent, pas leur authenticité. Ce rapport évite désormais le
-terme "réel"/"réels" pour ce corpus, employé par erreur dans les premières phases
-de rédaction (cf. chapitre 4 pour la correction et sa justification).
+augmentées qui en dérivent, pas leur authenticité. Ce rapport n'emploie donc
+jamais le terme "réel"/"réels" pour ce corpus.
 
 ### Corpus d'entraînement : principal vs secondaire
 
@@ -88,10 +87,9 @@ pour traiter des corpus de dizaines de milliers de documents sans épuiser la m�
 Gemma-3 présente des activations de norme très élevée ("massive activations",
 documentées dans la littérature) dans son residual stream. Une précision fp16 (plage
 dynamique jusqu'à ~65 504) overflow silencieusement sur ces valeurs, corrompant tout
-l'entraînement en aval sans erreur explicite (perte `NaN` dès la première epoch, un des
-bugs les plus coûteux à diagnostiquer de ce projet — cf. `Context.md`). Le projet
-utilise bf16 par défaut partout (même en local), qui partage la plage d'exposant de
-fp32.
+l'entraînement en aval sans erreur explicite (perte `NaN` dès la première epoch). Le
+projet utilise bf16 par défaut partout (même en local), qui partage la plage
+d'exposant de fp32.
 
 ## Infrastructure de calcul
 

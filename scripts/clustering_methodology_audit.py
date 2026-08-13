@@ -1,6 +1,5 @@
 """
-scripts/clustering_methodology_audit.py — Phase 1.1 de l'audit méthodologique
-(cf. plan approuvé 2026-08-07, section "Phase 1 — Audits sans coût de calcul").
+scripts/clustering_methodology_audit.py — Audit méthodologique du clustering.
 
 Contexte : la pratique actuelle fait tourner HDBSCAN sur la projection UMAP
 **2D** à deux endroits (`src/sae/saev5.py::analyze_with_umap`,
@@ -33,13 +32,11 @@ DONNÉES (aucune nouvelle extraction Gemma-3 — réutilise
       principe plus risquée pour lui qu'une réduction linéaire). PCA est
       déterministe (pas de stabilité inter-seed à mesurer, comme (b)).
 
-Pour chaque config, sweep de `min_cluster_size` en fraction du corpus (piste
-explicite de l'utilisateur : lier min_cluster_size au nombre minimal de
-documents par feature plutôt qu'à une heuristique fixe `N_DOCS // 15`) —
-PLUS la valeur littérale actuellement en production (`N_DOCS // 15`,
-`saev5.py:544`), ajoutée explicitement au sweep pour que la comparaison
-inclue le point EXACT utilisé aujourd'hui (absent des fractions rondes du
-sweep initial de ce script, corrigé ici).
+Pour chaque config, sweep de `min_cluster_size` en fraction du corpus (lier
+min_cluster_size au nombre minimal de documents par feature plutôt qu'à une
+heuristique fixe) — plus la valeur littérale actuellement en production
+(`N_DOCS // 15`, `saev5.py::analyze_with_umap`), ajoutée explicitement au
+sweep pour que la comparaison inclue le point exact utilisé en production.
 
 Métriques par run :
   - `relative_validity_` (DBCV, package `hdbscan` — pas exposé par
@@ -89,12 +86,12 @@ STABILITY_SEEDS = [0, 1, 2]
 def load_test_split(save_dir: str = SAVE_DIR) -> tuple[np.ndarray, list[str]]:
     """Reconstruit test_doc_acts/test_labels tels qu'utilisés par
     `run_llm_max_pool_pipeline` pour produire `umap_pipeline1_emails_coords.parquet`
-    (offset = n_train + n_filler dans `p1_all_doc_acts.pt`, cf. saev5.py:738,1139-1144).
-    Déterministe (CORPUS_SPLIT_SEED fixe, partagé entre tous les runs de ce projet
-    -- cf. RESULTS_TESTS.md §21) : aucune activation recalculée. `save_dir` :
-    n'importe quel run partageant le même CORPUS_SPLIT_SEED (ex. comparer deux
-    seeds d'entraînement SAE sur EXACTEMENT le même jeu de documents de test,
-    cf. `scripts/feature_group_reproducibility_test.py`)."""
+    (offset = n_train + n_filler dans `p1_all_doc_acts.pt`). Déterministe
+    (CORPUS_SPLIT_SEED fixe, partagé entre tous les runs de ce projet) :
+    aucune activation recalculée. `save_dir` : n'importe quel run partageant
+    le même CORPUS_SPLIT_SEED (ex. comparer deux seeds d'entraînement SAE sur
+    EXACTEMENT le même jeu de documents de test, cf.
+    `scripts/feature_group_reproducibility_test.py`)."""
     cache_dir = os.path.join(save_dir, "cache")
     all_doc_acts_path = os.path.join(cache_dir, "p1_all_doc_acts.pt")
     all_acts = torch.load(all_doc_acts_path, map_location="cpu", weights_only=True)

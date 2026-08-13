@@ -66,7 +66,7 @@ def main(mails_tsv: str, augmented_jsonl: str):
     sae = load_gemma_scope_sae(sae_dir, device=DEVICE)
     model_np_id = MODEL_ID.split("/")[-1] if "/" in MODEL_ID else MODEL_ID
     # Cache partagé canonique (src/config.py) : réutilisé par tous les scripts/runs,
-    # jamais dupliqué par run, jamais re-téléchargé une fois présent (cf. Context.md).
+    # jamais dupliqué par run, jamais re-téléchargé une fois présent.
     np_labels = fetch_neuronpedia_labels(
         model_id=model_np_id, layer=LAYER, width=_SAE_WIDTH,
         cache_path=NEURONPEDIA_LABELS_PATH,

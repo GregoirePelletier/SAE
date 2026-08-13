@@ -27,13 +27,11 @@ confidentialité à valider avec le maître de stage avant remise.
 
 ## Rapport assemblé (matériel de travail, pas un livrable final)
 
-**[`RAPPORT_DE_STAGE.md`](RAPPORT_DE_STAGE.md)** — concaténation brute des fichiers
-sources ci-dessous, plus proche d'un journal chronologique détaillé que d'un rapport
-académique final : utile comme matériel de travail/traçabilité, mais **ce n'est pas
-le document à remettre** (voir les deux `.tex` ci-dessus). Généré par
-concaténation/renumérotation des fichiers sources ci-dessous — ne pas éditer
-directement ; éditer la source puis régénérer (script d'assemblage inline, cf.
-historique git de ce fichier pour la commande exacte utilisée).
+**[`RAPPORT_DE_STAGE.md`](RAPPORT_DE_STAGE.md)** — concaténation des fichiers
+sources ci-dessous, utile comme matériel de travail/traçabilité, mais **ce
+n'est pas le document à remettre** (voir les deux `.tex` ci-dessus). Généré
+par `scripts/generate_report.py` — ne pas éditer directement ; éditer la
+source puis relancer le script (`.venv/bin/python scripts/generate_report.py`).
 
 ## Fichiers sources
 
@@ -47,9 +45,6 @@ historique git de ce fichier pour la commande exacte utilisée).
 - [`03_experiences_et_resultats.md`](03_experiences_et_resultats.md) — **cœur du
   rapport** : démarche expérimentale complète, du diagnostic initial à l'ablation de
   mise à l'échelle finale, avec tables de résultats et interprétation.
-- [`05_erreurs_et_corrections.md`](05_erreurs_et_corrections.md) — chapitre
-  consolidé de tous les bugs/erreurs de conception rencontrés et corrigés, par phase
-  chronologique du stage.
 - [`04_limites_et_perspectives.md`](04_limites_et_perspectives.md) — limites
   connues, comparaisons avec l'état de l'art, pistes pour la suite du stage.
 - [`06_conclusion.md`](06_conclusion.md) — bilan général, compétences acquises,
@@ -57,6 +52,13 @@ historique git de ce fichier pour la commande exacte utilisée).
 - [`07_bibliographie.md`](07_bibliographie.md) — références académiques, dépôts et
   outils réutilisés.
 
+## Déclaration d'usage de l'IA
+
+**[`DECLARATION_IA.md`](DECLARATION_IA.md)** — à lire avant tout dépôt final ou usage
+dans un dossier de candidature : catégorisation honnête de l'usage de l'IA sur
+l'ensemble du stage, y compris les cas où l'IA a conçu/exécuté une analyse (pas
+seulement rédigé du texte).
+
 Sources primaires (à citer/vérifier avant intégration finale) : `RESULTS_TESTS.md`
-(journal chronologique détaillé de toutes les expériences et jobs SLURM), `Context.md`
-(historique des décisions et bugs corrigés), `docs/` (référence technique stable).
+(journal d'expériences numéroté, résultats et protocoles), `docs/` (référence
+technique stable).

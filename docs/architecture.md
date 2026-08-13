@@ -1,15 +1,13 @@
 # Architecture
 
-Vue d'ensemble technique du dépôt. Pour l'historique des décisions et des bugs
-corrigés, voir `Context.md` ; pour le détail des expériences et résultats, voir
-`RESULTS_TESTS.md` et `docs/experiments.md`.
+Vue d'ensemble technique du dépôt. Pour le détail des expériences et
+résultats, voir `RESULTS_TESTS.md` et `docs/experiments.md`.
 
 ## Objectif du projet
 
 Analyse interprétable de mails clients EDF via Sparse Autoencoders (SAE) : indexation,
 recherche par concepts, clustering interprétable, détection d'urgence/d'intention,
-comparaison de corpus, visualisation des concepts activés, explication des décisions
-(cf. `Context.md`, section "Projet").
+comparaison de corpus, visualisation des concepts activés, explication des décisions.
 
 ## Deux pipelines
 

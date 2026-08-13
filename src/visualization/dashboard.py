@@ -32,7 +32,10 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def discover_result_dirs() -> list[str]:
     dirs = sorted(glob.glob(os.path.join(REPO_ROOT, "results_*")))
-    return [os.path.relpath(d, REPO_ROOT) for d in dirs if os.path.isdir(d)]
+    # results_diagnostics/ n'est pas un run de pipeline (sorties agrégées de
+    # scripts/generate_diagnostic_plots.py) -- exclu du sélecteur de run.
+    return [os.path.relpath(d, REPO_ROOT) for d in dirs
+            if os.path.isdir(d) and os.path.basename(d) != "results_diagnostics"]
 
 
 def load_json(path: str) -> dict | None:
@@ -256,7 +259,7 @@ def page_email_comparison() -> None:
                 # MOYENNE (5291/45240), mais très hétérogène par classe : 59,6%
                 # (orthographe__degrade_fort) et 47,2% (emotion__impatience) contre
                 # ~4% pour les 11 autres classes, presque toujours par length_ratio
-                # trop bas -- cf. src/data/augmentation.py, RESULTS_TESTS.md §38.
+                # trop bas -- cf. src/data/augmentation.py.
                 st.caption(f"Rejetée au contrôle qualité : `{row['rejected']}`")
             else:
                 st.text_area(row["aug_id"], row["text"], height=300, disabled=True,
@@ -378,6 +381,35 @@ def page_explanation_quality(run_dir: str) -> None:
             st.info("explanation_plausibility_results.json absent (lancer scripts/explanation_plausibility_test.py, GPU).")
 
 
+def page_diagnostics(run_dir: str) -> None:
+    st.header("Diagnostics d'entraînement")
+    st.caption("Figures produites par scripts/generate_diagnostic_plots.py (lecture d'artefacts "
+               "déjà sur disque, aucun rerun) — cf. docs/sae_diagnostics_playbook.md pour la "
+               "checklist de lecture (convergence, fidélité, capacité, interprétabilité, "
+               "significativité, indépendance du juge).")
+
+    run_plots_dir = os.path.join(REPO_ROOT, run_dir, "plots")
+    run_plot_files = sorted(glob.glob(os.path.join(run_plots_dir, "*.html")))
+    st.subheader(f"Run courant — {run_dir}")
+    if run_plot_files:
+        chosen = st.selectbox("Figure", [os.path.basename(f) for f in run_plot_files], key="diag_run_plot")
+        with open(os.path.join(run_plots_dir, chosen), encoding="utf-8") as f:
+            st.components.v1.html(f.read(), height=700, scrolling=True)
+    else:
+        st.info("Pas de figure pour ce run (checkpoint/historique absent, ou script pas encore "
+                "lancé). Génère-les avec :\n\n`python scripts/generate_diagnostic_plots.py`")
+
+    st.subheader("Balayages d'hyperparamètres (toutes runs confondues)")
+    sweep_dir = os.path.join(REPO_ROOT, "results_diagnostics", "plots")
+    sweep_files = sorted(glob.glob(os.path.join(sweep_dir, "*.html")))
+    if sweep_files:
+        chosen_sweep = st.selectbox("Balayage", [os.path.basename(f) for f in sweep_files], key="diag_sweep_plot")
+        with open(os.path.join(sweep_dir, chosen_sweep), encoding="utf-8") as f:
+            st.components.v1.html(f.read(), height=700, scrolling=True)
+    else:
+        st.info("Pas de figure de balayage. Génère-les avec `python scripts/generate_diagnostic_plots.py`.")
+
+
 def page_consolidated_report(run_dir: str) -> None:
     st.header("Rapport consolidé (toutes les méthodes, conditions fixées)")
     st.caption("cf. docs/evaluation_protocol.md — scripts/consolidate_evaluation_report.py")
@@ -408,9 +440,9 @@ def main() -> None:
 
     page = st.sidebar.radio(
         "Page",
-        ["Vue d'ensemble", "UMAP", "Features", "Diffing", "Recherche", "Urgence/Robustesse",
-         "Explication (fidélité/plausibilité)", "Rapport consolidé",
-         "Comparaison mail original / augmenté"],
+        ["Vue d'ensemble", "UMAP", "Features", "Diagnostics d'entraînement", "Diffing",
+         "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
+         "Rapport consolidé", "Comparaison mail original / augmenté"],
     )
 
     if page == "Vue d'ensemble":
@@ -419,6 +451,8 @@ def main() -> None:
         page_umap(run_dir)
     elif page == "Features":
         page_features(run_dir)
+    elif page == "Diagnostics d'entraînement":
+        page_diagnostics(run_dir)
     elif page == "Explication (fidélité/plausibilité)":
         page_explanation_quality(run_dir)
     elif page == "Rapport consolidé":

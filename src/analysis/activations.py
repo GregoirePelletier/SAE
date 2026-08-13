@@ -8,11 +8,8 @@ Sun et al. 2024). Le BOS (et souvent le 1er token de contenu) porte des
 activations de norme 10–100× supérieure dans le résidu. Comme Pipeline 1
 max-poole en espace SAE (doc_vec[f] = max_t enc(x_t)[f]), tout feature
 partiellement aligné avec la direction "sink" est saturé par la position 0.
-Ce n'est PAS un bug de slicing — mais l'ancien code aggravait l'artefact :
-(1) BOS non exclu du pool, (2) tokens de padding inclus quand
-attention_mask n'était pas propagé jusqu'au pooling.
 
-Correctif (3 couches de défense, conformes à la pratique GDM/GemmaScope) :
+Défense (3 couches, conformes à la pratique GDM/GemmaScope) :
   1. Masque des special tokens (BOS/EOS/PAD) exclus de tout pooling.
   2. Option skip_first_content_token (le 1er token réel absorbe aussi du sink).
   3. Garde-fou norme : z-score des ||x_t||₂ intra-doc, exclusion > sigma_clip.
@@ -143,11 +140,10 @@ def maxpool_sae_docs(
     """doc_vec[f] = max_t enc(x_t)[f] — pooling APRÈS encodage SAE, sur tokens valides uniquement.
 
     Scatter direct dans l'accumulateur persistant (in-place), au lieu d'appeler
-    scatter_maxpool (qui réalloue et parcourt un tenseur [n_docs, d_sae] COMPLET) à
-    chaque chunk/batch : sur un corpus de ~43k docs (run complet), ce coût O(n_docs·d)
-    payé à chaque batch (au lieu de O(batch·d)) faisait exploser le temps total
-    (constaté : job 39246, 0 progrès en 4h sur un corpus 10x plus gros qu'un run de
-    validation qui prenait ~11 min — comportement quadratique en pratique).
+    scatter_maxpool (qui réalloue et parcourt un tenseur [n_docs, d_sae] COMPLET)
+    à chaque chunk/batch : sur un corpus de dizaines de milliers de documents, ce
+    coût O(n_docs·d) payé à chaque batch (au lieu de O(batch·d)) devient
+    quadratique en pratique et fait exploser le temps total.
     """
     doc_acts = torch.full((n_docs, d_sae), float("-inf"))
     for ab in act_stream:

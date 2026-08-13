@@ -145,10 +145,9 @@ def cluster_in_feature_space(
     et non sur embeddings bruts. Retourne (labels, UMAP 2D pour visu).
 
     HDBSCAN tourne sur un embedding UMAP 10D dédié, PAS sur `emb2d` (réservé
-    à la visualisation) : audit méthodologique RESULTS_TESTS.md §33
-    (2026-08-07) — UMAP-10D domine UMAP-2D sur la stabilité inter-seed du
-    clustering à DBCV quasi identique ; PCA et l'espace cosine brut, testés
-    en alternative, sont nettement dominés par UMAP sur ce corpus.
+    à la visualisation) : UMAP-10D domine UMAP-2D sur la stabilité inter-seed
+    du clustering à DBCV quasi identique ; PCA et l'espace cosine brut sont
+    nettement dominés par UMAP sur ce corpus.
     """
     import umap
     import hdbscan

@@ -151,6 +151,49 @@ def prepare_domain_dataset(
     return texts[:n_target]
 
 
+def sample_fineweb2_chunks(
+    n_target: int,
+    chunk_length: int = 1024,
+    max_chunks: int = 20,
+    local_dataset_path: str = None,
+) -> List[str]:
+    """Filler de volume brut pour l'ablation SAE Boost (arXiv:2507.12990) :
+    sous-échantillonnage de FineWeb2-fr SANS filtre thématique -- le filler ne
+    sert qu'à isoler l'effet du VOLUME de tokens sur le SAE résiduel (jamais
+    ajouté à train_texts, uniquement au réservoir résiduel), la pertinence
+    thématique n'y apporte donc rien.
+    """
+    texts = []
+    if not local_dataset_path or not os.path.exists(local_dataset_path):
+        return texts
+    seen_chunk_hashes = set()
+    try:
+        ds = load_dataset(
+            "parquet", data_files={"train": local_dataset_path}, split="train", streaming=False
+        )
+        for ex in ds:
+            text = ex.get("text", "")
+            if not text:
+                continue
+            txt = text.replace("\n", " ").strip()
+            chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
+            for c in chunks:
+                if len(c) <= 100:
+                    continue
+                h = _chunk_hash(c)
+                if h in seen_chunk_hashes:
+                    continue
+                seen_chunk_hashes.add(h)
+                texts.append(c)
+            if len(texts) >= n_target:
+                break
+    except Exception as e:
+        print(f"    [-] Échec FineWeb-2 (filler) : {e}")
+    texts = [re.sub(r"<[^>]+>", "", t).strip() for t in texts]
+    print(f"  [filler] {min(len(texts), n_target)} chunks (sans filtre thématique).")
+    return texts[:n_target]
+
+
 def split_into_phrases(
     texts: List[str],
     phrase_split: str = r"\.\s+|\n\n",
@@ -176,10 +219,9 @@ def build_email_train_test_corpus(
     seed: int = 42,
 ) -> Tuple[List[str], List[str], List[str], List[str]]:
     """
-    Corpus principal d'entraînement du SAE : mails originaux + variantes augmentées
-    acceptées (cf. décision utilisateur -- emails+augmentés doivent dominer le
-    train, au lieu du corpus générique energy/sports/support historique qui
-    n'incluait jamais d'email, cf. RESULTS_TESTS.md/Context.md).
+    Corpus principal d'entraînement du SAE : mails originaux + variantes
+    augmentées acceptées. Le corpus générique energy/sports/support ne sert
+    plus qu'au diffing post-hoc, jamais à l'entraînement.
 
     Split GROUP-AWARE par mail d'origine (parent_id) : un mail original et TOUTES ses
     variantes augmentées tombent ensemble du même côté train/test. Sans ça, une

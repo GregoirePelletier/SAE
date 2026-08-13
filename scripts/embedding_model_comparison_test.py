@@ -2,11 +2,10 @@
 scripts/embedding_model_comparison_test.py — Diagnostic ponctuel : F2LLM-v2-80M
 donne de bons résultats pour select_latents_by_similarity sur la requête "urgence
 réclamation client" mais de mauvais résultats sur "facturation résiliation panne"
-(labels sans rapport, cf. session de correction du matching par sous-chaîne dans
-saev5.py). Teste si bge-m3 (multilingue, déjà présent dans models/, potentiellement
-mieux adapté au matching cross-lingue court FR<->labels FR/EN) fait mieux, sur GPU
-pour éviter la lenteur CPU observée avec F2LLM (~11-20 min par requête sur 13,7k
-labels).
+(labels sans rapport). Teste si bge-m3 (multilingue, déjà présent dans models/,
+potentiellement mieux adapté au matching cross-lingue court FR<->labels FR/EN)
+fait mieux, sur GPU pour éviter la lenteur CPU observée avec F2LLM (~11-20 min
+par requête sur 13,7k labels).
 
 Usage : PYTHONPATH=. .venv/bin/python scripts/embedding_model_comparison_test.py
 """

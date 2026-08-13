@@ -1,12 +1,11 @@
 """
-scripts/dictionary_width_quality_audit.py — Phase 1.2 de l'audit méthodologique
-(cf. plan approuvé 2026-08-07).
+scripts/dictionary_width_quality_audit.py — Audit de la qualité monosémantique
+des labels Neuronpedia par largeur de dictionnaire.
 
-Contexte : `RESULTS_TESTS.md:1017-1032` (`config.py:74-91`) ne compare 16k vs
-65k que sur la COUVERTURE de labels Neuronpedia (82,6% vs 87,8%) — jamais sur
-leur qualité monosémantique. Hypothèse explicite de l'utilisateur : le
-dictionnaire 65k a plus de labels au total, mais une partie n'est pas
-monosémantique (ex. mélange de concepts sans rapport dans un même label,
+Contexte : la couverture de labels Neuronpedia (82,6% pour 16k vs 87,8% pour
+65k, `src/config.py`) ne dit rien sur leur qualité monosémantique. Hypothèse :
+le dictionnaire 65k a plus de labels au total, mais une partie n'est pas
+monosémantique (mélange de concepts sans rapport dans un même label,
 contrairement à 16k). Vérifié qualitativement avant d'écrire ce script
 (échantillon de labels contenant une virgule) : 65k contient des labels
 clairement incohérents ("FCC ID, agricultural professionals, topological
@@ -28,7 +27,7 @@ aucun GPU, aucune extraction) :
      les parties sont peu similaires entre elles (< SIM_THRESHOLD) est
      compté "incohérent" — proxy quantitatif de polysémanticité.
 
-Tests utilisés (`src.analysis.stats`, Phase 1.3) : test à deux proportions
+Tests utilisés (`src.analysis.stats`) : test à deux proportions
 indépendantes + h de Cohen pour `frac_multi_part` (population entière → IC
 très étroits, à interpréter avec prudence — cf. commentaire dans le rapport)
 et pour le taux d'incohérence échantillonné ; Mann-Whitney U (scipy, pas de

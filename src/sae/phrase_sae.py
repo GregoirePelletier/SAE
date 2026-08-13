@@ -1,16 +1,13 @@
 """
-phrase_sae.py — v9. PhraseLevelSAE avec BatchTopKEncoder (seuil θ) + AuxK.
+phrase_sae.py — PhraseLevelSAE avec BatchTopKEncoder (seuil θ appris,
+embarqué dans le state_dict) + AuxK (Gao et al. 2024) : loss auxiliaire de
+reconstruction du résidu e = x − x̂ par les k_aux features mortes de plus
+forte pré-activation.
 
-Changements vs v8 (API et clés de sortie préservées) :
-  - encode() passe par BatchTopKEncoder (état θ dans le state_dict → les
-    checkpoints v9 embarquent le seuil ; anciens checkpoints chargés en
-    strict=False avec fallback TopK per-sample).
-  - AuxK (Gao et al. 2024) : loss auxiliaire de reconstruction du résidu
-    e = x − x̂ par les k_aux features mortes de plus forte pré-activation.
-        L = NMSE + α · NMSE_aux,  α = 1/32,  k_aux = 2k (borné à d_sae/2)
-    Une feature est "morte" si inactive depuis dead_steps_threshold steps
-    (buffer steps_since_active, persistant).
-  - Sorties ajoutées : "aux_loss" (les clés existantes sont inchangées).
+    L = NMSE + α · NMSE_aux,  α = 1/32,  k_aux = 2k (borné à d_sae/2)
+
+Une feature est "morte" si inactive depuis dead_steps_threshold steps
+(buffer steps_since_active, persistant).
 """
 import gc
 import json
@@ -200,8 +197,8 @@ def load_or_train_sae(d_in: int, d_sae: int, k: int, embeddings: torch.Tensor,
         ckpt = torch.load(save_path, map_location=DEFAULT_DEVICE)
         missing, _ = sae.load_state_dict(ckpt["state_dict"], strict=False)
         if missing:
-            print(f"  [Phrase] Checkpoint v8 (sans θ/AuxK) : fallback TopK per-sample en eval. "
-                  f"Clés manquantes : {missing}")
+            print(f"  [Phrase] Checkpoint sans certains buffers (θ/AuxK) : fallback "
+                  f"TopK per-sample en eval. Clés manquantes : {missing}")
         return sae, ckpt.get("history", {})
 
     print(f"  [Phrase] Entraînement du Phrase-Level SAE sur {embeddings.shape[0]} phrases...")

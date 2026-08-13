@@ -116,8 +116,7 @@ scaling effect.
 - Chapitre 1 — État de l'art
 - Chapitre 2 — Architecture et implémentation
 - Chapitre 3 — Démarche expérimentale et résultats
-- Chapitre 4 — Inspection des erreurs et corrections
-- Chapitre 5 — Limites et perspectives
+- Chapitre 4 — Limites et perspectives
 - Conclusion générale
 - Bibliographie
 

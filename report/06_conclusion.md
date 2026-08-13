@@ -3,16 +3,18 @@
 ## Bilan par rapport aux objectifs initiaux
 
 Le stage visait à rendre fonctionnelle et exploitable une plateforme d'analyse
-interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Au terme des
-quatre phases décrites dans ce rapport, les deux pipelines (Gemma-3 + GemmaScope
-étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus original, avec des
-résultats quantifiés et reproductibles sur l'ensemble des capacités visées par
-l'énoncé initial :
+interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Les deux
+pipelines (Gemma-3 + GemmaScope étendu ; F2LLM + SAE dédié) fonctionnent de bout
+en bout sur le corpus original, avec des résultats quantifiés et reproductibles
+sur l'ensemble des capacités visées par l'énoncé initial :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes
-  synthétiques (93,5%/79,3% selon le pipeline) et gain net mesuré sur des labels
-  faibles indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
-  +42,6 points sur la réclamation par rapport à la baseline naïve).
+  synthétiques (93,5%/79,3% selon le pipeline — à lire avec la réserve de
+  `03_experiences_et_resultats.md` §5.4, ~93% de ce chiffre étant reproductible par un
+  baseline TF-IDF sans sémantique) et gain net mesuré sur des labels faibles
+  indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
+  +42,6 points sur la réclamation par rapport à la baseline naïve — preuve la plus
+  fiable des deux, non affectée par cette réserve).
 - **Explication des décisions** : deux tests indépendants (fidélité par ablation,
   plausibilité par choix forcé) confirment que les features désignées comme
   explication d'un document portent réellement la décision, et sont perçues comme
@@ -25,12 +27,16 @@ l'énoncé initial :
   formules de variance expliquée à magnitude d'activation hétérogène) qui ont une
   valeur méthodologique au-delà du seul projet.
 
-Le résultat le plus significatif du stage reste le diagnostic du chapitre 3 : le taux
+Le résultat le plus central du stage reste le diagnostic du chapitre 3 : le taux
 d'auto-interprétation des features, initialement très faible (20%), n'était pas
 limité par le volume d'entraînement mais par une erreur de conception du corpus
 d'entraînement de l'extension — un exemple concret de la valeur d'une démarche
 d'ablation contrôlée plutôt que d'une intuition non testée ("il faut probablement plus
-de données").
+de données"). À distinguer de l'effet le plus fort mesuré en valeur absolue
+(§18, dose-réponse de l'échelle du modèle, p<10⁻⁹) : les deux résultats
+répondent à des questions différentes — l'un explique pourquoi le pipeline
+fonctionne sur ce corpus, l'autre identifie le levier le plus déterminant
+parmi tous ceux testés.
 
 ## Compétences mobilisées et acquises
 
@@ -46,7 +52,7 @@ justifications).
 
 ## Perspectives
 
-Le chapitre 5 détaille les limites et pistes de poursuite technique. Deux directions
+Le chapitre 4 détaille les limites et pistes de poursuite technique. Deux directions
 plus larges se dégagent pour la suite :
 
 1. **Comparaison inter-modèles et inter-conditions**, envisagée dès le cadrage de

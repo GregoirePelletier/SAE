@@ -13,11 +13,11 @@ ma décision).
 | Paramètre | Valeur | Justification |
 |---|---|---|
 | LLM (extraction + juge) | `google/gemma-3-12b-it` | Cible de production du projet, seul LLM utilisé dans toutes les expériences validées à ce jour. |
-| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (`Context.md`). |
+| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (`report/01_etat_de_lart.md`). |
 | Extension SAE (Pipeline 1) | `D_EXTRA=1024`, `K_EXTRA=32` | Valeurs par défaut, non ré-optimisées dans cette passe (piste de suite, `report/04`). |
 | Budget de tokens extension | `N_TOKENS_EXTRA_TRAIN=500000` | Validé non-limitant par ablation (100k/500k/2M statistiquement indistinguables, `RESULTS_TESTS.md` §12). |
 | Corpus principal (entraînement) | Emails originaux + augmentés (`local_data/emails/`), corpus generic energy/sports/support réduit à un rôle secondaire post-hoc | `RESULTS_TESTS.md` §12 : c'est le facteur qui a le plus d'effet sur l'interprétabilité. |
-| Embedding Pipeline 2 (backbone `PhraseLevelSAE`) | `F2LLM-v2-330M` (au lieu de -80M) | "Assez grand" -- décision de cette session, cf. §"Comparaison des embeddings". |
+| Embedding Pipeline 2 (backbone `PhraseLevelSAE`) | `F2LLM-v2-330M` (au lieu de -80M) | Cf. §"Comparaison des embeddings" ci-dessous. |
 | Embedding pour similarité de labels (retrieval/clustering/corrélations) | `bge-m3` | Seul modèle validé fiable sur les deux requêtes de test (`RESULTS_TESTS.md` §15.2) -- F2LLM y donnait des résultats sans rapport sur une des deux. |
 | Nombre de features jugées (juge LLM) | `N_FEATURES_TO_LABEL=150` | Puissance statistique correcte (IC95% ≈ ±8 points), cf. §12. |
 | Graine aléatoire | `SEED=42` partout | Reproductibilité. |

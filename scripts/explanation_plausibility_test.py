@@ -94,11 +94,11 @@ def load_real_emails_and_acts():
 
 def load_label_map():
     # Chemin dérivé de SAE_ID (src/config.py), PAS figé sur 16k : un run utilisant
-    # une autre largeur de SAE core (ex. 65k, cf. results_v12_scaled_65k) chargerait
-    # sinon des labels d'un dictionnaire de features totalement différent, associant
-    # silencieusement un label "réel" à la mauvaise feature pour tout index < 16384
-    # (bug trouvé lors de l'analyse du run v12 : chute du taux de plausibilité
-    # 71,7%->56,7% due à ce désalignement, pas à une régression du pipeline).
+    # une autre largeur de SAE core chargerait sinon des labels d'un dictionnaire
+    # de features totalement différent, associant silencieusement un label à la
+    # mauvaise feature pour tout index < 16384 -- une désalignement qui se
+    # manifeste comme une chute du taux de plausibilité sans rapport avec une
+    # régression réelle du pipeline.
     with open(NEURONPEDIA_LABELS_PATH) as f:
         labels_core = {int(k): v for k, v in json.load(f).items()}
     judge_path = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")

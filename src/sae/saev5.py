@@ -1,16 +1,10 @@
 """
-saev5.py — Dual Pipeline SAE (Gemma-3 + F2LLM Embedding-SAE) — v8
-===================================================================
-Corrections apportées en v8 :
-  FIX 1 — Normalisation RMS supprimée : GemmaScope s'applique sur le residual stream brut.
-  FIX 2 — Dette de design résolue : stockage des activations réelles (raw_acts) pour le résidu exact.
-  FIX 3 — Sélection des features par fréquence d'activation pour éviter les biais.
-  FIX 4 — rho_sae et FVE calculés au niveau Token avec des activations réelles.
-  FIX 5 — W_enc dispatch consolidé pour tous les types d'encodeurs.
-  FIX 6 — NameError sur test_token_data résolue.
-  FIX 7 — load_pretrained_sae : Résolution du triplet de retour et unification des routes de chargement locales.
-  FIX 8 — load_or_train_extended_sae : Résolution de la signature erronée d'import pour Pipeline 1.
-  FIX 9 — local_gemma_judge : Définition de la fonction de labellisation locale manquante pour le Pipeline 2.
+saev5.py — Pipeline double SAE (Gemma-3 + F2LLM Embedding-SAE).
+
+Pipeline 1 : Gemma-3 → SAE GemmaScope-2 préentraîné (core) + extension
+résiduelle entraînée sur le domaine (`FrozenCoreResidualSAE`).
+Pipeline 2 : F2LLM → `PhraseLevelSAE` entraîné from-scratch sur des
+embeddings de phrase.
 """
 
 import os
@@ -124,11 +118,17 @@ from sae_lens import SAE
 # fp16 par défaut en local (GPU Turing 6 Go sans bf16 natif) ; bf16 dispo via DTYPE=bf16 (cluster).
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 
+
+def open_mmap_reservoir(path, n_rows, d_in, dtype):
+    """Tenseur 2D adossé à un fichier disque (mmap), jamais matérialisé en RAM
+    anonyme — pages lisibles/inscriptibles par bloc, récupérables par l'OS
+    sous pression mémoire, contrairement à une allocation anonyme."""
+    return torch.from_file(path, shared=True, size=n_rows * d_in, dtype=dtype).view(n_rows, d_in)
+
 from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
     ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
-    UTILITY_COMPLAINT_KEYWORDS,
-    prepare_domain_dataset, split_into_phrases,
+    prepare_domain_dataset, sample_fineweb2_chunks, split_into_phrases,
     compute_metrics, compute_rho_sae,
     downstream_classification,
     steer_activations, steer_and_decode,
@@ -138,7 +138,7 @@ from sae_shared import (
     encode_documents_with_phrase_sae, load_or_train_sae,
     compute_sae_metrics,
     pool_embeddings_by_document,
-    load_or_train_extended_sae  # Import de la fonction d'apprentissage corrigée
+    load_or_train_extended_sae,
 )
 
 from src.sae.judge import (
@@ -440,12 +440,10 @@ def property_based_retrieval(
     top_k_latents: int = 100,
 ) -> list:
     """cf. interp_embed §4.4 : (1) latents candidats par similarité d'embedding
-    label<->requête (select_latents_by_similarity, PAS un matching de sous-chaîne),
+    label<->requête (select_latents_by_similarity, pas un matching de sous-chaîne),
     (2) score documentaire = somme pondérée à température des activations de ces
-    latents, décroissante avec le RANG DE PERTINENCE réel (pas l'ordre du dict --
-    ancien bug : `rank` indexait l'ordre d'itération de `matched_latents`, sans
-    rapport avec la pertinence à la requête, rendant la pondération "température"
-    arbitraire)."""
+    latents, décroissante avec le rang de pertinence réel de `matched_latents`
+    (pas l'ordre d'itération du dict)."""
     print(f"\n  [Task 4] Recherche implicite : '{query_string}'")
     matched_latents = select_latents_by_similarity(query_string, feature_labels, top_k=top_k_latents)
     if not matched_latents:
@@ -495,8 +493,7 @@ def analyze_with_umap(
     if n_active == 0:
         # Corpus trop petit (smoke test) ou features trop sparses pour ce sous-ensemble :
         # aucune activation positive -> UMAP ne peut pas fitter (0 colonnes). Dégrade
-        # proprement plutôt que de crasher (cf. Context.md règle "gestion des exceptions
-        # propre" — attendu notamment sur des runs locaux à corpus réduit).
+        # proprement plutôt que de crasher.
         print("  [WARN] Aucune feature active — UMAP/HDBSCAN sautés pour ce sous-ensemble.")
         del sae_np, sae_active
         return {
@@ -533,13 +530,12 @@ def analyze_with_umap(
 
     coords = _fit_umap(2)  # réservé à la visualisation Plotly (x/y)
     # HDBSCAN tourne sur un embedding UMAP 10D dédié, PAS sur les coordonnées 2D de
-    # visualisation : audit méthodologique RESULTS_TESTS.md §33 (2026-08-07) — UMAP-10D
-    # domine UMAP-2D sur la stabilité inter-seed du clustering (ARI 1,0 vs 0,64-1,0 à
-    # DBCV quasi identique, 0,851 vs 0,829) ; PCA et l'espace cosine brut, testés en
-    # alternative, sont nettement dominés par UMAP (DBCV <= 0,275). Aucune config ne
-    # récupère de structure sémantique alignée sur des labels connus (AMI ~0,01-0,03
-    # partout) — ce changement améliore la reproductibilité des clusters affichés d'un
-    # run à l'autre, pas leur pertinence sémantique.
+    # visualisation : UMAP-10D domine UMAP-2D sur la stabilité inter-seed du
+    # clustering (ARI 1,0 vs 0,64-1,0 à DBCV quasi identique, 0,851 vs 0,829) ;
+    # PCA et l'espace cosine brut sont nettement dominés par UMAP (DBCV <= 0,275).
+    # Aucune config ne récupère de structure sémantique alignée sur des labels
+    # connus (AMI ~0,01-0,03 partout) — ce choix améliore la reproductibilité des
+    # clusters affichés d'un run à l'autre, pas leur pertinence sémantique.
     cluster_embedding = coords if N_DOCS <= 12 else _fit_umap(min(10, N_DOCS - 2))
 
     # Libération immédiate des copies denses (N_DOCS × n_active en fp32, potentiellement
@@ -724,17 +720,14 @@ def run_llm_max_pool_pipeline(
     secondaire (energy/sports/support), encodé post-hoc UNIQUEMENT pour la
     démonstration de diffing cross-domaine -- jamais utilisé pour entraîner.
     volume_filler_texts (optionnel, défaut None -> comportement 100% inchangé) :
-    corpus supplémentaire (ex. FineWeb-2 FR filtré par domaine à grande échelle,
-    cf. RESULTS_TESTS.md §23) ajouté UNIQUEMENT au réservoir de tokens résiduels
-    (SAE Boost, arXiv:2507.12990, §18 -- teste si 100-200M tokens changent la
-    conclusion "le volume ne change rien" de l'ablation §5/§12, testée jusqu'à 2M
-    seulement). Volontairement PAS ajouté à `train_texts` lui-même : la sélection
-    des features à labelliser (`feature_selection_by_magnitude`, `range(n_train)`)
-    et la sonde de classification email restent calculées sur les emails+augmentés
-    SEULS, pour ne pas réintroduire le biais de domaine déjà diagnostiqué et
-    corrigé au §12 (fonctionnerait sinon comme si `volume_filler_texts` faisait
-    partie du corpus "principal", diluant la sélection de features vers du
-    contenu générique)."""
+    corpus supplémentaire (FineWeb-2 FR, cf. `sample_fineweb2_chunks`) ajouté
+    UNIQUEMENT au réservoir de tokens résiduels (ablation de volume, SAE Boost,
+    arXiv:2507.12990, §18). Volontairement PAS ajouté à `train_texts` lui-même :
+    la sélection des features à labelliser (`feature_selection_by_magnitude`,
+    `range(n_train)`) et la sonde de classification email restent calculées sur
+    les emails+augmentés seuls -- sinon `volume_filler_texts` ferait partie du
+    corpus "principal" et diluerait la sélection de features vers du contenu
+    générique."""
     print("\n" + "=" * 70)
     print(" PIPELINE 1 : GEMMA-3 → MAX-POOL SAE ACTS")
     print("=" * 70)
@@ -752,15 +745,21 @@ def run_llm_max_pool_pipeline(
     d_total_expected = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
 
     cache_acts_path      = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
-    cache_residuals_path = os.path.join(CACHE_DIR, "p1_raw_residuals.pt")
+    # Réservoir memmap disque (pas un .pt chargé intégralement en RAM, cf.
+    # open_mmap_reservoir ci-dessus) : le fichier lui-même EST le cache, plus
+    # de copie séparée via torch.save. Le nombre de lignes réellement remplies
+    # (≤ N_TOKENS_EXTRA_TRAIN si le corpus est plus petit) vit dans le sidecar
+    # JSON, car le fichier mmap est toujours dimensionné à N_TOKENS_EXTRA_TRAIN.
+    cache_residuals_path      = os.path.join(CACHE_DIR, "p1_raw_residuals.memmap")
+    cache_residuals_meta_path = cache_residuals_path + ".meta.json"
     token_fragments_dir  = os.path.join(CACHE_DIR, "p1_token_fragments")
-    
+
     n_train = len(train_texts)
     n_filler = len(volume_filler_texts)
     n_test  = len(test_texts)
 
     _need_extraction = True
-    _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_path)
+    _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_meta_path)
     
     if os.path.exists(cache_acts_path) and os.path.exists(token_fragments_dir):
         fragment_ids = list_fragment_ids(token_fragments_dir)
@@ -771,10 +770,11 @@ def run_llm_max_pool_pipeline(
             
             if _need_residuals:
                 print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
-                # Buffer préalloué (même correctif qu'en §C3 ci-dessous : plus de
-                # liste de chunks + torch.cat final, qui doublait transitoirement le
-                # pic mémoire à grande échelle, cf. RESULTS_TESTS.md §23.3).
-                _residuals_buf = torch.empty(N_TOKENS_EXTRA_TRAIN, D_MODEL, dtype=TORCH_DTYPE)
+                # Buffer memmap disque (cf. open_mmap_reservoir) : les écritures
+                # vont directement sur disque par page, jamais de RAM anonyme à
+                # N_TOKENS_EXTRA_TRAIN*d_in*2 octets.
+                _residuals_buf = open_mmap_reservoir(
+                    cache_residuals_path, N_TOKENS_EXTRA_TRAIN, pretrained_sae.cfg.d_in, TORCH_DTYPE)
                 n_collected = 0
                 for _fid in fragment_ids[:n_train + n_filler]:
                     frag = load_fragment(token_fragments_dir, _fid)
@@ -786,9 +786,9 @@ def run_llm_max_pool_pipeline(
                     if n_collected >= N_TOKENS_EXTRA_TRAIN:
                         break
                 if n_collected > 0:
-                    raw_residuals = _residuals_buf if n_collected >= N_TOKENS_EXTRA_TRAIN \
-                        else _residuals_buf[:n_collected]
-                    torch.save(raw_residuals, cache_residuals_path)
+                    raw_residuals = _residuals_buf[:n_collected]
+                    with open(cache_residuals_meta_path, "w") as _f:
+                        json.dump({"n_rows": n_collected, "d_in": pretrained_sae.cfg.d_in}, _f)
                     print(f"  [P1] Résidus bruts d'apprentissage réinitialisés : {raw_residuals.shape}")
                     _need_residuals = False
                 del _residuals_buf
@@ -811,11 +811,10 @@ def run_llm_max_pool_pipeline(
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
 
-        # Balayage layer/hook-point (RESULTS_TESTS.md §36) : output_hidden_states
-        # n'expose QUE le residual stream (HF standard) -- attn_out/mlp_out
-        # n'existent nulle part dans cette API, il faut un hook direct sur le
-        # sous-module concerné. Points de hook vérifiés empiriquement sur les
-        # config.json GemmaScope-2 réels (pas devinés) :
+        # output_hidden_states n'expose QUE le residual stream (HF standard) --
+        # attn_out/mlp_out n'existent nulle part dans cette API, il faut un hook
+        # direct sur le sous-module concerné. Points de hook vérifiés
+        # empiriquement sur les config.json GemmaScope-2 réels :
         #   attn_out : entrée de self_attn.o_proj (pré-projection de sortie)
         #   mlp_out  : sortie de post_feedforward_layernorm (après le MLP, avant l'add résiduel)
         _hook_capture = {}
@@ -823,25 +822,29 @@ def run_llm_max_pool_pipeline(
         if HOOK_TYPE == "attn_out":
             def _capture_attn_in(module, args, kwargs):
                 _hook_capture["acts"] = args[0] if args else kwargs["input"]
-            _hook_handle = llm.model.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
+            _hook_handle = llm.model.language_model.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
                 _capture_attn_in, with_kwargs=True)
         elif HOOK_TYPE == "mlp_out":
             def _capture_mlp_out(module, args, output):
                 _hook_capture["acts"] = output
-            _hook_handle = llm.model.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
+            _hook_handle = llm.model.language_model.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
                 _capture_mlp_out)
         elif HOOK_TYPE != "resid_post":
             raise ValueError(f"HOOK_TYPE={HOOK_TYPE!r} non supporté (resid_post/attn_out/mlp_out).")
 
         all_doc_sae_acts = []
         n_residuals_collected = 0
-        n_residuals_seen = 0      # C3 : total de tokens train vus (dénominateur réservoir)
-        # C3 — buffer préalloué UNE SEULE FOIS à la taille finale (plus de liste de
-        # chunks + torch.cat final, qui doublait transitoirement le pic mémoire à
-        # ~2x N_TOKENS_EXTRA_TRAIN*D_MODEL*2 octets -- cause de l'OOM du job 41176,
-        # cf. RESULTS_TESTS.md §23.3). Rempli directement par tranches (phase 1) puis
-        # par écriture indexée (phase 2, Vitter) -- jamais plus d'une copie en RAM.
-        reservoir = (torch.empty(N_TOKENS_EXTRA_TRAIN, D_MODEL, dtype=TORCH_DTYPE)
+        n_residuals_seen = 0      # total de tokens train vus (dénominateur réservoir)
+        # Buffer préalloué UNE SEULE FOIS à la taille finale (pas de liste de
+        # chunks + torch.cat, qui doublerait transitoirement le pic mémoire).
+        # Rempli directement par tranches (phase 1) puis par écriture indexée
+        # (phase 2, réservoir de Vitter) -- jamais plus d'une copie en RAM.
+        # d_in du SAE préentraîné, pas D_MODEL : la dimension du residual stream
+        # ne vaut que pour resid_post/mlp_out -- attn_out capte l'entrée de
+        # o_proj, en amont de la projection multi-head vers hidden_size, donc
+        # une dimension différente (4096 vs D_MODEL=3840 pour gemma-3-12b-it).
+        reservoir = (open_mmap_reservoir(cache_residuals_path, N_TOKENS_EXTRA_TRAIN,
+                                          pretrained_sae.cfg.d_in, TORCH_DTYPE)
                      if USE_FROZEN_CORE else None)
 
         with torch.no_grad():
@@ -853,27 +856,25 @@ def run_llm_max_pool_pipeline(
                 ).to(DEVICE)
                 # logits_to_keep=1 : seul hidden_states nous intéresse ici ; sans ça,
                 # le forward calcule par défaut les logits sur TOUTE la séquence et le
-                # vocabulaire Gemma-3 (~262k) -- cause de l'OOM CUDA diagnostiqué dans
-                # scripts/baseline_gemmascope.py (même appel llm(...output_hidden_states=True)
-                # sans logits_to_keep, cf. RESULTS_TESTS.md). Pas encore déclenché ici
-                # (H100 80GB + batch_size=4 + volumes réduits du smoketest) mais même
-                # gaspillage latent avant un run à l'échelle complète.
+                # vocabulaire Gemma-3 (~262k), un gaspillage mémoire GPU inutile qui
+                # peut mener à l'OOM CUDA à grande échelle.
                 if HOOK_TYPE == "resid_post":
                     outputs = llm(**inputs, output_hidden_states=True, logits_to_keep=1)
                     acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
                 else:
                     llm(**inputs, logits_to_keep=1)
                     acts_raw = _hook_capture["acts"].detach().to(TORCH_DTYPE)
-                    assert acts_raw.shape[-1] == D_MODEL, (
-                        f"HOOK_TYPE={HOOK_TYPE} : shape captée {acts_raw.shape} != D_MODEL={D_MODEL} "
+                    assert acts_raw.shape[-1] == pretrained_sae.cfg.d_in, (
+                        f"HOOK_TYPE={HOOK_TYPE} : shape captée {acts_raw.shape} != "
+                        f"d_in SAE préentraîné={pretrained_sae.cfg.d_in} "
                         "-- mauvais point de hook, à corriger avant de faire confiance au run."
                     )
 
                 acts = acts_raw
-                # B7 résolu — implémentation UNIQUE du masquage :
-                # src/analysis/activations (special tokens + skip-first + σ-clip).
-                # NB : le σ-clip devient intra-batch (stats sur B docs) au lieu
-                # d'intra-doc ; justifié par l'unimodalité des normes (diag v9).
+                # Masquage (special tokens + skip-first + σ-clip) : implémentation
+                # unique dans src/analysis/activations. σ-clip intra-batch (stats
+                # sur B docs) plutôt qu'intra-doc, cohérent avec l'unimodalité des
+                # normes observée empiriquement.
                 keep_bt = valid_token_mask(
                     inputs["input_ids"], inputs["attention_mask"],
                     tokenizer, skip_first_content_token=True,
@@ -910,7 +911,7 @@ def run_llm_max_pool_pipeline(
                     all_doc_sae_acts.append(doc_sae_vec.cpu())
 
                     if USE_FROZEN_CORE and doc_global_idx < n_train + n_filler:
-                        # C3 — Réservoir (Vitter, Algorithm R) : échantillon uniforme
+                        # Réservoir (Vitter, Algorithm R) : échantillon uniforme
                         # sur TOUS les tokens du split train, au lieu des seuls
                         # premiers documents. Phase 1 : remplissage séquentiel du
                         # buffer préalloué ; phase 2 : le m-ième token vu remplace
@@ -937,9 +938,13 @@ def run_llm_max_pool_pipeline(
         if USE_FROZEN_CORE and reservoir is not None:
             # Corpus plus petit que N_TOKENS_EXTRA_TRAIN : le buffer préalloué n'a
             # été rempli que partiellement, tronquer au nombre réel de tokens vus.
-            raw_residuals = reservoir if n_residuals_collected >= N_TOKENS_EXTRA_TRAIN \
-                else reservoir[:n_residuals_collected]
-            torch.save(raw_residuals, cache_residuals_path)
+            # Le fichier memmap EST déjà le cache (écriture directe pendant la
+            # boucle d'extraction) : il ne reste qu'à persister le nombre réel
+            # de lignes valides dans le sidecar JSON.
+            n_rows_final = min(n_residuals_collected, N_TOKENS_EXTRA_TRAIN)
+            raw_residuals = reservoir[:n_rows_final]
+            with open(cache_residuals_meta_path, "w") as _f:
+                json.dump({"n_rows": n_rows_final, "d_in": pretrained_sae.cfg.d_in}, _f)
             print(f"  [P1] Résidus bruts d'apprentissage enregistrés : {raw_residuals.shape}")
             _need_residuals = False
             
@@ -955,12 +960,11 @@ def run_llm_max_pool_pipeline(
         frozen_core_path = os.path.join(SAVE_DIR, f"p1_frozen_core_d{D_EXTRA}_k{K_EXTRA}.pt")
         if os.path.exists(frozen_core_path):
             print(f"  [P1] Chargement FrozenCoreResidualSAE : {frozen_core_path}")
-            # Pas de .to(TORCH_DTYPE) ici : core_sae (pretrained_sae) est déjà dans
-            # TORCH_DTYPE (ligne ~648) ; la branche "extra" (W_dec_extra/W_enc_extra/
-            # b_enc_extra/threshold/input_scale) doit rester fp32 — frozen_core.py la
-            # traite explicitement en fp32 partout (.float() systématique). Un cast
-            # module-wide ici la bascule en bf16/fp16 et casse le backward
-            # ("Found dtype X but expected Float"), cf. bug rencontré en test réel.
+            # Pas de .to(TORCH_DTYPE) ici : core_sae (pretrained_sae) est déjà
+            # casté ; la branche "extra" (W_dec_extra/W_enc_extra/b_enc_extra/
+            # threshold/input_scale) doit rester fp32 -- frozen_core.py la traite
+            # explicitement en fp32 partout (.float() systématique). Un cast
+            # module-wide ici la bascule en bf16/fp16 et casse le backward.
             if SANITY_CHECK_FROZEN_DECODER:
                 ext_sae = FrozenDecoderExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             else:
@@ -968,14 +972,19 @@ def run_llm_max_pool_pipeline(
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
             missing, unexpected = ext_sae.load_state_dict(ckpt["state_dict"], strict=False)
             if missing or unexpected:
-                print(f"  [P1] Checkpoint antérieur aux fixes C1/C2 (buffers absents : "
-                      f"{missing}) — input_scale retombe à 1.0 par défaut. Ce checkpoint "
-                      f"a très probablement été entraîné SANS le fix AuxK (C1) : "
-                      f"préférez --retrain (supprimer {frozen_core_path}) plutôt que "
-                      f"de le recharger tel quel.")
+                print(f"  [P1] Checkpoint sans certains buffers ({missing}) — "
+                      f"input_scale retombe à 1.0 par défaut, probablement entraîné "
+                      f"sans AuxK. Préférez --retrain (supprimer {frozen_core_path}) "
+                      f"plutôt que de le recharger tel quel.")
         else:
-            if os.path.exists(cache_residuals_path):
-                raw_residuals = torch.load(cache_residuals_path, weights_only=True)
+            if os.path.exists(cache_residuals_meta_path):
+                with open(cache_residuals_meta_path) as _f:
+                    _meta = json.load(_f)
+                # Réouverture mmap (pas de torch.load : la lecture reste
+                # paginée à la demande, jamais le tenseur entier en RAM).
+                raw_residuals = open_mmap_reservoir(
+                    cache_residuals_path, N_TOKENS_EXTRA_TRAIN, _meta["d_in"], TORCH_DTYPE
+                )[:_meta["n_rows"]]
             else:
                 print("  [P1] WARN : résidus introuvables, FrozenCore désactivé.")
                 raw_residuals = None
@@ -1005,7 +1014,6 @@ def run_llm_max_pool_pipeline(
                         domain_residuals=domain_residuals_cpu
                     ).to(DEVICE)
 
-                # FIX : Résolution de la signature erronée d'import
                 from sae_shared import load_or_train_extended_sae as load_or_train
                 ext_sae, history_ext = load_or_train(
                     model=ext_sae, model_name="p1_extended_sae",
@@ -1245,8 +1253,7 @@ def run_llm_max_pool_pipeline(
         print("  [Corrélations] Graphe vide (aucune arête au-dessus du seuil NPMI) -- rien à filtrer.")
 
     # Requêtes retrieval/clustering alignées sur le domaine réel (test_texts =
-    # emails+augmentés depuis cette bascule, plus des chunks energy/FineWeb-2) --
-    # cf. Context.md "Fonctionnalités futures / Retrieval interprétable".
+    # emails+augmentés, plus des chunks energy/FineWeb-2).
     targeted_clustering_by_axis(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
         feature_labels=label_map_p1, axis_query="urgence réclamation client"
@@ -1453,7 +1460,7 @@ def run_f2llm_pipeline(
             MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
             low_cpu_mem_usage=True, local_files_only=True
         ).eval()
-        # FIX 9 : local_gemma_judge attend les activations et textes au niveau PHRASE
+        # local_gemma_judge attend les activations et textes au niveau PHRASE
         # (pas au niveau document max-poolé) — ce sont les phrases individuelles
         # (test_phrases / test_phrase_emb) qui servent d'exemples au juge LLM.
         sae.eval()
@@ -1605,64 +1612,110 @@ if __name__ == "__main__":
     print("=" * 70)
 
     # ─── CORPUS PRINCIPAL : emails originaux + variantes augmentées ────────────────
-    # Domine désormais l'entraînement du SAE (reservoir de résidus + PhraseLevelSAE),
-    # là où le corpus generic energy/sports/support l'occupait entièrement par le
-    # passé sans jamais qu'un email n'entre dans le train (cf. RESULTS_TESTS.md /
-    # Context.md — diagnostic du faible taux de labellisation "odd-one-out" :
-    # features d'extension entraînées uniquement sur du FineWeb-2/Wikipedia
-    # générique, jamais sur du contenu email -> exemples positifs incohérents
-    # présentés au juge). Split GROUP-AWARE par mail d'origine (aucune fuite
-    # d'une variante augmentée d'un mail de test vers le train).
+    # Domine l'entraînement du SAE (reservoir de résidus + PhraseLevelSAE) ; le
+    # corpus generic energy/sports/support ne sert plus qu'au diffing post-hoc.
+    # Split GROUP-AWARE par mail d'origine (aucune fuite d'une variante augmentée
+    # d'un mail de test vers le train).
     # seed=CORPUS_SPLIT_SEED (PAS SEED) : le split train/test doit rester identique
     # entre deux runs qui ne diffèrent que par SEED (ablation de variance
-    # d'entraînement, cf. RESULTS_TESTS.md §21) -- sinon la comparaison mélangerait
-    # variance d'entraînement et variance de corpus.
-    train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
-        test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
-        seed=CORPUS_SPLIT_SEED,
-    )
-    if not train_texts:
-        print("  Fallback emails synthétiques (Mails.tsv introuvable).")
-        train_texts = [
-            "Bonjour, je conteste ma facture d'électricité Linky, hausse injustifiée.",
-            "Merci de planifier l'installation de mon compteur de raccordement électrique.",
-            "Coupure réseau dans notre rue depuis 2 heures. Envoyez un technicien.",
-        ]
-        train_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
-        test_texts, test_labels = train_texts, train_labels
-    print(f"Train (emails+augmentés) : {len(train_texts)} docs | Test : {len(test_texts)} docs")
+    # d'entraînement) -- sinon la comparaison mélangerait variance d'entraînement
+    # et variance de corpus.
+    # CONFIRMATORY_DOMAIN_BASELINE (défaut désactivé, comportement 100% inchangé
+    # sinon) : réplique à n=150 (test apparié) le protocole du corpus generic
+    # (energy/sports/support, même logique de split), pour comparer domaine-vs-
+    # volume à effectif comparable plutôt qu'à effectifs confondus.
+    CONFIRMATORY_DOMAIN_BASELINE = os.environ.get("CONFIRMATORY_DOMAIN_BASELINE", "0") == "1"
 
-    # ─── CORPUS SECONDAIRE : diffing cross-domaine (energy vs sports) ──────────
-    # Petit corpus generic, gardé UNIQUEMENT pour la démonstration existante de
-    # diffing cross-domaine (p1_diff_energy_sports.csv) : encodé post-hoc par le
-    # SAE déjà entraîné sur les emails (comme les emails l'étaient avant cette
-    # bascule), jamais utilisé pour l'entraînement lui-même.
-    energy_texts = prepare_domain_dataset(
-        ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
-        chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
-        local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-    )
-    sports_texts = prepare_domain_dataset(
-        SPORTS_KEYWORDS, "sports", N_TOTAL_SPORTS,
-        chunk_length=1024, max_chunks=20, url_patterns=SPORTS_URL_PATTERNS,
-        local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-    )
-    support_texts = prepare_domain_dataset(
-        SUPPORT_KEYWORDS, "support", N_TOTAL_SUPPORT,
-        chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
-        local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-    )
-    diff_texts  = energy_texts + sports_texts + support_texts
-    diff_labels = ["energy"] * len(energy_texts) + ["sports"] * len(sports_texts) + ["support"] * len(support_texts)
-    print(f"Corpus diffing (energy/sports/support, post-hoc uniquement) : {len(diff_texts)} chunks")
+    if CONFIRMATORY_DOMAIN_BASELINE:
+        print("  [CONFIRMATORY_DOMAIN_BASELINE=1] Corpus principal = generic "
+              "energy/sports/support (réplique n=150 du baseline pré-correctif).")
+        energy_texts = prepare_domain_dataset(
+            ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
+            chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        sports_texts = prepare_domain_dataset(
+            SPORTS_KEYWORDS, "sports", N_TOTAL_SPORTS,
+            chunk_length=1024, max_chunks=20, url_patterns=SPORTS_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        support_texts = prepare_domain_dataset(
+            SUPPORT_KEYWORDS, "support", N_TOTAL_SUPPORT,
+            chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        _rng = np.random.default_rng(CORPUS_SPLIT_SEED)
+        _test_split = float(os.environ.get("CONFIRMATORY_TEST_SPLIT", "0.1"))
 
-    # ── Filler de volume (SAE Boost, arXiv:2507.12990, ablation 100-200M tokens
-    # RESULTS_TESTS.md §18/§23) : AJOUTÉ UNIQUEMENT au réservoir résiduel via
-    # volume_filler_texts (run_llm_max_pool_pipeline), jamais à train_texts lui-même
-    # (préserverait sinon la sélection de features/la sonde de classification email
-    # du biais de domaine déjà corrigé, cf. docstring de la fonction). Désactivé par
-    # défaut (N_VOLUME_FILLER_TARGET_CHUNKS=0) -- n'affecte aucun run existant.
+        def _split_generic(texts, label):
+            n = len(texts)
+            idx = _rng.permutation(n)
+            n_test = max(1, int(n * _test_split))
+            test_idx, train_idx = idx[:n_test], idx[n_test:]
+            return (
+                [texts[i] for i in train_idx], [label] * (n - n_test),
+                [texts[i] for i in test_idx], [label] * n_test,
+            )
+
+        en_tr, en_tr_lbl, en_te, en_te_lbl = _split_generic(energy_texts, "energy")
+        sp_tr, sp_tr_lbl, sp_te, sp_te_lbl = _split_generic(sports_texts, "sports")
+        su_tr, su_tr_lbl, su_te, su_te_lbl = _split_generic(support_texts, "support")
+        train_texts = en_tr + sp_tr + su_tr
+        train_labels = en_tr_lbl + sp_tr_lbl + su_tr_lbl
+        test_texts = en_te + sp_te + su_te
+        test_labels = en_te_lbl + sp_te_lbl + su_te_lbl
+        print(f"Train (generic, confirmatoire) : {len(train_texts)} chunks | "
+              f"Test : {len(test_texts)} chunks")
+        diff_texts, diff_labels = [], []
+    else:
+        train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
+            LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+            test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
+            seed=CORPUS_SPLIT_SEED,
+        )
+        if not train_texts:
+            print("  Fallback emails synthétiques (Mails.tsv introuvable).")
+            train_texts = [
+                "Bonjour, je conteste ma facture d'électricité Linky, hausse injustifiée.",
+                "Merci de planifier l'installation de mon compteur de raccordement électrique.",
+                "Coupure réseau dans notre rue depuis 2 heures. Envoyez un technicien.",
+            ]
+            train_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
+            test_texts, test_labels = train_texts, train_labels
+        print(f"Train (emails+augmentés) : {len(train_texts)} docs | Test : {len(test_texts)} docs")
+
+        # ─── CORPUS SECONDAIRE : diffing cross-domaine (energy vs sports) ──────────
+        # Petit corpus generic, gardé UNIQUEMENT pour la démonstration existante de
+        # diffing cross-domaine (p1_diff_energy_sports.csv) : encodé post-hoc par le
+        # SAE déjà entraîné sur les emails (comme les emails l'étaient avant cette
+        # bascule), jamais utilisé pour l'entraînement lui-même.
+        energy_texts = prepare_domain_dataset(
+            ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
+            chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        sports_texts = prepare_domain_dataset(
+            SPORTS_KEYWORDS, "sports", N_TOTAL_SPORTS,
+            chunk_length=1024, max_chunks=20, url_patterns=SPORTS_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        support_texts = prepare_domain_dataset(
+            SUPPORT_KEYWORDS, "support", N_TOTAL_SUPPORT,
+            chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
+            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+        )
+        diff_texts  = energy_texts + sports_texts + support_texts
+        diff_labels = ["energy"] * len(energy_texts) + ["sports"] * len(sports_texts) + ["support"] * len(support_texts)
+        print(f"Corpus diffing (energy/sports/support, post-hoc uniquement) : {len(diff_texts)} chunks")
+
+    # ── Filler de volume (ablation SAE Boost, arXiv:2507.12990) : ajouté
+    # UNIQUEMENT au réservoir résiduel via volume_filler_texts
+    # (run_llm_max_pool_pipeline), jamais à train_texts lui-même -- sinon la
+    # sélection de features/la sonde de classification email réintroduirait le
+    # biais de domaine (cf. docstring de la fonction). Désactivé par défaut
+    # (N_VOLUME_FILLER_TARGET_CHUNKS=0). Sans filtre thématique
+    # (sample_fineweb2_chunks) : le filler isole un effet de VOLUME de tokens,
+    # pas de pertinence thématique.
     N_VOLUME_FILLER_TARGET_CHUNKS = int(os.environ.get("N_VOLUME_FILLER_TARGET_CHUNKS", "0"))
     volume_filler_texts = []
     if N_VOLUME_FILLER_TARGET_CHUNKS > 0:
@@ -1672,12 +1725,11 @@ if __name__ == "__main__":
             filler_shards = [LOCAL_DATASET_PATH]
         n_per_shard = max(1, N_VOLUME_FILLER_TARGET_CHUNKS // len(filler_shards))
         print(f"  [filler] Construction du corpus de volume (~{N_VOLUME_FILLER_TARGET_CHUNKS} "
-              f"chunks cible sur {len(filler_shards)} shard(s) FineWeb2-fr)...")
+              f"chunks cible sur {len(filler_shards)} shard(s) FineWeb2-fr, sans filtre thématique)...")
         for shard_path in filler_shards:
-            shard_texts = prepare_domain_dataset(
-                UTILITY_COMPLAINT_KEYWORDS, "utility_complaint_filler",
+            shard_texts = sample_fineweb2_chunks(
                 n_per_shard, chunk_length=1024, max_chunks=20,
-                local_dataset_path=shard_path, use_fineweb2=True,
+                local_dataset_path=shard_path,
             )
             volume_filler_texts.extend(shard_texts)
             if len(volume_filler_texts) >= N_VOLUME_FILLER_TARGET_CHUNKS:

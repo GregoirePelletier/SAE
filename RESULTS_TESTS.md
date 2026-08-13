@@ -1,7 +1,7 @@
 # SAE — Résultats des tests & état des jobs Slurm
 
-_Dernière mise à jour : 2026-07-13 (corpus complet). Cluster : partitions `a100`
-(dgx-a100, 8×GPU), `h100` / `h100-bis` (dgx-h100{,-bis}, 8×GPU chacun)._
+_Cluster : partitions `a100` (dgx-a100, 8×GPU), `h100` / `h100-bis`
+(dgx-h100{,-bis}, 8×GPU chacun)._
 
 ## 0. Corpus complet — augmentation parallélisée (8 shards) + baseline
 
@@ -2538,3 +2538,423 @@ taille/famille en cache local). **Ce que cette comparaison établit
 fermement** : le chiffre 45,3% n'est PAS robuste au choix du juge -- il ne
 doit plus être cité comme une propriété intrinsèque du SAE sans préciser
 le juge utilisé.
+
+## 44. Revue externe multi-perspective (avocat du diable) sur `report/RAPPORT_DE_STAGE.md`
+
+Panel de 5 reviewers indépendants et aveugles l'un à l'autre (plugin
+`academic-research-skills`), chacun avec accès direct au dépôt pour vérifier
+les affirmations plutôt que faire confiance aux auto-citations du rapport.
+Décision : Major Revision, tranchée par deux constats CRITICAL de l'avocat
+du diable (C1/C2 ci-dessous), tous deux résolus depuis (§46, §48/§50/§52).
+
+Deux constats CRITICAL validés par vérification directe : (1) l'affirmation
+centrale du rapport (20,0%→45,3%, corpus generic n=10 vs corpus emails
+n=150, §12) n'avait jamais été testée statistiquement -- recalcul indépendant
+z≈1,56, p≈0,12, non significatif au seuil que le rapport applique partout
+ailleurs ; (2) ~92% du corpus d'entraînement "corrigé" est généré par le même
+modèle (gemma-3-12b-it) qui sert aussi d'extracteur et de juge -- boucle
+auto-référentielle nommée en une phrase dans le rapport mais jamais
+quantifiée ni bornée. Constats corroborés par plusieurs reviewers
+indépendants : §37 (fuite lexicale, ~93% du signal `clf_acc_email_axes`
+reproductible sans SAE) et §43 (dépendance au juge) jamais mentionnés dans
+le rapport bien que déjà présents dans ce fichier ; erreur de transcription
+z=2,91 vs z=2,86 (§19) ; validation exclusivement sur corpus synthétique pour
+un objectif de déploiement en contexte réglementé, jamais revisitée en
+limites. Corrections vérifiées et à faible risque appliquées directement au
+rapport (z, description ρ_interp, caveats §37/§43/C1, citations manquantes
+SAEBench et Chanin et al. 2024, renvoi §3.5.3→§3.12). Restent à la décision
+de l'utilisateur : test de confirmation à n apparié pour le constat (1), run
+juge croisé à plus grande échelle pour borner (2).
+
+## 45. Réplication multi-seed `K_EXTRA=5` (jobs 42685/42686) : direction confirmée, significativité toujours pas atteinte
+
+Deux seeds supplémentaires (7, 99) du run `K_EXTRA=5` (§25, seed 42 original à
+54,7%), même protocole, mêmes 150 features :
+
+| Seed | Taux interp. |
+|---|---|
+| 42 (original, §25) | 54,7% (82/150) |
+| 7 | 50,0% (75/150) |
+| 99 | 55,3% (83/150) |
+| K_EXTRA=32 (baseline, seed 42 unique) | 45,3% (68/150) |
+
+**Direction cohérente sur les 3 seeds** (toutes au-dessus du baseline
+K_EXTRA=32), contrairement à un résultat de bruit pur qui basculerait des deux
+côtés. Test z groupé (240/450 vs 68/150) : **z=1,70, p≈0,089 — toujours en
+dessous du seuil conventionnel |z|>1,96**, et ce chiffre est probablement
+optimiste : il traite les 3 seeds comme un échantillon groupé homogène en
+ignorant la corrélation intra-seed, alors que le baseline K_EXTRA=32 n'a
+qu'un seul seed pour comparer (pas de réplication symétrique). Un modèle à
+effets mixtes (seed en effet aléatoire) serait la bonne façon de trancher,
+non fait ici faute de ressources supplémentaires justifiées pour ce seul
+point.
+
+**Verdict honnête** : la réplication tend à renforcer la piste K_EXTRA=5
+plutôt qu'à l'infirmer (3/3 seeds dans la même direction), mais ne suffit pas
+à la faire passer d'"hypothèse à répliquer" à "résultat établi" -- le calcul
+z groupé reste sous le seuil, et sans réplication symétrique du baseline
+K_EXTRA=32 la comparaison reste asymétrique. Réplication du volume-25M
+(jobs 42687/42688) échouée sans traceback (voir §47), à resoumettre.
+
+## 46. Test confirmatoire C1 (job 42748) : effet domaine confirmé à n apparié
+
+Suite de §44/§45. Réplique le baseline pré-correctif (corpus generic
+energy/sports/support, `results_v9_full`) à n=150 au lieu de n=10, checkpoint
+`p1_frozen_core_d1024_k32.pt` réutilisé (pas de réentraînement), seule
+l'extraction Gemma-3-12B + le jugement odd-one-out sont recalculés
+(`CONFIRMATORY_DOMAIN_BASELINE=1`, `src/sae/saev5.py` __main__, branche
+ajoutée guardée par env var).
+
+| Corpus | n | Taux interp. |
+|---|---|---|
+| Generic (confirmatoire, n apparié) | 150 | 30,0% (45/150) |
+| Emails (run principal) | 150 | 45,3% (68/150) |
+
+**z=2,74, p≈0,006 — significatif**, contrairement à la comparaison originale
+n=10 vs n=150 (z≈1,56, p≈0,12, non significative). **Le constat CRITICAL C1
+de la revue externe est résolu favorablement à l'affirmation centrale du
+rapport** : l'effet domaine est réel et maintenant démontré à échantillon
+apparié, pas seulement suggéré par une comparaison sous-puissante. Le taux
+absolu sur corpus generic est plus bas ici (30,0%) que dans le run original
+à n=10 (20,0%), cohérent avec le fait que n=10 était trop bruité pour être
+une estimation fiable dans un sens comme dans l'autre -- l'écart avec le
+corpus emails reste net et maintenant statistiquement fondé (45,3% vs 30,0%,
++15,3 points).
+
+## 47. Échecs d'infrastructure sur 5 jobs (42687/42688/42694/42696-42698/42703-42704)
+
+Constaté après une interruption de session ayant empêché le monitoring en
+temps réel -- ces jobs étaient restés en attente dans la queue puis ont
+tourné/échoué sans que l'échec soit détecté avant leur sortie de la queue.
+Deux causes distinctes :
+
+- **42687 (volume-25M seed7, échoué à 63%), 42688 (seed99, échoué à 34%),
+  42694 (volume-200M bis, échoué à 0,4%)** : `sacct` montre `FAILED,
+  ExitCode 1:0`, aucun traceback Python dans les logs -- le process s'arrête
+  net au milieu d'une barre de progression, sans message d'erreur. Cause
+  probable au niveau infrastructure (nœud), pas un bug du pipeline. À
+  resoumettre tel quel.
+- **42696/42697/42698 (layer sweep 12/31/41), 42703/42704 (attn_out/mlp_out)**
+  : échec immédiat, `ValueError: Release gemma-scope-2-12b-it not found in
+  pretrained SAEs directory, and is not a valid huggingface repo`. Cause
+  racine identifiée : seuls les poids GemmaScope `resid_post/layer_24_width_
+  {16k,65k,262k}` ont jamais été téléchargés localement
+  (`local_data/saes/gemma-scope-2-12b-it/snapshots/.../resid_post/`) -- aucun
+  poids pour les layers 12/31/41 ni pour les hook-points `attn_out`/`mlp_out`
+  (confirmés publiés par GemmaScope-2 en §36, mais jamais effectivement
+  récupérés). Les nœuds de calcul étant offline (`HF_HUB_OFFLINE=1`), le
+  fallback Hub échoue aussi. **Corrigé** : les 5 configurations manquantes
+  téléchargées via `download_sae.py --sae-only` (~1,3 Go chacune, ~6,5 Go
+  total, espace disque vérifié avant téléchargement) depuis un shell avec
+  accès réseau. Jobs resoumis tels quels (42812-42816).
+
+## 48. Test C2 (gratuit, CPU) : l'origine des exemples positifs ne prédit pas l'interprétabilité
+
+Suite au constat CRITICAL C2 (boucle auto-référentielle juge/générateur) :
+test à coût nul, reproduisant
+exactement la sélection déterministe des exemples positifs de
+`build_feature_examples_with_control` (`src/sae/judge.py`) à partir des
+activations déjà en cache (`p1_all_doc_acts_ext_d1024.pt`), pour retrouver
+l'origine (mail original vs variante augmentée générée par Gemma-3-12b-it)
+de chacun des 9 exemples positifs présentés au juge, pour les 150 features
+déjà jugées de `results_v10_emails_main`.
+
+**Hypothèse testée** : si le juge reconnaît son propre style génératif
+plutôt que de comprendre un concept réel, les features jugées
+interprétables devraient tirer leurs exemples positifs de façon
+disproportionnée du texte généré par Gemma (augmenté) plutôt que des mails
+originaux.
+
+| Groupe | n | frac. moyenne d'exemples "augmentés" |
+|---|---|---|
+| Features interprétables | 68 | 95,10% |
+| Features non interprétables | 82 | 92,68% |
+| Taux de base du corpus (augmenté/train) | — | 91,99% |
+
+Mann-Whitney U=2974,0, **p=0,418 — non significatif**. Les deux groupes
+dépassent légèrement le taux de base du corpus (cohérent avec le fait que
+les features actives sur des exemples courts/stylés sont plus faciles à
+retrouver dans un corpus déjà dominé à 92% par du texte augmenté), et la
+direction de l'écart (interprétables > non-interprétables) va bien dans le
+sens que C2 prédirait, mais l'écart de 2,4 points n'est pas distinguable du
+bruit sur cet échantillon.
+
+**Verdict honnête** : ce test précis ne trouve pas la signature spécifique
+de C2 qu'il cherchait -- **affaiblit** le constat sans le **résoudre**. Il ne
+teste qu'un mécanisme étroit (dépendance par feature à l'origine
+document-par-document des exemples) ; il ne teste ni un éventuel biais de
+style diffus non capturé par l'origine du document, ni le côté génération du
+corpus. Les deux tests qui trancheraient réellement C2 (juge cross-famille,
+régénération partielle du corpus avec un modèle différent) restent à faire
+-- décision utilisateur en attente sur le budget de calcul.
+
+## 49. Bug corrigé — hook attn_out/mlp_out : mauvais chemin d'attribut sur le wrapper multimodal Gemma3
+
+Complète §47 : `resid_post` fonctionnait (jobs 42812/42813, layers 12/31
+terminés avec succès), mais `attn_out`/`mlp_out` (42815/42816) échouaient
+avec `AttributeError: 'Gemma3Model' object has no attribute 'layers'` --
+pas un problème de poids manquants (déjà corrigé en §47), un vrai bug de
+code. `AutoModelForCausalLM.from_pretrained` sur `gemma-3-12b-it` charge la
+classe multimodale `Gemma3ForConditionalGeneration` : `llm.model` est un
+`Gemma3Model` (wrapper vision+texte), dont les couches du transformer sont
+sous `llm.model.language_model.layers`, pas `llm.model.layers` (qui
+n'existe que sur `Gemma3TextModel`/`Gemma3ForCausalLM`, la classe texte
+seul). Le chemin `resid_post` ne touchait jamais `.model.layers`
+(`output_hidden_states=True` seul), d'où le bug resté invisible jusqu'à
+l'usage réel des hooks `attn_out`/`mlp_out` cette session. Corrigé dans
+`src/sae/saev5.py` (deux occurrences, `register_forward_pre_hook`/
+`register_forward_hook`). Jobs resoumis (42871, 42872).
+
+**Bug additionnel trouvé en resoumettant** (`attn_out`, job 42871) : une fois
+le hook lui-même corrigé, l'assertion de forme plantait --
+`shape captée torch.Size([4, 512, 4096]) != D_MODEL=3840`. `D_MODEL` (residual
+stream, `text_config.hidden_size`) est correct pour `resid_post`/`mlp_out`
+(confirmé : `mlp_out` capte bien du 3840-d) mais **pas** pour `attn_out`, qui
+capte l'entrée de `self_attn.o_proj` -- en amont de la projection multi-head
+vers `hidden_size`, donc une dimension différente (4096, confirmé
+empiriquement sur `w_enc.shape` du SAE téléchargé). Corrigé en dérivant la
+dimension attendue du SAE préentraîné déjà chargé (`pretrained_sae.cfg.d_in`)
+plutôt que du constant global `D_MODEL`, aux 3 endroits concernés (buffer de
+réservoir, reconstruction depuis fragments, assertion). `FrozenCoreResidualSAE`
+utilisait déjà `core_sae.cfg.d_in` correctement -- seul le code d'extraction
+brute dans `saev5.py` avait le bug. 41/41 tests toujours verts après le
+correctif. `attn_out` resoumis.
+
+## 50. C2 (suite) : re-jugement faisable à 100% + le contrôle core affaiblit encore le constat
+
+Deux résultats complémentaires à §48, calculés sur les activations déjà en
+cache (`p1_all_doc_acts_ext_d1024.pt`), zéro calcul GPU :
+
+**Faisabilité d'un re-jugement "original uniquement"** : pour les 150
+features déjà jugées, **150/150 ont au moins 9 candidats positifs provenant
+exclusivement de mails originaux** (pas de texte augmenté/généré par Gemma) --
+un re-jugement complet, sans aucune dépendance au texte généré, est donc
+possible sur l'échantillon entier, pas seulement un sous-ensemble.
+
+**Contrôle par les features core (Neuronpedia, vérité indépendante)** :
+86 features core (labellisées indépendamment par DeepMind, jamais influencées
+par notre juge ni notre corpus d'entraînement) tirent en moyenne 94,25% de
+leurs exemples positifs du texte augmenté sur NOTRE corpus -- **autant, voire
+légèrement plus**, que les features d'extension (93,78%). Mann-Whitney
+U=7215,5, p=0,069 (limite mais non significatif, et dans le sens opposé à ce
+que prédirait C2 si l'effet existait sur les features d'extension
+spécifiquement). Confirme l'interprétation de §48 : le taux élevé
+d'exemples "augmentés" est une propriété de la composition du corpus (92%
+augmenté), pas une signature spécifique de la boucle juge/générateur de ce
+projet -- même des features totalement étrangères à cette boucle présentent
+le même pattern.
+
+**Prochaine étape, directement actionnable et bon marché** (SAE déjà
+entraîné réutilisé, même juge, seule la sélection d'exemples change) :
+re-jugement réel des 150 features avec Gemma-3-12b-it restreint aux
+9 meilleurs exemples originaux uniquement. Si le taux d'interprétabilité
+reste proche de 45,3%, c'est la preuve directe la plus forte possible contre
+C2 sans changer ni modèle ni corpus. Nécessite un job SLURM (juge LLM,
+GPU) mais aucun réentraînement ni téléchargement.
+
+## 51. Balayage layer resid_post (12/31/41) : layer 31 significativement meilleur que le layer 24 par défaut
+
+Complète §36 (disponibilité confirmée) et §49 (bug de dimension corrigé
+avant que ces jobs puissent tourner). Même protocole que le run principal
+(150 features jugées, corpus emails+augmentés, Gemma-3-12b-it), seul
+`LAYER` varie (12, 31, 41 vs 24 par défaut) :
+
+| Layer | Taux interp. | z vs layer 24 (baseline, 68/150) |
+|---|---|---|
+| 12 | 45,3% (68/150) | z=0,00, p=1,000 |
+| 24 (baseline, run principal) | 45,3% (68/150) | — |
+| 31 | **58,0% (87/150)** | **z=2,20, p=0,028** |
+| 41 | 52,7% (79/150) | z=1,27, p=0,204 |
+
+Layer 31 est le seul écart nominalement significatif de ce balayage
+(+12,7 points). Comme pour tout le chapitre d'ablations (aucune correction
+multi-tests appliquée, cf. §30/audit externe), ce résultat est à lire comme
+une piste à répliquer sur un second seed avant d'être traité comme établi,
+pas comme une conclusion déjà solide -- mais c'est la première fois que le
+choix par défaut du layer 24 (retenu uniquement pour sa couverture
+Neuronpedia, jamais pour un critère d'interprétabilité, cf. Chapitre 1 du
+rapport) apparaît potentiellement sous-optimal sur le critère qui compte
+réellement pour ce projet.
+
+## 52. C2 RÉSOLU : re-jugement original-only (job 42878) -- 44,7% vs 45,3%, écart non significatif
+
+Suite de §48/§50. Réutilise le SAE d'extension déjà entraîné et le même juge
+(Gemma-3-12b-it), exemples positifs restreints aux mails originaux
+uniquement (`scripts/c2_original_only_rejudge.py`, faisabilité 150/150
+confirmée en §50) :
+
+| Condition | Taux interp. |
+|---|---|
+| Référence (exemples mixtes, run principal) | 45,3% (68/150) |
+| Original uniquement (0% texte généré par Gemma) | **44,7% (67/150)** |
+
+**z=-0,12, p=0,908 -- écart non significatif, quasiment nul.** Retirer
+COMPLÈTEMENT le texte généré par Gemma des exemples présentés au juge ne
+change pas le taux agrégé. Au niveau feature individuelle : 55,3% d'accord
+(83/150), 44,7% de bascule -- taux de bruit comparable ou supérieur au
+réordonnancement (§13.1, 31,3%) et à la langue (§13, 38,6%), cohérent avec le
+constat déjà établi que le statut d'une feature isolée est bruité sous
+quasi toute perturbation de surface, alors que le taux agrégé reste stable.
+
+**C2 est résolu.** Les trois tests (§48 corrélation origine/interprétabilité,
+§50 contrôle par features core, §52 re-jugement causal direct) convergent :
+la boucle auto-référentielle juge/générateur n'explique pas le taux
+d'interprétabilité mesuré. Contrairement à C1 (qui a confirmé l'effet
+domaine du rapport), C2 est résolu dans le sens **négatif** -- l'hypothèse de
+l'avocat du diable n'est pas soutenue par les données. Rapport mis à jour
+(`04_limites_et_perspectives.md`, "Facteurs non contrôlés dans le corpus
+augmenté").
+
+## 53. Hook-point resid_post vs attn_out vs mlp_out (layer 24) : mlp_out significativement meilleur qu'attn_out
+
+Complète §36/§49/§51 -- dernier volet du balayage hook-point de la Phase 3.
+Même protocole (150 features jugées, corpus emails+augmentés), `LAYER=24`
+fixe, seul `HOOK_TYPE` varie :
+
+| Hook-point | Taux interp. | z vs resid_post (baseline, 68/150) |
+|---|---|---|
+| `resid_post` (baseline, run principal) | 45,3% (68/150) | — |
+| `mlp_out` | 52,7% (79/150) | z=1,27, p=0,204 |
+| `attn_out` | 35,3% (53/150) | z=-1,77, p=0,078 |
+
+Aucun des deux écarts individuels vs `resid_post` n'atteint la
+significativité conventionnelle, mais **`mlp_out` vs `attn_out` directement
+est net et significatif : z=3,02, p=0,0025**. Cohérent avec un a priori
+raisonnable : `attn_out` capte l'entrée de `self_attn.o_proj`, un espace
+pré-projection multi-head moins "digéré" sémantiquement que le residual
+stream, tandis que `mlp_out` (sortie du MLP, déjà reprojetée vers
+`hidden_size`) en reste proche. Anecdote illustrative : la feature choisie
+pour la démo de steering sur `attn_out` s'est labellisée "variable
+assignment `p =`" -- un concept de nature différente de ce qu'on voit
+typiquement sur `resid_post`/`mlp_out`, cohérent avec un espace moins
+sémantiquement structuré à ce point du réseau.
+
+**Conclusion du balayage complet (layer + hook-point, §51+§53)** : aucune
+configuration alternative testée à ce jour ne bat `resid_post`/layer 24 de
+façon indiscutable une fois toutes les comparaisons prises ensemble (layer
+31/resid_post reste la seule significative du lot, §51, et devrait être
+répliquée avant adoption) ; `attn_out` est le point d'extraction le moins
+prometteur des cinq configurations testées.
+
+## 54. Infrastructure de diagnostic + fix racine du blocage volume-200M
+
+Initiative demandée pour donner au dépôt les outils de monitoring nécessaires
+(courbes d'entraînement, balayages consolidés) avant toute reproduction fidèle
+des papiers de référence — code uniquement, aucun rerun coûteux à ce stade.
+
+**Réservoir de résidus : RAM plate → memmap disque** (`src/sae/saev5.py`,
+`open_mmap_reservoir`). Root cause du blocage "volume-200M systématiquement
+rejeté" diagnostiqué : `torch.empty(N_TOKENS_EXTRA_TRAIN, d_in, ...)` allouait
+tout le réservoir en RAM anonyme (200M tokens × 3840 × 2 octets ≈ 1,4 To),
+forçant `--mem=1800G` sur des nœuds à ~2 To — une demande proche de la
+capacité totale du nœud, jamais satisfaite simultanément sur un cluster
+partagé (`sacct` : jobs 41658/42145/42694, tous restés `CANCELLED`/`FAILED`
+en attente). Remplacé par `torch.from_file(shared=True, ...)` (mmap standard,
+pages récupérables par l'OS, jamais résidentes en totalité) : le fichier
+memmap EST désormais le cache lui-même (plus de `torch.save` intermédiaire
+qui doublait la question), un sidecar JSON stocke le nombre réel de lignes
+remplies. Débloque 200M (et au-delà) avec une demande `--mem` de quelques
+dizaines de Go au lieu de near-total-node.
+
+**Logging par step + validation loss, Pipeline 1** (`src/sae/sae_shared.py::
+load_or_train_extended_sae`). Jusqu'ici : historique par ÉPOQUE calculé mais
+jamais persisté séparément (seulement embarqué dans le state_dict du
+checkpoint final, invisible sans le recharger), et aucune évaluation sur un
+split tenu à l'écart du gradient pendant l'entraînement (seule une métrique
+finale post-hoc, `compute_sae_metrics`, existait). Corrigé : historique PAR
+STEP (aligné sur la convention déjà en place côté Pipeline 2,
+`phrase_sae.py`), split de validation (5%, jusqu'à 8192 tokens, seed fixe)
+évalué à chaque époque, écriture systématique d'un `*_history.json`
+standalone. **Rétrocompatibilité vérifiée** : tous les checkpoints
+`p1_extended_sae.pt` déjà produits contiennent encore l'ancien historique par
+époque dans leur state_dict — récupérable et traçable sans aucun rerun (cf.
+§0.5 ci-dessous).
+
+**Suppression du filtre FineWeb2 par mots-clés** (`UTILITY_COMPLAINT_KEYWORDS`,
+`src/data/keywords.py` — supprimé, pas commenté, git conserve l'historique).
+Sa précision qualitative mesurée restait faible (~15-20%, §23.1) pour un rôle
+qui n'a jamais eu besoin de pertinence thématique : le filler de volume sert
+uniquement à isoler un effet de VOLUME BRUT de tokens sur le SAE résiduel,
+jamais ajouté à `train_texts`. Remplacé par `sample_fineweb2_chunks`
+(`src/data/preparation.py`) : sous-échantillonnage sans filtre, mêmes
+garde-fous de déduplication (URL + hash de chunk). Ne change aucune
+conclusion déjà tirée (le filler n'a jamais influencé les métriques
+d'interprétabilité, seulement le réservoir résiduel) — simplifie le code et
+réduit la dépendance à un filtre dont la pertinence était déjà mise en doute.
+
+**Outillage de diagnostic, nouveau** : `src/analysis/plotting.py` (5
+fonctions Plotly réutilisables : courbes d'entraînement, métriques vs
+hyperparamètre, distribution d'activation/rho_interp par groupe, heatmap de
+corrélation, histogramme d'accord du juge) ; `scripts/generate_diagnostic_plots.py`
+(agrégation RÉTROACTIVE, zéro rerun — scanne les 35 runs `results_*/`
+existants : 39 courbes d'entraînement produites, dont TOUTES les runs
+Pipeline 1 antérieures au fix ci-dessus grâce à l'historique par époque déjà
+embarqué dans leurs checkpoints ; 25 distributions rho_interp ; 6 figures de
+balayage consolidées — K_EXTRA, D_EXTRA, volume, layer, hook-point, échelle
+du modèle — remplaçant les tables texte dispersées de ce journal) ; nouvel
+onglet dashboard "Diagnostics d'entraînement" (`src/visualization/dashboard.py`)
+lisant ces figures pré-générées, cohérent avec la philosophie du dashboard
+(lecture d'artefacts disque uniquement) ; `docs/sae_diagnostics_playbook.md`
+(checklist ordonnée : convergence → fidélité → capacité → interprétabilité →
+significativité → indépendance du juge), référencé depuis `CLAUDE.md`.
+
+**Non couvert rétroactivement** (nécessiterait un rerun) : heatmap de
+corrélation NPMI (§24, aucune matrice jamais persistée sur disque) et
+histogramme de sensibilité à l'ordre du juge (§13.1, seul le résumé agrégé a
+été conservé) — documenté explicitement dans le docstring du script plutôt
+que silencieusement omis.
+
+`pytest tests/ -q` reste vert (41/41) après chacun de ces changements.
+
+## 55. Phase 1 — le SAE core seul fait-il mieux que core+extension ? (test de "pollution")
+
+Question posée directement : l'extension `FrozenCoreResidualSAE` entraînée
+sur le résidu du core GemmaScope pourrait-elle polluer plutôt qu'enrichir le
+signal exploité en aval (classification, structure de cluster) ? Protocole
+CPU-only, zéro GPU/LLM, zéro rerun de pipeline : réutilise les activations
+denses déjà en cache du run principal (`results_v10_emails_main/cache/
+p1_all_doc_acts_ext_d1024.pt`, [44253, 17408] = d_core 16384 + D_EXTRA 1024),
+reconstruit uniquement les labels de split (déterministe, `CORPUS_SPLIT_SEED=42`,
+vérifié train=41176/test=2177/diff=900 = 44253, exact) pour ré-aligner les
+lignes du tenseur, puis compare `acts[:, :16384]` (core seul) à `acts` (complet)
+sur les mêmes métriques que le run principal — mêmes folds de validation
+croisée pour les deux conditions, autorisant un test de McNemar apparié
+(`scripts/core_vs_extension_ablation.py`, CPU-only, soumis en SLURM plutôt
+que sur le nœud de login, ce dernier étant partagé et déjà proche de la
+saturation mémoire, ~23/31 Go utilisés, swap quasi plein — un run tué
+silencieusement dans ces conditions n'écrit ni traceback ni artefact).
+
+Job compute-bound (régression logistique multinomiale sur matrice dense
+~41176×17408, solveur lbfgs) plutôt que memory-bound (`MaxRSS≈11 Go` mesuré
+pour `--mem=48G` demandé) : `--cpus-per-task=32` avec threads BLAS
+explicitement fixés (`OMP_NUM_THREADS`/`OPENBLAS_NUM_THREADS`/`MKL_NUM_THREADS`)
+plutôt qu'une simple augmentation de la mémoire demandée.
+
+**Résultat** :
+
+| Métrique | Core seul (16384 dims) | Core+extension (17408 dims) |
+|---|---|---|
+| `silhouette` (test, axes email) | 0,008643046952784 | 0,008643048815429 |
+| `clf_acc_email_axes` (14 classes) | 93,67% | 93,59% |
+| `clf_acc_sae` (energy/sports) | 60,0% | 60,0% |
+| `dead_pct` | 56,0% | 52,8% |
+| `L0` moyen | 1574,3 | 2446,7 |
+
+McNemar apparié (mêmes folds, mêmes documents) : axes email b=346/c=316,
+z-équivalent p=0,26 (non significatif) ; energy/sports b=0/c=0, p=1,0 —
+**zéro désaccord de prédiction sur les 600 documents**, les deux conditions
+classent chaque document identiquement.
+
+**L'extension n'apporte ni gain ni dégradation mesurable sur ces sondes.**
+La silhouette est identique à la 6ᵉ décimale près, la classification varie de
+moins d'un point (dans les deux sens selon la sonde), et aucun des deux tests
+de McNemar n'atteint la significativité. Pas de pollution détectable (aucune
+métrique ne se dégrade en ajoutant l'extension), mais pas non plus de gain
+linéairement décodable pour ces deux tâches précises. Cohérent avec le reste
+du chapitre : la valeur ajoutée mesurée de l'extension dans ce projet est
+spécifiquement dans l'interprétabilité individuelle des features
+(odd-one-out, 45,3% sur les features d'extension) et dans la couverture de
+concepts absents du core, pas dans un signal linéairement séparable
+supplémentaire pour des sondes de classification déjà proches de saturation
+sur le core seul (`clf_acc_email_axes` core-seul, 93,67%, dépasse même de
+peu le run principal cœur+extension, 93,5%).

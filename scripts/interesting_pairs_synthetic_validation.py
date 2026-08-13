@@ -1,14 +1,12 @@
 """
 scripts/interesting_pairs_synthetic_validation.py — validation par injection
 synthétique de `find_interesting_pairs` (`src/analysis/cooccurrence.py`),
-piste "reste à faire" explicitement notée dans `report/04_limites_et_perspectives.md`
-point 8 : comparer à des biais/artefacts réels connus du corpus (biais "Objet:",
-`RESULTS_TESTS.md` §14.1) et valider par injection synthétique à la manière du
-papier de référence (interp_embed, Appendix E.2).
+à la manière du papier de référence (interp_embed, Appendix E.2).
 
-Le biais réel "Objet:" (avant fix) n'est plus reproductible directement (déjà
-corrigé dans le pipeline de génération, `src/data/augmentation.py`) -- ce script
-reproduit le PRINCIPE de la validation par injection synthétique : construire des
+Le biais "Objet:" du corpus augmenté (`RESULTS_TESTS.md` §14.1) est désormais
+filtré au chargement (`src/data/augmentation.py`), donc plus reproductible
+directement comme cas réel -- ce script reproduit le PRINCIPE de la
+validation par injection synthétique : construire des
 activations SAE synthétiques avec une corrélation connue et contrôlée entre deux
 features (co-occurrence forte, labels sémantiquement dissimilaires -- exactement
 le signal que `find_interesting_pairs` est censé isoler), et vérifier que la

@@ -1,15 +1,13 @@
 """
-sae_shared.py — v10. Harnais d'entraînement ExtendedSAE + steering + ré-exports.
-Purgé (audit) : diff_features → cooccurrence.corpus_diff_stats ; compute_npmi →
-cooccurrence.compute_npmi ; highlight_activations_as_string → SAEDashboard ;
-pool_embeddings_by_document → alias activations.scatter_maxpool ;
-train_extended_sae_one_epoch supprimée (code mort sans AuxK ni projection).
+sae_shared.py — Harnais d'entraînement ExtendedSAE + steering + ré-exports
+partagés entre les deux pipelines.
 """
 
 import os
 import sys
 import math
-import re  # FIX : Ajout de l'import re manquant
+import json
+import re
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,10 +17,9 @@ from typing import Optional, List, Dict, Tuple, Any
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(ROOT_DIR, "..", ".."))  # src/sae/ -> racine du repo
-# external/ vit à la racine du repo, pas sous src/sae/ — chemin corrigé (bug historique
-# qui pointait vers src/sae/external/..., toujours inexistant, masqué par le try/except
-# ci-dessous). interp_embed reste volontairement non peuplé (Context.md : inspiration
-# seulement) ; ce chemin ne prend effet que si le submodule est un jour initialisé.
+# external/ vit à la racine du repo, pas sous src/sae/. interp_embed reste
+# volontairement non peuplé (inspiration méthodologique seulement) ; ce chemin
+# ne prend effet que si le submodule est un jour initialisé.
 sys.path.insert(0, os.path.join(REPO_ROOT, "external", "interp_embed"))
 sys.path.insert(0, os.path.join(REPO_ROOT, "external", "sae-lens"))
 sys.path.insert(0, os.path.join(ROOT_DIR, "..", "data"))
@@ -39,6 +36,7 @@ try:
     from src.data.preparation import (
         keyword_match,
         prepare_domain_dataset,
+        sample_fineweb2_chunks,
         split_into_phrases,
         load_and_clean_emails,
         build_email_train_test_corpus,
@@ -48,6 +46,7 @@ except ImportError:
     from preparation import (
         keyword_match,
         prepare_domain_dataset,
+        sample_fineweb2_chunks,
         split_into_phrases,
         load_and_clean_emails,
         build_email_train_test_corpus,
@@ -93,13 +92,11 @@ try:
     from src.data.keywords import (
         ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
         ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
-        UTILITY_COMPLAINT_KEYWORDS,
     )
 except ImportError:
     from keywords import (
         ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
         ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
-        UTILITY_COMPLAINT_KEYWORDS,
     )
 
 
@@ -154,33 +151,49 @@ def load_or_train_extended_sae(
     device: str,
 ) -> Tuple[nn.Module, Dict[str, List[float]]]:
     """
-    Harnais d'entraînement et de restauration robuste pour l'extension sémantique ExtendedSAE.
-    Résout la dette de conception de load_or_train pour le Pipeline 1.
+    Harnais d'entraînement et de restauration pour l'extension sémantique
+    ExtendedSAE (Pipeline 1).
     """
     save_path = os.path.join(save_dir, f"{model_name}.pt")
+    history_path = save_path.replace(".pt", "_history.json")
     if os.path.exists(save_path):
         print(f"  [sae_shared] Restauration du modèle {model_name} : {save_path}")
         ckpt = torch.load(save_path, map_location=device)
         missing, unexpected = model.load_state_dict(ckpt["state_dict"], strict=False)
         if missing:
-            print(f"  [sae_shared] Checkpoint v8 (sans θ/AuxK) — fallback TopK per-sample en eval. "
-                  f"Manquants: {missing}")
+            print(f"  [sae_shared] Checkpoint sans certains buffers (θ/AuxK) — "
+                  f"fallback TopK per-sample en eval. Manquants: {missing}")
         return model, ckpt.get("history", {})
 
-    print(f"  [sae_shared] Entraînement de {model_name} sur {acts_train.shape[0]} tokens...")
+    # Split de validation tenu à l'écart du gradient -- compute_sae_metrics
+    # reste une métrique post-hoc calculée après coup sur tout le corpus, ce
+    # split ajoute un signal de sur-apprentissage pendant l'entraînement
+    # lui-même. acts_train peut être un tenseur memmap disque (cf.
+    # open_mmap_reservoir, saev5.py) : indexer par un sous-ensemble d'indices
+    # (Subset) reste paginé à la demande, jamais matérialisé en RAM.
+    n_total = acts_train.shape[0]
+    n_val = min(8192, max(1, n_total // 20))
+    perm = torch.randperm(n_total, generator=torch.Generator().manual_seed(0))
+    val_idx, train_idx = perm[:n_val], perm[n_val:]
+    acts_val = acts_train[val_idx]
+
+    print(f"  [sae_shared] Entraînement de {model_name} sur {len(train_idx)} tokens résidus "
+          f"({n_val} tenus à l'écart pour validation)...")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    
-    from torch.utils.data import TensorDataset, DataLoader
-    dataset = TensorDataset(acts_train)
-    loader = DataLoader(dataset, batch_size=1024, shuffle=True)
-    
-    history = {"epoch": [], "loss": [], "l0": [], "dead_frac": [], "aux_loss": []}
-    
+
+    from torch.utils.data import TensorDataset, DataLoader, Subset
+    train_dataset = Subset(TensorDataset(acts_train), train_idx)
+    loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
+
+    # Historique PAR STEP (pas par époque), aligné avec la convention du
+    # Pipeline 2 (phrase_sae.py::load_or_train_sae) -- permet de tracer des
+    # courbes de perte, pas seulement des moyennes d'époque.
+    history = {"epoch": [], "step": [], "loss": [], "l0": [], "dead_frac": [], "aux_loss": [],
+               "val_epoch": [], "val_loss": []}
+    step = 0
+
     for epoch in range(epochs):
         model.train()
-        loss_acc, l0_acc, dead_acc, n_samples = 0.0, 0.0, 0.0, 0
-        
-        aux_acc = 0.0
         for batch in loader:
             b = batch[0].to(device).to(torch.bfloat16)
             optimizer.zero_grad()
@@ -194,32 +207,33 @@ def load_or_train_extended_sae(
             if hasattr(model, "normalize_decoder"):
                 model.normalize_decoder()   # renormalise après le step
 
-            n_b = b.shape[0]
-            loss_acc += loss.item() * n_b
-            l0_acc += out.get("l0_extra", out.get("l0", torch.tensor(0.0))).item() * n_b
-            dead_acc += out.get("dead_frac", torch.tensor(0.0)).item() * n_b
-            aux_acc += float(out.get("aux_loss", 0.0)) * n_b
-            n_samples += n_b
-            
-        epoch_loss = loss_acc / n_samples
-        epoch_l0 = l0_acc / n_samples
-        epoch_dead = dead_acc / n_samples
-        
-        history["loss"].append(epoch_loss)
-        history["l0"].append(epoch_l0)
-        history["dead_frac"].append(epoch_dead)
-        history["epoch"].append(epoch)
-        history["aux_loss"].append(aux_acc / n_samples)
+            history["loss"].append(loss.item())
+            history["l0"].append(out.get("l0_extra", out.get("l0", torch.tensor(0.0))).item())
+            history["dead_frac"].append(out.get("dead_frac", torch.tensor(0.0)).item())
+            history["aux_loss"].append(float(out.get("aux_loss", 0.0)))
+            history["epoch"].append(epoch)
+            history["step"].append(step)
+            step += 1
+
+        model.eval()
+        with torch.no_grad():
+            vb = acts_val.to(device).to(torch.bfloat16)
+            val_loss = model(vb)["loss"].item()
+        history["val_epoch"].append(epoch)
+        history["val_loss"].append(val_loss)
 
         print(
-            f"  Epoch {epoch+1:02d}/{epochs} | Loss={epoch_loss:.4f} | "
-            f"L0={epoch_l0:.1f} | dead={epoch_dead:.3f} | aux={aux_acc/n_samples:.4f}"
+            f"  Epoch {epoch+1:02d}/{epochs} | Loss={history['loss'][-1]:.4f} | "
+            f"ValLoss={val_loss:.4f} | L0={history['l0'][-1]:.1f} | "
+            f"dead={history['dead_frac'][-1]:.3f} | aux={history['aux_loss'][-1]:.4f}"
         )
-        
+
     ckpt = {
         "state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
         "config": {"epochs": epochs, "lr": lr},
         "history": history,
     }
     torch.save(ckpt, save_path)
+    with open(history_path, "w") as f:
+        json.dump(history, f, indent=2)
     return model, history

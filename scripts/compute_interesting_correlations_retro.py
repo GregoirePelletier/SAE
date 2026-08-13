@@ -1,9 +1,7 @@
 """
 scripts/compute_interesting_correlations_retro.py — Calcule find_interesting_pairs
-rétroactivement pour un run produit AVANT l'ajout de cette analyse au pipeline
-principal (cf. RESULTS_TESTS.md §15.3 : cooccurrence_graph n'était jamais appelée dans
-saev5.py avant cette session). Réutilise test_doc_acts déjà en cache -- aucune
-réextraction Gemma-3, seul bge-m3 est chargé (petit, rapide).
+rétroactivement pour un run existant, sans réextraction Gemma-3. Réutilise
+test_doc_acts déjà en cache -- seul bge-m3 est chargé (petit, rapide).
 
 Usage : PYTHONPATH=. .venv/bin/python scripts/compute_interesting_correlations_retro.py results_v10_emails_main
 """

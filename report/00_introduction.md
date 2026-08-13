@@ -27,7 +27,7 @@ nommable en langage naturel.
 
 ## Objectifs du stage
 
-L'énoncé initial du stage (`Context.md`, `pdf/Offre_Stage_EDF_RD_SEQUOIA_E7S_SAE.pdf`)
+L'énoncé initial du stage (`pdf/Offre_Stage_EDF_RD_SEQUOIA_E7S_SAE.pdf`)
 fixe l'ambition de construire une plateforme d'analyse de mails permettant :
 
 - l'indexation et la recherche par concept,
@@ -77,7 +77,5 @@ chapitres suivants :
 Le chapitre 1 positionne le projet par rapport à l'état de l'art (SAE, GemmaScope,
 protocoles d'auto-interprétation). Le chapitre 2 décrit l'architecture technique mise
 en œuvre. Le chapitre 3 présente la démarche expérimentale complète et ses résultats,
-cœur scientifique du rapport. Le chapitre 4 dresse le bilan consolidé des erreurs
-rencontrées et de leurs corrections tout au long du stage. Le chapitre 5 discute les
-limites actuelles et les perspectives. Le rapport se conclut par un bilan général du
-stage.
+cœur scientifique du rapport. Le chapitre 4 discute les limites actuelles et les
+perspectives. Le rapport se conclut par un bilan général du stage.

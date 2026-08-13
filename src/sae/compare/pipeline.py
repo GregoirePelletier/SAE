@@ -1,8 +1,8 @@
 """
 pipeline.py — Orchestration bout-en-bout (exécutable).
 Usage:
-  python -m sae_v9.pipeline --mails Mails.tsv --mode p1          # Pipeline 1 (token-level, Gemma)
-  python -m sae_v9.pipeline --mails Mails.tsv --mode compare \
+  python -m src.sae.compare.pipeline --mails Mails.tsv --mode p1  # Pipeline 1 (token-level, Gemma)
+  python -m src.sae.compare.pipeline --mails Mails.tsv --mode compare \
       --model-a F2LLM-v2-80M --model-b intfloat/multilingual-e5-small
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ def embed_corpus(texts: list[str], model_name: str, device=_DEFAULT_DEVICE, batc
 
 
 def train_phrase_sae(emb, d_sae=2048, k=16, epochs=60, tag="A", device=_DEFAULT_DEVICE):
-    """Délègue au harnais v9 du repo : BatchTopKEncoder (θ), AuxK, cache load_or_train."""
+    """Délègue au harnais d'entraînement du repo : BatchTopKEncoder (θ), AuxK, cache load_or_train."""
     try:
         from src.sae.phrase_sae import load_or_train_sae
     except ImportError:
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--mails", required=True)
     p.add_argument("--mode", choices=["analysis", "compare"], default="analysis")
-    p.add_argument("--model-a", default="codefuse-ai/F2LLM-v2-80M")  # org corrigée (était Alibaba-NLP, 404)
+    p.add_argument("--model-a", default="codefuse-ai/F2LLM-v2-80M")
     p.add_argument("--model-b", default="intfloat/multilingual-e5-small")
     a = p.parse_args()
     (run_compare if a.mode == "compare" else run_analysis)(a)

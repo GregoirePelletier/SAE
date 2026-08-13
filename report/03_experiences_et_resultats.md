@@ -43,7 +43,7 @@ montré que le corpus utilisé pour échantillonner le réservoir de résidus se
 entraîner l'extension (`N_TOKENS_EXTRA_TRAIN` tokens tirés de `train_texts`) était
 constitué **exclusivement** de textes génériques (FineWeb-2/Wikipedia filtrés par
 mots-clés sur trois domaines substituts : énergie, sport, support client). Les mails
-réels et leurs variantes augmentées étaient chargés séparément (`email_texts`) et
+originaux et leurs variantes augmentées étaient chargés séparément (`email_texts`) et
 utilisés **uniquement après l'entraînement**, pour une visualisation UMAP — jamais vus
 par le SAE d'extension pendant son entraînement.
 
@@ -128,6 +128,10 @@ qui passent le test :
   client` — des concepts directement alignés avec les objectifs métier du projet
   (détection d'urgence, détection d'intention, réclamations).
 
+*Ces labels précis illustrent une catégorie de concepts récurrente, pas des features
+individuellement stables : voir §12 pour la faible reproductibilité inter-seed des
+labels exacts (28,2% de recouvrement), le taux agrégé restant la seule mesure fiable.*
+
 ### 5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
 
 Une sonde de classification logistique a été ajoutée pour mesurer si les codes latents
@@ -147,18 +151,21 @@ il indique que les représentations latentes du SAE encodent l'information néce
 ces tâches de façon linéairement séparable, sur un corpus qui simule des variations
 réalistes de ton et d'urgence dans les emails clients.
 
-## 6. Bug corrigé pendant la validation
+**Réserve** (`RESULTS_TESTS.md` §37) : un baseline TF-IDF sans aucun
+contenu sémantique atteint 87,0% sur cette même sonde à 14 classes — soit ~93% du
+signal ci-dessus déjà présent dans le simple texte brut, par templating lexical de la
+génération augmentée, indépendamment de toute structure apprise par le SAE. Ce chiffre
+ne peut donc pas, seul, être lu comme une preuve de compréhension sémantique ; la sonde
+sur labels faibles indépendants du corpus augmenté (§7.2) reste la preuve la plus
+fiable des objectifs urgence/intention.
 
-La sonde de classification multi-classe (§5.4) a d'abord échoué systématiquement
-(exception silencieusement attrapée, métrique retournée à `NaN`) : la bibliothèque
-scikit-learn utilisée (`LogisticRegression(solver="liblinear")`) ne supporte, dans ses
-versions récentes, que la classification binaire. Corrigé en sélectionnant
-dynamiquement le solveur (`lbfgs`, qui supporte nativement le cas multinomial) au-delà
-de deux classes, sans changer le comportement du probe binaire préexistant
-(énergie/sport) qui continue d'utiliser `liblinear`. Deux des trois runs de l'ablation
-volume ont démarré leur exécution avant que ce correctif ne soit disponible ; le
-troisième (démarré après, une fois sorti de la file d'attente SLURM) a permis d'obtenir
-les valeurs du §5.4.
+## 6. Choix du solveur pour la sonde multi-classe
+
+La sonde de classification multi-classe (§5.4) utilise `LogisticRegression`
+avec sélection dynamique du solveur : `liblinear` pour le probe binaire
+préexistant (énergie/sport), `lbfgs` (support natif du cas multinomial)
+au-delà de deux classes — `liblinear` ne supporte que la classification
+binaire dans les versions récentes de scikit-learn.
 
 ## 7. Suites données au diagnostic
 
@@ -209,8 +216,8 @@ information, urgence), appliqués aux 3 300 mails originaux du split d'entraîne
 | Remboursement | 14,5% | 84,5% | 85,5% | −1,0 pt |
 
 Ce résultat répond directement aux deux objectifs "détection d'urgence" et
-"détection d'intentions" énoncés dans le cadrage initial du projet
-(`Context.md`, section "Objectif") : les codes latents du SAE séparent très
+"détection d'intentions" énoncés dans le cadrage initial du projet : les codes
+latents du SAE séparent très
 nettement l'urgence et la réclamation, sur des mails originaux non augmentés, avec un
 gain net important sur la baseline naïve. Le remboursement ne bat pas sa baseline
 (déjà forte du fait du déséquilibre de classe, 85,5% de négatifs) — à interpréter
@@ -425,7 +432,7 @@ l'encodeur s'entraîne normalement.
 
 | Métrique | Run principal (décodeur entraîné) | Frozen Decoder (décodeur figé) | Écart (significativité) |
 |---|---|---|---|
-| Interprétabilité odd-one-out | 45,3% (68/150) | 29,3% (44/150) | −16,0 points (z=2,91, p<0,01) |
+| Interprétabilité odd-one-out | 45,3% (68/150) | 29,3% (44/150) | −16,0 points (z=2,86, p<0,01) |
 | Classification en aval (14 classes) | 93,5% | 91,2% | −2,3 points (z=2,86, p<0,01) |
 
 **Résultat nuancé** : sur l'interprétabilité odd-one-out, l'écart est net et
@@ -497,57 +504,38 @@ surface (ordre ou langue), justifiant le vote majoritaire comme protocole par
 défaut. Détail et limites assumées (traduction par le même modèle juge, pas de
 réentraînement sur corpus anglais natif) : `RESULTS_TESTS.md` §22.
 
-## 14. Ablation volume à grande échelle (~100-120M tokens)
+## 14. Ablation volume à grande échelle (25M tokens)
 
 Suite directe du chapitre 1 ("Perspectives critiques") : le papier SAE Boost
 montre qu'un SAE résiduel a besoin de 100-200M tokens pour converger sans
-dégrader la performance générale — 50 à 100x au-dessus du volume testé dans notre
-ablation initiale (§5, jusqu'à 2M). Le corpus emails+augmentés (~6M tokens) étant
-très insuffisant pour cette échelle, plusieurs sources de complément ont été
-évaluées :
+dégrader la performance générale — 50 à 100x au-dessus du volume testé dans
+l'ablation initiale (§5, jusqu'à 2M). Le corpus emails+augmentés (~6M tokens)
+étant insuffisant pour cette échelle, le réservoir de résidus est complété par
+un filler échantillonné sur FineWeb2-fr sans filtre thématique (le filler
+isole un effet de volume brut de tokens, pas de pertinence thématique),
+ajouté **uniquement** au réservoir résiduel (`volume_filler_texts`), jamais
+au corpus utilisé pour la sélection des features à labelliser ni pour la
+sonde de classification, pour ne pas réintroduire le biais de domaine
+diagnostiqué au chapitre 3. Le réservoir de résidus est memory-mapped sur
+disque plutôt qu'alloué en RAM (`open_mmap_reservoir`, `src/sae/saev5.py`),
+ce qui permet de viser des volumes proches du seuil du papier (jusqu'à 200M
+tokens) sans demande mémoire proche de la capacité totale d'un nœud de
+calcul.
 
-- **SignalConso** (réclamations consommateurs officielles françaises) : écarté
-  après vérification empirique directe — l'export public ne contient que des
-  métadonnées catégorielles, aucun texte libre.
-- **FineWeb2-fr filtré par mots-clés** : trois configurations testées
-  empiriquement, aucune ne donnant un filtre véritablement propre (le registre
-  "réclamation client" est partagé par de nombreux secteurs, pas spécifique à
-  l'énergie). La meilleure configuration trouvée (phrases composées spécifiques)
-  atteint un hit rate de 0,275% avec une précision qualitative estimée à 15-20%
-  sur échantillon manuel — retenue comme compromis assumé, pas comme solution
-  propre.
-
-Le filler retenu est ajouté **uniquement** au réservoir de tokens résiduels
-(nouveau paramètre `volume_filler_texts`, `run_llm_max_pool_pipeline`), jamais au
-corpus utilisé pour la sélection des features à labelliser ni pour la sonde de
-classification — ceci pour ne pas réintroduire le biais de domaine diagnostiqué et
-corrigé au chapitre 3.
-
-**Incident et correction** : la première tentative (`N_TOKENS_EXTRA_TRAIN=100 000 000`,
-job 41176) a été tuée par OOM après 2h39 (24% de l'extraction). Cause : le buffer
-réservoir de résidus bruts alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
-**en RAM hôte**, indépendamment de la taille du corpus — pour Gemma-3-12B
-(hidden_size=3840) et 100M tokens, cela représente 768 Go, largement au-delà des
-180 Go demandés et proche de la RAM totale du nœud (1 To, partagé). Le run était
-par ailleurs sain (extraction normale, filler correctement construit) — seule la
-mémoire était en cause. Corrigé en réduisant la cible à
-`N_TOKENS_EXTRA_TRAIN=25 000 000` (buffer ≈ 192 Go, `--mem=500G`) : n'atteint pas
-le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
-supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
-monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
-
-**Résultat** (job 41375, terminé en 18h17min) : **81/150 = 54,0%** d'interprétabilité
-(odd-one-out), contre 45,3% pour le run principal (500k tokens) et 44,7% pour
-l'ablation initiale à 2M — écart numérique de +8,7 points mais **non significatif**
-(test z sur deux proportions, z=-1,50, seuil \|z\|>1,96). `clf_acc_email_axes` recule
-légèrement (93,5% → 91,3%). Porter le volume à 25M tokens (12x l'ablation initiale,
-toujours 50-100x en dessous du seuil 100-200M de SAE Boost) ne change donc pas la
-conclusion qualitative : le problème diagnostiqué en §2 était bien le domaine du
-corpus, pas son volume brut. Fait notable : cet écart directionnel (+8,7 points,
-non significatif) est du même ordre de grandeur que celui observé indépendamment
-pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non significatif) — à
-prendre comme une piste à répliquer plutôt qu'un résultat établi. Détail complet,
-y compris le diagnostic de l'incident OOM : `RESULTS_TESTS.md` §23.3.
+**Résultat à 25M tokens** (`results_v13_ablation_volume25m`) : **81/150 =
+54,0%** d'interprétabilité (odd-one-out), contre 45,3% pour le run principal
+(500k tokens) et 44,7% pour l'ablation initiale à 2M — écart numérique de
++8,7 points mais **non significatif** (test z sur deux proportions, z=-1,50,
+seuil \|z\|>1,96). `clf_acc_email_axes` recule légèrement (93,5% → 91,3%).
+Porter le volume à 25M tokens (12x l'ablation initiale, toujours 50-100x en
+dessous du seuil 100-200M de SAE Boost) ne change donc pas la conclusion
+qualitative : le problème diagnostiqué en §2 était bien le domaine du
+corpus, pas son volume brut. Cet écart directionnel (+8,7 points, non
+significatif) est du même ordre de grandeur que celui observé
+indépendamment pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non
+significatif) — à prendre comme une piste à répliquer plutôt qu'un résultat
+établi. Un run au seuil exact 100-200M reste à exécuter. Détail complet :
+`RESULTS_TESTS.md` §23.3/§54.
 
 ## 15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
@@ -581,25 +569,36 @@ dépend fortement de la structure de corrélation entre features propre à chaqu
 intention. Détail complet (protocole, limite méthodologique du pooling par
 document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.
 
-## 16. Ablation `K_EXTRA=5` (SAE Boost, piste flaguée non testée)
+## 16. Ablation `K_EXTRA=5` (SAE Boost)
 
-Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un SAE
-résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en dessous de
-cette valeur. Run `results_v13_ablation_k_extra5` (job 41404, terminé en
-3h51min) : **82/150 = 54,7%** d'interprétabilité contre 45,3% pour le run
-principal — écart de +9,4 points, **non significatif** (z=-1,62) mais le plus
-proche du seuil conventionnel de toutes les ablations de ce chapitre. `rho_sae`
-(fidélité de reconstruction du résidu) recule sensiblement (0,906 → 0,849),
-cohérent avec un budget de capacité par token plus faible. Direction cohérente
-avec l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
-directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md` §25.
+Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un
+SAE résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en
+dessous de cette valeur. Sur `results_v13_ablation_k_extra5` : **82/150 =
+54,7%** d'interprétabilité contre 45,3% pour le run principal — écart de
++9,4 points, **non significatif** (z=-1,62) mais le plus proche du seuil
+conventionnel de toutes les ablations de ce chapitre. `rho_sae` (fidélité de
+reconstruction du résidu) recule sensiblement (0,906 → 0,849), cohérent avec
+un budget de capacité par token plus faible. Direction cohérente avec
+l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
+directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md`
+§25.
 
-## 17. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
+Deux seeds supplémentaires (7, 99) confirment la direction sur les 3 : 50,0%
+et 55,3% d'interprétabilité, contre 54,7% pour le seed original et 45,3%
+pour le baseline `K_EXTRA=32`. Test z groupé sur les 3 seeds combinés
+(240/450 vs 68/150) : z=1,70, p≈0,089 — toujours sous le seuil conventionnel,
+et probablement optimiste (le calcul groupé ignore la corrélation
+intra-seed, et le baseline `K_EXTRA=32` n'a qu'un seul seed pour comparer).
+La piste `K_EXTRA=5` se renforce (3/3 seeds dans la même direction) sans
+pour autant passer d'hypothèse à répliquer à résultat établi. Détail :
+`RESULTS_TESTS.md` §45.
+
+## 17. Évaluation quantitative du retrieval Latent Terms
 
 `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
 entraîné par pure reconstruction, Clavié et al. 2026) n'était exercé que par
 inspection visuelle sur données de substitution. Protocole quantitatif
-(`scripts/latent_retrieval_precision_eval.py`, job 41484) : Precision@10/@20
+(`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20
 contre les labels faibles d'intention (§8), sur 4 requêtes en paraphrase, comparé
 à une baseline TF-IDF, sur les 3480 mails originaux.
 
@@ -680,3 +679,90 @@ mais le comportement empirique est cohérent avec cette hypothèse. Conclusion
 pratique : tronquer à 64-128 dimensions coûterait peu en performance pour un
 gain de calcul/mémoire de 5-10x, si jamais nécessaire. Détail complet :
 `RESULTS_TESTS.md` §31.
+
+## 20. Balayage du layer d'extraction (12/31/41) : le choix par défaut n'est pas optimal
+
+Le layer 24 (Pipeline 1) a toujours été choisi sur un seul critère : la
+couverture des labels Neuronpedia (Chapitre 1), jamais sur un critère
+d'interprétabilité mesuré empiriquement. Trois runs à facteur unique (même
+protocole que le run principal, seul `LAYER` varie) comblent ce manque :
+
+| Layer | Taux interp. | z vs layer 24 |
+|---|---|---|
+| 12 | 45,3% (68/150) | z=0,00, p=1,000 |
+| 24 (défaut, run principal) | 45,3% (68/150) | — |
+| 31 | **58,0% (87/150)** | **z=2,20, p=0,028** |
+| 41 | 52,7% (79/150) | z=1,27, p=0,204 |
+
+Layer 31 est le seul écart nominalement significatif du balayage (+12,7
+points), et layer 12 reproduit le taux du layer 24 au feature près — une
+coïncidence numérique, pas un signe de couplage entre les deux. Comme pour
+le reste de ce chapitre (aucune correction multi-tests appliquée, cf. §21
+ci-après pour le rappel), ce résultat doit être lu comme une piste à
+répliquer sur un second seed avant adoption, pas comme un changement de
+configuration déjà acquis -- mais c'est la première fois que le choix du
+layer 24 apparaît potentiellement sous-optimal sur le critère qui compte
+réellement pour ce projet. Détail complet : `RESULTS_TESTS.md` §51.
+
+## 21. Balayage du point d'extraction (`resid_post` vs `attn_out` vs `mlp_out`)
+
+Dernier volet du balayage : à layer fixe (24), comparer le residual stream
+(`resid_post`, utilisé partout dans ce rapport) aux deux autres points de
+hook publiés par GemmaScope-2 pour ce modèle (chapitre 1) :
+
+| Point d'extraction | Taux interp. | z vs `resid_post` |
+|---|---|---|
+| `resid_post` (défaut, run principal) | 45,3% (68/150) | — |
+| `mlp_out` | 52,7% (79/150) | z=1,27, p=0,204 |
+| `attn_out` | 35,3% (53/150) | z=-1,77, p=0,078 |
+
+Aucun des deux écarts individuels contre `resid_post` n'atteint la
+significativité conventionnelle, mais **`mlp_out` contre `attn_out`
+directement l'est nettement : z=3,02, p=0,0025**. Cohérent avec un a priori
+raisonnable sur l'architecture : `attn_out` capte l'entrée de la projection
+de sortie de l'attention (`self_attn.o_proj`), un espace multi-head pas
+encore recombiné vers la dimension du residual stream, tandis que `mlp_out`
+(sortie du MLP, déjà reprojetée) en reste proche. Illustration qualitative :
+la feature choisie pour la démo de steering sur `attn_out` s'est labellisée
+"variable assignment `p =`" -- un type de concept qui ne ressemble à rien
+de ce qu'on observe sur `resid_post`/`mlp_out`, cohérent avec un espace
+moins structuré sémantiquement à ce point précis du réseau. `attn_out` est
+le point d'extraction le moins prometteur des cinq configurations testées
+dans ce chapitre (layers 12/24/31/41 + `mlp_out`). Détail complet :
+`RESULTS_TESTS.md` §53.
+
+**Note transversale sur les §20-21** : ni ce balayage ni le reste du
+chapitre 3 n'appliquent de correction pour comparaisons multiples (rappel
+déjà fait au §11 pour le sanity check, et documenté comme lacune du chapitre
+en `04_limites_et_perspectives.md`) -- sur ~20 ablations à ce stade, un seul
+résultat significatif à p<10⁻⁹ (§18, échelle du modèle) et une poignée entre
+0,03 et 0,10 (K_EXTRA=5, layer 31, `mlp_out` vs `attn_out`) sont à traiter
+comme des pistes cohérentes entre elles, pas comme des résultats
+individuellement établis.
+
+## 22. Le core seul égale-t-il core+extension sur les métriques en aval ?
+
+Question centrale pour juger si `FrozenCoreResidualSAE` ajoute réellement du
+signal exploitable, ou seulement des dimensions supplémentaires sans effet :
+sur les mêmes activations en cache, mêmes folds de validation croisée, comparer
+le SAE core seul (16384 dimensions) à core+extension (17408 dimensions) sur la
+silhouette (structure de cluster, axes email) et deux sondes de classification
+déjà utilisées dans ce chapitre (axes email 14 classes, diffing energy/sports).
+
+| Métrique | Core seul | Core+extension |
+|---|---|---|
+| `silhouette` | 0,0086430470 | 0,0086430488 |
+| `clf_acc_email_axes` | 93,67% | 93,59% |
+| `clf_acc_sae` (energy/sports) | 60,0% | 60,0% |
+
+Un test de McNemar apparié (mêmes documents, mêmes folds) ne détecte aucune
+différence significative sur la sonde email (p=0,26) ; sur la sonde
+energy/sports, les deux conditions classent les 600 documents de façon
+**strictement identique** (zéro désaccord, p=1,0). L'extension n'apporte donc
+ni gain ni dégradation mesurable sur ces sondes linéaires -- ni pollution du
+signal du core, ni signal supplémentaire linéairement décodable pour ces deux
+tâches précises. Cohérent avec le reste du chapitre : la valeur mesurée de
+l'extension dans ce projet tient à l'interprétabilité individuelle de ses
+features (45,3% au test odd-one-out, chapitre 3 §2-5) et à la couverture de
+concepts absents du core, pas à un gain de séparabilité linéaire en aval que
+le core seul n'atteignait pas déjà. Détail complet : `RESULTS_TESTS.md` §55.

@@ -1,5 +1,5 @@
 """
-a.py — Smoke test : valide que le SAE Gemma Scope se charge correctement.
+test_chargement_sae.py — Smoke test : valide que le SAE Gemma Scope se charge correctement.
 """
 
 import os

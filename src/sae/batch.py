@@ -1,12 +1,11 @@
 """
-batch.py — v9. BatchTopK d'entraînement + seuil global θ pour l'inférence.
+batch.py — BatchTopK d'entraînement + seuil global θ pour l'inférence.
 
-Problème corrigé (discontinuité train/eval) :
   - Train : BatchTopK sélectionne les k·B plus grandes pré-activations DU BATCH
     (budget partagé — L0 moyen = k, mais variable par échantillon).
-  - Eval (ancien code) : TopK per-sample → force L0 = k exactement, distribution
-    d'activations différente de celle vue en train.
-  - Eval (correct, Bussmann et al. 2024) : JumpReLU avec seuil global
+  - Eval : un TopK per-sample forcerait L0 = k exactement, une distribution
+    d'activations différente de celle vue en train. À la place, JumpReLU avec
+    seuil global (Bussmann et al. 2024) :
         θ = E_batches[ min{ z_i > 0 sélectionnés } ]
     estimé par EMA pendant l'entraînement. L'inférence devient per-sample,
     déterministe, indépendante de la composition du batch.

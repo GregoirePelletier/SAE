@@ -8,14 +8,13 @@ Identifiants Neuronpedia :
 
 Source des labels : lots JSONL gzip publics sur le bucket S3 "neuronpedia-datasets"
   https://neuronpedia-datasets.s3.amazonaws.com/v1/{model_id}/{source}/explanations/batch-{N}.jsonl.gz
-(chaque ligne = un objet JSON avec au moins "index" et "description").
-L'ancienne route REST `/api/explanation/export` utilisée ici auparavant est cassée /
-non fiable (404 ou réponses vides observées) ; ce bucket est le chemin que Neuronpedia
-documente pour le téléchargement en masse des jeux d'explications, validé manuellement
-d'abord pour gemma-3-12b-it/24-gemmascope-2-res-262k (~10k features labellisées sur
-262144 seulement — faible couverture) puis pour 16k (src/config.py, bien plus dense en
-proportion) et pour gemma-3-270m-it/12-gemmascope-2-res-65k (~98% de couverture,
-validation locale, cf. Context.md).
+(chaque ligne = un objet JSON avec au moins "index" et "description") -- le
+chemin documenté par Neuronpedia pour le téléchargement en masse des jeux
+d'explications, plus fiable que la route REST `/api/explanation/export`.
+Couverture mesurée empiriquement : ~10k features labellisées sur 262144 pour
+gemma-3-12b-it/24-gemmascope-2-res-262k (faible), bien plus dense en
+proportion pour 16k (src/config.py), et ~98% pour
+gemma-3-270m-it/12-gemmascope-2-res-65k.
 
 ⚠ Cluster hors-ligne : exécuter fetch_neuronpedia_labels() sur une machine avec
 internet, copier le JSON dans CACHE_DIR ; le reste de la pipeline ne lit que le cache.

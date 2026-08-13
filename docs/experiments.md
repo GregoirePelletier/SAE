@@ -7,8 +7,7 @@ dans `RESULTS_TESTS.md` — ce document y renvoie systématiquement.
 ## 1. Le pipeline de bout en bout fonctionne-t-il ?
 
 **Oui**, validé à deux échelles :
-- Smoketest local (`Gemma-3-270M-it`, 6 Go VRAM) — cf. `Context.md` "Validation
-  empirique". 8/8 tests `pytest` passants.
+- Smoketest local (`Gemma-3-270M-it`, 6 Go VRAM). 8/8 tests `pytest` passants.
 - Échelle complète (`Gemma-3-12B-it`, cluster GPU) — `slurm/pipeline_runs/run_sae.slurm`/`slurm/pipeline_runs/run_sae_full.slurm`,
   cf. `RESULTS_TESTS.md` §2, §10.
 
@@ -19,17 +18,17 @@ générations) : ~63h GPU séquentielles → ~7h30 en array SLURM 8 shards paral
 Baseline sur le corpus complet (43 423 textes) : 1h11min après correction d'un bug de
 complexité quadratique dans le pooling (`RESULTS_TESTS.md` §0).
 
-| Étape | Volume | Durée mur | Détail |
-|---|---|---|---|
-| Augmentation (8 shards parallèles) | 45 240 générations (39 949 acceptées, 88,3%) | ~7h27 | job array 39017 |
-| Baseline (SAE natif, avant/après) | 43 423 textes | 1h11min20s | job 39492, après fix perf |
-| Run complet pipeline v9 (corpus generic) | ~9 500 textes | 37min32s | job 39531 |
+| Étape | Volume | Durée mur |
+|---|---|---|
+| Augmentation (8 shards parallèles) | 45 240 générations (39 949 acceptées, 88,3%) | ~7h27 |
+| Baseline (SAE natif) | 43 423 textes | 1h11min20s |
+| Run complet pipeline v9 (corpus generic) | ~9 500 textes | 37min32s |
 
 ## 3. Le taux de détection de l'intrus (odd-one-out) est-il limité par le volume d'entraînement ou par autre chose ?
 
-**Question centrale de cette session.** Réponse : **principalement par le contenu du
-corpus d'entraînement** (les emails n'y entraient jamais), **pas** par le volume brut
-de tokens. Diagnostic complet et 3 runs de validation dans `RESULTS_TESTS.md` §12.
+Réponse : **principalement par le contenu du corpus d'entraînement** (les emails
+n'y entraient jamais), **pas** par le volume brut de tokens. Diagnostic complet
+et 3 runs de validation dans `RESULTS_TESTS.md` §12.
 
 ### Design de l'expérience
 
@@ -70,14 +69,14 @@ de tokens. Diagnostic complet et 3 runs de validation dans `RESULTS_TESTS.md` §
 
 ### Effet de bord : séparabilité linéaire des axes d'augmentation
 
-La sonde de classification logistique (`downstream_classification`, corrigée pendant
-cette session pour supporter le multi-classe — cf. `RESULTS_TESTS.md` §12) sur les 14
-classes d'axes d'augmentation (émotion, urgence, registre, orthographe, original)
+La sonde de classification logistique (`downstream_classification`, prenant en
+charge le cas multi-classe — cf. `RESULTS_TESTS.md` §12) sur les 14 classes
+d'axes d'augmentation (émotion, urgence, registre, orthographe, original)
 donne **acc_SAE = 93,5%** (Pipeline 1) et **79,3%** (Pipeline 2) sur le run
 `results_v10_ablation_tok100k`. Les codes latents séparent donc très bien ces axes de
 façon linéaire — résultat directement pertinent pour les cas d'usage détection
-d'urgence / détection d'intention visés par le projet (`Context.md`, section
-"Objectif"), au-delà du seul diagnostic odd-one-out.
+d'urgence / détection d'intention visés par le projet, au-delà du seul
+diagnostic odd-one-out.
 
 ## 4. Le SAE capture-t-il des différences réelles entre sous-populations de mails (diffing) ?
 

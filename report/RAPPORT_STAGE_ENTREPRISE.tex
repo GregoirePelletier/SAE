@@ -961,7 +961,7 @@ requête en langage naturel est elle-même encodée puis réduite à ses feature
 actives, et BM25 classe les documents par recouvrement de features avec la
 requête --- exactement comme il classerait des documents par recouvrement de
 mots avec une requête textuelle. Une évaluation quantitative de ce protocole
---- jamais réalisée jusqu'ici --- montre une
+montre une
 \textbf{précision parfaite (1,00)} sur 3 intentions testées sur 4, nettement
 supérieure à une baseline TF-IDF classique sur des requêtes reformulées (pas
 de reprise littérale des mots-clés) --- généralisation sémantique réelle. Un
@@ -1065,21 +1065,11 @@ domine tous les autres effets mesurés. Les protocoles de fidélité,
 plausibilité et robustesse de l'explication ont tous été mis en œuvre et
 donnent des résultats positifs ou, à défaut, honnêtement nuancés (steering).
 
-Sur le plan de l'infrastructure, deux défauts latents ont été détectés et
-corrigés avant qu'ils ne compromettent un run coûteux : un doublement
-transitoire de la mémoire du réservoir de résidus (corrigé par préallocation
-d'un tenseur unique plutôt qu'une accumulation liste + concaténation), et une
-valeur de $d_\text{model}$ erronée pour le préréglage \texttt{12b}
-(4096 au lieu de 3840, jamais exercée jusque-là faute de code en dépendant
-directement). Le second aurait provoqué un plantage immédiat par
-incompatibilité de forme de tenseur au premier run combinant modèle 12B et
-extension à cœur gelé. Ces deux corrections, ainsi que l'allongement du délai
-avant la soutenance, ont permis d'engager un run à 200 millions de tokens
---- la borne haute exacte du seuil de convergence revendiqué par SAE Boost
---- qui n'avait pu être tenté plus tôt faute de mémoire disponible et de
-volume de corpus de substitution suffisant (résolus respectivement par le
-choix d'une partition GPU à plus grande mémoire et par l'extension du corpus
-de substitution FineWeb2-fr).
+Le réservoir de résidus utilisé pour l'entraînement de l'extension est
+memory-mapped sur disque plutôt qu'alloué en RAM proportionnellement au
+volume de tokens visé, ce qui rend schedulable un run au seuil de
+convergence de 100-200 millions de tokens revendiqué par SAE Boost --- non
+encore exécuté à ce jour.
 
 \subsection{Points non résolus et perspectives}
 
@@ -1240,8 +1230,8 @@ similaire d'interprétabilité appliquée.
   EMNLP 2025.
 
 \bibitem{clavie2026latentterms}
-  Clavié, B. et al.
-  \textit{Latent Terms: Sparse BM25-Style Retrieval over Sparse Autoencoder Vocabularies}.
+  Clavié, B., Lee, S., Shakir, A., Kato, M. P.
+  \textit{Latent Terms: Dense Retrievers Contain Trivially Extractable BM25-ready Zipfian Vocabularies}.
   arXiv:2605.29384, 2026.
 
 \bibitem{unstablefeatures2026}

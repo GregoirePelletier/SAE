@@ -1,37 +1,33 @@
 """
-scripts/augmentation_lexical_leakage_audit.py — audit méthodologique non
-sollicité explicitement (trouvé en creusant de mon côté, cf. consigne du
-2026-08-07 : ne pas se limiter aux pistes déjà nommées).
+scripts/augmentation_lexical_leakage_audit.py — audit méthodologique de
+`clf_acc_email_axes`.
 
 Hypothèse : `clf_acc_email_axes` (sonde logistique 5-plis,
 `src/analysis/metrics.py::downstream_classification`, appelée sur les
 activations SAE du corpus train pour les 14 classes axis__level) est utilisée
-partout dans ce dépôt comme preuve que les codes latents du SAE séparent
-emotion/urgence/registre/original (`Context.md` : "résultat encourageant
-pour les cas d'usage détection d'urgence/intention"). Mais le corpus
-augmenté est généré par un LLM (Gemma-3) à qui on donne une INSTRUCTION par
-axe/niveau (`src/data/augmentation.py::AXES`) — si le LLM retombe sur des
-formulations quasi figées par instruction (biais de génération connu des
-LLM sous contrainte de style), un classifieur pourrait atteindre une haute
-accuracy en repérant ces TICS LEXICAUX DE GÉNÉRATION plutôt qu'un signal
-sémantique réel. Si un SAE (conçu pour capturer des CONCEPTS, pas du texte
-littéral) sépare aussi bien que le texte brut, la séparation vient
-peut-être du texte, pas du SAE.
+comme preuve que les codes latents du SAE séparent emotion/urgence/registre/
+original. Mais le corpus augmenté est généré par un LLM (Gemma-3) à qui on
+donne une INSTRUCTION par axe/niveau (`src/data/augmentation.py::AXES`) — si
+le LLM retombe sur des formulations quasi figées par instruction (biais de
+génération connu des LLM sous contrainte de style), un classifieur pourrait
+atteindre une haute accuracy en repérant ces TICS LEXICAUX DE GÉNÉRATION
+plutôt qu'un signal sémantique réel. Si un SAE (conçu pour capturer des
+CONCEPTS, pas du texte littéral) sépare aussi bien que le texte brut, la
+séparation vient peut-être du texte, pas du SAE.
 
 Vérification préalable (n-grams les plus fréquents par classe,
 `local_data/emails/augmented_mails.jsonl`, non rejetés) : 77-100% des
 documents de chaque classe axis__level contiennent au moins un des 5
 trigrammes les plus fréquents de leur propre classe (ex. "de bien vouloir"
 dans 100% des 3278 `registre__soutenu`, "madame monsieur je" dans 99,8% des
-`registre__standard`) — signal de templating fort, jamais documenté
-jusqu'ici.
+`registre__standard`) — signal de templating fort.
 
 Ce script formalise le test : même protocole EXACT que
 `downstream_classification` (StratifiedKFold 5 plis, LogisticRegression,
 random_state=42) mais sur des features TF-IDF du texte brut au lieu des
 activations SAE. Si l'accuracy lexicale est proche de `clf_acc_email_axes`
-(93,5% rapporté, `RESULTS_TESTS.md`/`Context.md`), la métrique ne démontre
-pas ce qu'elle est censée démontrer.
+(93,5% rapporté), la métrique ne démontre pas ce qu'elle est censée
+démontrer.
 
 Usage (CPU uniquement) :
     PYTHONPATH=. .venv/bin/python scripts/augmentation_lexical_leakage_audit.py
@@ -124,7 +120,7 @@ def main() -> None:
     templating_rates = stock_phrase_templating_rate(texts_by_class)
     mean_templating = float(np.mean(list(templating_rates.values())))
 
-    REPORTED_CLF_ACC_EMAIL_AXES = 0.935  # RESULTS_TESTS.md / Context.md, P1, run principal
+    REPORTED_CLF_ACC_EMAIL_AXES = 0.935  # Pipeline 1, run principal
     results = {
         "n_classes": len(usable),
         "n_docs": len(texts),

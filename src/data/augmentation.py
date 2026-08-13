@@ -101,7 +101,7 @@ _FACT_RE = re.compile(
                                          # DOIT précéder le fallback générique ci-dessous : sinon
                                          # un numéro espacé/pointé n'est capturé QUE par fragments
                                          # de 4+ chiffres contigus (ex. "0476" sur "0476 35 64 90"),
-                                         # jamais comme un seul fact, cf. RESULTS_TESTS.md §39.
+                                         # jamais comme un seul fact.
     r"|\b\d+[.,]\d{2}\s*€"
     r"|\b\d{1,2}/\d{1,2}/\d{2,4}\b"
     r"|\b\d{4,}\b"
@@ -110,14 +110,12 @@ _FACT_RE = re.compile(
 
 def _normalize_fact(m: str) -> str:
     """Normalise un fact capturé pour une comparaison robuste au reformatage
-    pur (pas de perte réelle de contenu) : audit méthodologique du 2026-08-07
-    (`RESULTS_TESTS.md` §39) -- `_facts()` comparait les sous-chaînes brutes,
-    donc rejetait `facts_lost` un numéro de téléphone reformaté ("0476356490"
-    -> "0476 35 64 90" ou "04.76.35.64.90"), une date sans zéro de padding
-    ("18/7/13" -> "18/07/2013"), ou un montant en virgule décimale française
-    au lieu du point ("20.73€" -> "20,73 €") -- des faux positifs prouvés
-    directement sur `_facts()`, pas de simples suppositions. Normalisation :
-    séparateur décimal unifié (virgule), séparateurs de regroupement (espaces,
+    pur (pas de perte réelle de contenu) : sans cette normalisation, un simple
+    reformatage (numéro de téléphone "0476356490" -> "0476 35 64 90", date sans
+    zéro de padding "18/7/13" -> "18/07/2013", montant en virgule décimale
+    française au lieu du point "20.73€" -> "20,73 €") serait à tort compté
+    comme un fait perdu (`facts_lost`). Normalisation : séparateur décimal
+    unifié (virgule), séparateurs de regroupement (espaces,
     points, tirets) retirés des séquences numériques pures (téléphones),
     composantes de date entières (jour/mois/année) comparées sans padding.
     Reste hors de portée : une date réécrite en toutes lettres ("18 juillet
@@ -244,14 +242,11 @@ def _strip_leading_objet_line(text: str) -> str:
 
     Nécessaire pour la cohérence avec les mails originaux : `load_and_clean_emails`
     (src/data/preparation.py) applique déjà ce nettoyage aux mails originaux. Sans
-    ce même traitement ici, la ligne "Objet :" que le générateur ajoute encore dans
-    ~20% des variantes malgré la contrainte n°5 du prompt système (_SYSTEM,
-    échantillonnage à température 0.8 -- cf. RESULTS_TESTS.md §0) devient un
-    artefact de formatage qui distingue trivialement "augmenté" de "original" pour
-    le SAE, sans rapport avec l'axe de perturbation réellement visé (confirmé
-    empiriquement : "Subject: followed by email subject lines" ressortait comme
-    feature la plus discriminante sur plusieurs axes du run de diffing complet,
-    cf. RESULTS_TESTS.md §6/§0)."""
+    ce même traitement ici, la ligne "Objet :" que le générateur ajoute encore
+    dans une partie des variantes malgré la contrainte du prompt système
+    (_SYSTEM) devient un artefact de formatage qui distingue trivialement
+    "augmenté" de "original" pour le SAE, sans rapport avec l'axe de
+    perturbation réellement visé."""
     if not isinstance(text, str):
         return text
     return re.sub(r'^\s*(?:Objet|Subject)\s*:\s*[^\n]+\n*', '', text, flags=re.IGNORECASE)

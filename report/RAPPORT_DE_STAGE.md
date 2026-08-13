@@ -42,23 +42,36 @@ déroulement du stage.]*
 Ce stage porte sur l'explicabilité automatique de mails clients d'EDF à l'aide de
 Sparse Autoencoders (SAE), combinant un SAE préentraîné à grande échelle (GemmaScope-2,
 sur les activations de Gemma-3-12B-it) étendu par un second SAE entraîné
-spécifiquement sur le domaine, et un second pipeline indépendant fondé sur des
-embeddings de phrase (F2LLM-v2). Le pipeline initial, fonctionnel de bout en bout,
-présentait un taux de succès faible (20%) au test d'auto-interprétation des features
-propres au domaine. Une démarche de diagnostic par ablation contrôlée a établi que ce
-taux n'était pas limité par le volume d'entraînement, mais par une erreur de
-conception du corpus d'entraînement (uniquement générique, sans emails originaux) —
-corrigée, elle porte le taux d'interprétabilité à ~41-45%. Le stage a ensuite mis en
-place des tests de qualité de l'explication document-level (fidélité par ablation,
-plausibilité par choix forcé, toutes deux positives), un protocole d'évaluation
-couvrant l'ensemble des capacités du dépôt sous conditions fixées, un dashboard
-interactif, et une ablation finale de mise à l'échelle (largeur du SAE core,
-nombre d'époques, nombre de features labellisées) pour vérifier si un passage à
-l'échelle simple améliore encore les résultats sans changement de méthode.
+spécifiquement sur le domaine — architecture à cœur gelé identifiée en cours de
+stage comme structurellement équivalente à SAE Boost (Koriagin et al., COLM 2025)
+— et un second pipeline indépendant fondé sur des embeddings de phrase (F2LLM-v2,
+bge-m3). Le pipeline initial, fonctionnel de bout en bout, présentait un taux de
+succès faible (20%) au test d'auto-interprétation des features propres au domaine.
+Une démarche de diagnostic par ablation contrôlée a établi que ce taux n'était pas
+limité par le volume d'entraînement, mais par une erreur de conception du corpus
+d'entraînement (uniquement générique, sans texte du domaine cible) — corrigée,
+elle porte le taux d'interprétabilité à 45,3%.
+
+Une campagne d'ablations exhaustive (plus de 20 configurations : largeur du SAE,
+capacité et parcimonie de l'extension, volume de tokens, graine d'entraînement,
+dimension d'embedding, backbone de Pipeline 2) montre qu'**aucun hyperparamètre du
+SAE ne modifie significativement ce taux** une fois le domaine corrigé — à
+l'exception d'un unique levier : **l'échelle du modèle extracteur/juge**, qui
+produit un effet dose-réponse net et hautement significatif (12,0% à 1 milliard de
+paramètres, 28,0% à 4 milliards, 45,3% à 12 milliards ; test de tendance de
+Cochran-Armitage, p≈1,6×10⁻¹⁰) — de loin le résultat le plus marquant du stage. Un
+sanity check contre un décodeur figé aléatoire (Korznikov et al., 2026) confirme
+que l'entraînement de l'extension apprend une structure réelle (45,3% contre
+29,3%, écart significatif) tout en révélant qu'une classification en aval résiste
+beaucoup mieux à cette dégradation que l'interprétation qualitative. Des tests
+complémentaires (fidélité et plausibilité de l'explication document-level,
+robustesse du protocole de jugement, biais multilingue, fidélité du steering,
+évaluation quantitative du retrieval) complètent la validation du système, avec un
+audit rétroactif de la méthodologie statistique employée.
 
 **Mots-clés** : Sparse Autoencoders, interprétabilité mécaniste, GemmaScope,
 grands modèles de langage, explicabilité, traitement automatique des mails clients,
-auto-interprétation par juge LLM.
+auto-interprétation par juge LLM, effet d'échelle.
 
 ---
 
@@ -66,21 +79,34 @@ auto-interprétation par juge LLM.
 
 This internship addresses automatic explainability of customer emails at EDF using
 Sparse Autoencoders (SAE), combining a large pretrained SAE (GemmaScope-2, on
-Gemma-3-12B-it activations) extended by a second SAE trained specifically on the
-target domain, alongside an independent sentence-embedding-based pipeline (F2LLM-v2).
-The initial end-to-end pipeline showed a low success rate (20%) on the
-domain-specific feature auto-interpretation test. A controlled-ablation diagnostic
-established that this was not a training-volume limitation but a training-corpus
-design flaw (generic text only, no real emails) — once fixed, the interpretability
-rate rose to ~41-45%. The internship then implemented document-level explanation
-quality tests (ablation-based fidelity, forced-choice plausibility, both positive), a
-full-repository evaluation protocol under fixed conditions, an interactive dashboard,
-and a final scale-up ablation (core SAE width, number of training epochs, number of
-labeled features) to test whether simply scaling up improves results further without
-any methodological change.
+Gemma-3-12B-it activations) extended by a second SAE trained specifically for the
+target domain — a frozen-core architecture identified during the internship as
+structurally equivalent to SAE Boost (Koriagin et al., COLM 2025) — alongside an
+independent sentence-embedding-based pipeline (F2LLM-v2, bge-m3). The initial
+end-to-end pipeline showed a low success rate (20%) on the domain-specific feature
+auto-interpretation test. A controlled-ablation diagnostic established that this
+was not a training-volume limitation but a training-corpus design flaw (generic
+text only, no domain-specific text) — once fixed, the interpretability rate rose
+to 45.3%.
+
+An exhaustive ablation campaign (20+ configurations: SAE width, extension capacity
+and sparsity, token volume, training seed, embedding dimension, Pipeline-2
+backbone) shows that **no SAE hyperparameter significantly changes this rate**
+once the corpus domain is fixed — except for a single lever: **the scale of the
+extractor/judge model**, which produces a clean, highly significant dose-response
+effect (12.0% at 1B parameters, 28.0% at 4B, 45.3% at 12B; Cochran-Armitage trend
+test, p≈1.6×10⁻¹⁰) — by far the most striking finding of the internship. A sanity
+check against a randomly frozen decoder (Korznikov et al., 2026) confirms that the
+extension's training learns genuine structure (45.3% vs 29.3%, significant gap)
+while also revealing that downstream classification survives this degradation far
+better than qualitative interpretation does. Complementary tests (document-level
+explanation fidelity and plausibility, judge-protocol robustness, multilingual
+bias, steering fidelity, quantitative retrieval evaluation) complete the system's
+validation, together with a retroactive audit of the statistical methodology used.
 
 **Keywords**: Sparse Autoencoders, mechanistic interpretability, GemmaScope, large
-language models, explainability, customer email analysis, LLM auto-interpretation.
+language models, explainability, customer email analysis, LLM auto-interpretation,
+scaling effect.
 
 ---
 
@@ -90,15 +116,11 @@ language models, explainability, customer email analysis, LLM auto-interpretatio
 - Chapitre 1 — État de l'art
 - Chapitre 2 — Architecture et implémentation
 - Chapitre 3 — Démarche expérimentale et résultats
-- Chapitre 4 — Inspection des erreurs et corrections
-- Chapitre 5 — Limites et perspectives
+- Chapitre 4 — Limites et perspectives
 - Conclusion générale
 - Bibliographie
 
 ---
-
-
-\newpage
 
 ---
 
@@ -131,7 +153,7 @@ nommable en langage naturel.
 
 ## Objectifs du stage
 
-L'énoncé initial du stage (`Context.md`, `pdf/Offre_Stage_EDF_RD_SEQUOIA_E7S_SAE.pdf`)
+L'énoncé initial du stage (`pdf/Offre_Stage_EDF_RD_SEQUOIA_E7S_SAE.pdf`)
 fixe l'ambition de construire une plateforme d'analyse de mails permettant :
 
 - l'indexation et la recherche par concept,
@@ -181,13 +203,8 @@ chapitres suivants :
 Le chapitre 1 positionne le projet par rapport à l'état de l'art (SAE, GemmaScope,
 protocoles d'auto-interprétation). Le chapitre 2 décrit l'architecture technique mise
 en œuvre. Le chapitre 3 présente la démarche expérimentale complète et ses résultats,
-cœur scientifique du rapport. Le chapitre 4 dresse le bilan consolidé des erreurs
-rencontrées et de leurs corrections tout au long du stage. Le chapitre 5 discute les
-limites actuelles et les perspectives. Le rapport se conclut par un bilan général du
-stage.
-
-
-\newpage
+cœur scientifique du rapport. Le chapitre 4 discute les limites actuelles et les
+perspectives. Le rapport se conclut par un bilan général du stage.
 
 ---
 
@@ -218,20 +235,21 @@ Ce projet utilise deux variantes :
 
 ## GemmaScope-2
 
-GemmaScope ([google-deepmind/gemma-scope](https://github.com/google-deepmind/gemma-scope))
+GemmaScope ([huggingface.co/google/gemma-scope](https://huggingface.co/google/gemma-scope))
 est une collection de SAE préentraînés par DeepMind sur les modèles de la famille
 Gemma, à plusieurs couches et plusieurs largeurs (nombre de features). Le projet utilise
 GemmaScope-2 (variante pour Gemma-3) sur le residual stream, couche 24 pour le modèle
-12B. Le choix de la **largeur** du SAE (parmi 16k/65k/262k/1m disponibles) est un
+12B -- un choix de layer fondé uniquement sur la couverture Neuronpedia (ci-dessous),
+jamais sur un critère d'interprétabilité mesuré empiriquement avant le balayage du
+chapitre 3, §20-21, qui montre un layer alternatif (31) significativement meilleur.
+Le choix de la **largeur** du SAE (parmi 16k/65k/262k/1m disponibles) est un
 arbitrage documenté empiriquement dans ce projet, sur le critère de couverture des
 labels Neuronpedia (fraction des features disposant d'une explication en langage
 naturel) : **65k** offre la meilleure couverture pour ce modèle (87,8%, 57 551/65 536
 features labellisées), devant 16k (82,6%, 13 535/16 384), très loin devant 262k (5,3%,
 13 851/262 144, confirmant une première estimation manuelle ~10 000/262 144) ; la
 largeur 1m n'est pas hébergée par Neuronpedia pour ce modèle (aucune donnée
-disponible). 16k a été le choix initial du projet (comparé uniquement à 262k au
-démarrage du stage) ; 65k, non vérifié à l'origine, a été adopté après cette
-vérification systématique pour le run de mise à l'échelle final (chapitre 3).
+disponible). 65k est donc retenue pour le run de mise à l'échelle final (chapitre 3).
 
 ## Neuronpedia et l'auto-interprétation des features
 
@@ -255,9 +273,13 @@ Le projet reprend le protocole *odd-one-out* (utilisé notamment dans SAEBench) 
 3. Si succès : demander au même LLM de nommer/décrire le concept commun aux exemples
    positifs (le label final).
 4. Mesurer ρ_interp : corrélation de Spearman entre un score d'intensité attribué par
-   le LLM à chaque exemple et l'activation réelle mesurée — une feature bien détectée
-   par le juge devrait aussi bien *classer* les exemples par intensité, pas seulement
-   trouver l'intrus.
+   le LLM à chaque exemple et le rang de l'exemple dans l'ordre de sélection par
+   magnitude d'activation (implémentation actuelle, `src/sae/judge.py::odd_one_out_judge`
+   — un proxy de rang, pas la valeur d'activation continue réelle, et calculé sur les
+   mêmes `pos_examples` que ceux ayant servi à l'auto-interprétation, pas un échantillon
+   tenu à l'écart) — une feature bien détectée par le juge devrait aussi bien *classer*
+   les exemples par intensité, pas seulement trouver l'intrus. Écart avec le protocole
+   de Bills et al. (2023), qui utilise la magnitude réelle sur un échantillon distinct.
 
 C'est ce protocole, et son taux de succès mesuré sur ce projet, qui fait l'objet du
 chapitre expérimental principal (`03_experiences_et_resultats.md`).
@@ -276,15 +298,9 @@ l'autre :
   nettement inférieur et une granularité différente (phrase plutôt que token).
 
 Cette architecture à deux niveaux (SAE généraliste + extension spécifique au domaine)
-a longtemps été documentée dans ce projet comme un apport spécifique par rapport à un
-usage "out of the box" de GemmaScope ou de SAELens (`Context.md`, règle n°3 :
-"Conserver `FrozenCoreResidualSAE` — spécifique au projet"). Une relecture tardive de
-la littérature de référence a établi qu'il s'agit en réalité d'une implémentation de
-**SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs New Domain Tricks with
-Boosting*) — une des quatre méthodes explicitement listées dans le cadrage initial du
-stage (`Context.md`, objectif n°4), marquée "non fait" dans `docs/references.md`
-depuis le début : le projet l'avait en réalité déjà implémentée et validée à
-l'échelle, sans jamais l'identifier ni la citer comme telle. `FrozenCoreResidualSAE`/
+est une implémentation de **SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs
+New Domain Tricks with Boosting*) — une des méthodes de domain adaptation identifiées
+dans le cadrage initial du stage. `FrozenCoreResidualSAE`/
 `ExtendedSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
 résiduel entraîné sur l'erreur de reconstruction `e = x - x̂` d'un SAE core gelé,
 sommé à l'inférence) — y compris la taille de dictionnaire résiduel (1024), identique
@@ -333,10 +349,7 @@ tests de fidélité/plausibilité, chapitre 3 §8). Ce projet couvre bien les de
 familles de métriques, mais uniquement le versant *input-based* des méthodes
 d'explication : le steering (`steer_activations`/`steer_and_decode`,
 `src/sae/sae_shared.py`) existe déjà dans le dépôt mais n'a jamais été évalué comme
-méthode d'explication à part entière — piste documentée au chapitre 5.
-
-
-\newpage
+méthode d'explication à part entière — piste documentée au chapitre 4.
 
 ---
 
@@ -394,9 +407,8 @@ stage (`scripts/run_augmentation.py`, Gemma-3-12B-it) à partir de ces mails
 "originaux". **Aucune des deux couches du corpus n'est donc constituée de données
 réelles au sens strict** — le terme "original" désigne uniquement leur statut de
 donnée d'entrée (antérieure et externe à ce stage) par rapport aux variantes
-augmentées qui en dérivent, pas leur authenticité. Ce rapport évite désormais le
-terme "réel"/"réels" pour ce corpus, employé par erreur dans les premières phases
-de rédaction (cf. chapitre 4 pour la correction et sa justification).
+augmentées qui en dérivent, pas leur authenticité. Ce rapport n'emploie donc
+jamais le terme "réel"/"réels" pour ce corpus.
 
 ### Corpus d'entraînement : principal vs secondaire
 
@@ -430,10 +442,9 @@ pour traiter des corpus de dizaines de milliers de documents sans épuiser la m�
 Gemma-3 présente des activations de norme très élevée ("massive activations",
 documentées dans la littérature) dans son residual stream. Une précision fp16 (plage
 dynamique jusqu'à ~65 504) overflow silencieusement sur ces valeurs, corrompant tout
-l'entraînement en aval sans erreur explicite (perte `NaN` dès la première epoch, un des
-bugs les plus coûteux à diagnostiquer de ce projet — cf. `Context.md`). Le projet
-utilise bf16 par défaut partout (même en local), qui partage la plage d'exposant de
-fp32.
+l'entraînement en aval sans erreur explicite (perte `NaN` dès la première epoch). Le
+projet utilise bf16 par défaut partout (même en local), qui partage la plage
+d'exposant de fp32.
 
 ## Infrastructure de calcul
 
@@ -444,14 +455,11 @@ plusieurs choix : cache local des labels Neuronpedia (pas d'appel réseau au run
 environnement Python déjà provisionné sur disque (`.venv/bin/python` plutôt que `uv
 run`, qui tenterait de re-résoudre l'environnement en ligne).
 
-
-\newpage
-
 ---
 
 # Chapitre 3 — Démarche expérimentale et résultats
 
-## 3.1. Problématique
+## 1. Problématique
 
 Le pipeline complet (extraction d'activations → SAE → labellisation) fonctionnait de
 bout en bout sans erreur, mais produisait un taux de succès faible au test
@@ -464,9 +472,9 @@ labellisées). Sur le dernier run complet disponible avant cette phase du stage
 Question posée : **ce taux faible est-il dû à un budget d'entraînement (nombre de
 tokens) insuffisant pour l'extension SAE, ou à un autre facteur ?**
 
-## 3.2. Diagnostic
+## 2. Diagnostic
 
-### 3.2.1. Élimination de l'hypothèse "features mortes"
+### 2.1. Élimination de l'hypothèse "features mortes"
 
 Un budget d'entraînement insuffisant se traduirait typiquement par des features
 d'extension qui ne s'activent jamais (`dead_feature`), auquel cas le juge ne peut même
@@ -476,7 +484,7 @@ pas être interrogé (`odd_one_out_judge` retourne directement `dead_feature` si
 exemples positifs disponibles. L'échec du test n'était donc pas un problème de features
 inactives.
 
-### 3.2.2. Inspection qualitative des exemples présentés au juge
+### 2.2. Inspection qualitative des exemples présentés au juge
 
 L'inspection directe des `pos_examples` stockés pour les features non interprétables a
 révélé le problème : les neuf exemples "positifs" présentés au juge pour une même
@@ -487,14 +495,14 @@ présentés ensemble comme activant fortement la même feature. Le test odd-one-
 peut, par construction, pas réussir dans ce cas : il n'y a pas de concept partagé à
 partir duquel identifier l'intrus.
 
-### 3.2.3. Cause racine
+### 2.3. Cause racine
 
 La lecture du code d'assemblage du corpus (`src/sae/saev5.py`, bloc `__main__`) a
 montré que le corpus utilisé pour échantillonner le réservoir de résidus servant à
 entraîner l'extension (`N_TOKENS_EXTRA_TRAIN` tokens tirés de `train_texts`) était
 constitué **exclusivement** de textes génériques (FineWeb-2/Wikipedia filtrés par
 mots-clés sur trois domaines substituts : énergie, sport, support client). Les mails
-réels et leurs variantes augmentées étaient chargés séparément (`email_texts`) et
+originaux et leurs variantes augmentées étaient chargés séparément (`email_texts`) et
 utilisés **uniquement après l'entraînement**, pour une visualisation UMAP — jamais vus
 par le SAE d'extension pendant son entraînement.
 
@@ -504,7 +512,7 @@ emails EDF. Les "exemples positifs" incohérents observés en 2.2 ne sont pas un
 anomalie du juge, mais une conséquence directe et attendue de ce corpus
 d'entraînement.
 
-## 3.3. Correction
+## 3. Correction
 
 Deux changements ont été apportés au pipeline (`src/data/preparation.py`,
 `src/sae/saev5.py`) :
@@ -519,7 +527,7 @@ Deux changements ont été apportés au pipeline (`src/data/preparation.py`,
    réduit et cantonné à un usage post-hoc (démonstration préexistante de diffing
    cross-domaine), sans plus jamais participer à l'entraînement.
 
-## 3.4. Protocole de validation
+## 4. Protocole de validation
 
 Trois runs à l'échelle complète sur Gemma-3-12B-it, tous avec le nouveau corpus
 principal (emails + augmentés, ~41 200 documents d'entraînement / ~2 200 documents de
@@ -536,9 +544,9 @@ Le nombre de features jugées par run a été porté de 10 à **150** (`N_FEATUR
 pour disposer d'une puissance statistique correcte sur le taux d'interprétabilité
 observé (avec n=10, l'incertitude sur un taux observé est trop large pour conclure).
 
-## 3.5. Résultats
+## 5. Résultats
 
-### 3.5.1. Taux d'interprétabilité (test odd-one-out)
+### 5.1. Taux d'interprétabilité (test odd-one-out)
 
 | Corpus | `N_TOKENS_EXTRA_TRAIN` | n features jugées | Features mortes | Taux d'interprétabilité |
 |---|---|---|---|---|
@@ -553,7 +561,7 @@ d'environ ±8 points). Les trois taux mesurés à corpus identique (40,7% / 45,3
 sont statistiquement indistinguables les uns des autres au regard de cette incertitude,
 malgré un facteur 20 entre le budget de tokens le plus faible et le plus élevé testés.
 
-### 3.5.2. Interprétation
+### 5.2. Interprétation
 
 - **Corriger le domaine du corpus (generic → emails), à volume comparable (500 000
   tokens), plus que double le taux d'interprétabilité (20,0% → 45,3%).** C'est le
@@ -567,7 +575,7 @@ malgré un facteur 20 entre le budget de tokens le plus faible et le plus élev�
   de **contenu/domaine du corpus** d'entraînement — les emails, cible réelle du
   projet, n'entraient jamais dans les données servant à entraîner l'extension SAE.
 
-### 3.5.3. Qualité des labels obtenus
+### 5.3. Qualité des labels obtenus
 
 Contraste direct entre les labels obtenus avant et après correction, pour les features
 qui passent le test :
@@ -579,7 +587,11 @@ qui passent le test :
   client` — des concepts directement alignés avec les objectifs métier du projet
   (détection d'urgence, détection d'intention, réclamations).
 
-### 3.5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
+*Ces labels précis illustrent une catégorie de concepts récurrente, pas des features
+individuellement stables : voir §12 pour la faible reproductibilité inter-seed des
+labels exacts (28,2% de recouvrement), le taux agrégé restant la seule mesure fiable.*
+
+### 5.4. Résultat additionnel : séparabilité linéaire des axes de perturbation
 
 Une sonde de classification logistique a été ajoutée pour mesurer si les codes latents
 du SAE permettent de séparer linéairement les 14 classes du corpus principal (13
@@ -598,27 +610,30 @@ il indique que les représentations latentes du SAE encodent l'information néce
 ces tâches de façon linéairement séparable, sur un corpus qui simule des variations
 réalistes de ton et d'urgence dans les emails clients.
 
-## 3.6. Bug corrigé pendant la validation
+**Réserve** (`RESULTS_TESTS.md` §37) : un baseline TF-IDF sans aucun
+contenu sémantique atteint 87,0% sur cette même sonde à 14 classes — soit ~93% du
+signal ci-dessus déjà présent dans le simple texte brut, par templating lexical de la
+génération augmentée, indépendamment de toute structure apprise par le SAE. Ce chiffre
+ne peut donc pas, seul, être lu comme une preuve de compréhension sémantique ; la sonde
+sur labels faibles indépendants du corpus augmenté (§7.2) reste la preuve la plus
+fiable des objectifs urgence/intention.
 
-La sonde de classification multi-classe (§5.4) a d'abord échoué systématiquement
-(exception silencieusement attrapée, métrique retournée à `NaN`) : la bibliothèque
-scikit-learn utilisée (`LogisticRegression(solver="liblinear")`) ne supporte, dans ses
-versions récentes, que la classification binaire. Corrigé en sélectionnant
-dynamiquement le solveur (`lbfgs`, qui supporte nativement le cas multinomial) au-delà
-de deux classes, sans changer le comportement du probe binaire préexistant
-(énergie/sport) qui continue d'utiliser `liblinear`. Deux des trois runs de l'ablation
-volume ont démarré leur exécution avant que ce correctif ne soit disponible ; le
-troisième (démarré après, une fois sorti de la file d'attente SLURM) a permis d'obtenir
-les valeurs du §5.4.
+## 6. Choix du solveur pour la sonde multi-classe
 
-## 3.7. Suites données au diagnostic
+La sonde de classification multi-classe (§5.4) utilise `LogisticRegression`
+avec sélection dynamique du solveur : `liblinear` pour le probe binaire
+préexistant (énergie/sport), `lbfgs` (support natif du cas multinomial)
+au-delà de deux classes — `liblinear` ne supporte que la classification
+binaire dans les versions récentes de scikit-learn.
+
+## 7. Suites données au diagnostic
 
 Deux analyses complémentaires ont été menées après la validation du §5, pour répondre
 plus directement aux objectifs métier du stage et à la limite identifiée au §5.4/§7
 (taux résiduel non expliqué) — toutes deux réutilisent des activations déjà en cache,
 sans calcul GPU supplémentaire pour la seconde.
 
-### 3.7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
+### 7.1. Le résidu non-interprété est-il dû au protocole de jugement lui-même ?
 
 Le protocole odd-one-out (`odd_one_out_judge`) ne prend qu'une seule décision greedy
 par feature. Pour tester sa robustesse à l'ordre de présentation des exemples (un
@@ -642,7 +657,7 @@ une décision unanime sur 5 répétitions identiques (mêmes exemples, ordre dif
 **Une partie substantielle du taux d'échec observé au §5 reflète donc le bruit du
 protocole de jugement plutôt qu'un défaut réel des features testées.**
 
-### 3.7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
+### 7.2. Le SAE prédit-il l'urgence et l'intention sur des mails originaux ?
 
 Le résultat du §5.4 (séparabilité des axes d'augmentation synthétiques) a été
 complété par un test sur des labels **indépendants du corpus augmenté** : des labels
@@ -660,8 +675,8 @@ information, urgence), appliqués aux 3 300 mails originaux du split d'entraîne
 | Remboursement | 14,5% | 84,5% | 85,5% | −1,0 pt |
 
 Ce résultat répond directement aux deux objectifs "détection d'urgence" et
-"détection d'intentions" énoncés dans le cadrage initial du projet
-(`Context.md`, section "Objectif") : les codes latents du SAE séparent très
+"détection d'intentions" énoncés dans le cadrage initial du projet : les codes
+latents du SAE séparent très
 nettement l'urgence et la réclamation, sur des mails originaux non augmentés, avec un
 gain net important sur la baseline naïve. Le remboursement ne bat pas sa baseline
 (déjà forte du fait du déséquilibre de classe, 85,5% de négatifs) — à interpréter
@@ -669,14 +684,14 @@ comme une limite du label faible par regex pour cette catégorie plutôt que com
 échec du SAE, sans donnée annotée manuellement pour trancher entre les deux
 hypothèses.
 
-## 3.8. Qualité de l'explication document-level : fidélité et plausibilité
+## 8. Qualité de l'explication document-level : fidélité et plausibilité
 
 Question distincte des sections précédentes (qui évaluent une feature isolée ou une
 capacité globale du corpus) : pour UN document donné, l'explication produite par le
 pipeline (les features les plus actives et leurs labels) est-elle une bonne
 explication ? Deux propriétés indépendantes ont été testées.
 
-### 3.8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
+### 8.1. Fidélité (l'explication reflète-t-elle ce qui pilote réellement la décision ?)
 
 Test par ablation (`scripts/explanation_fidelity_test.py`) : sur 200 mails originaux par
 intention (urgence, réclamation, information, remboursement), correctement classés
@@ -695,7 +710,7 @@ réellement la décision (leur ablation fait s'effondrer la prédiction), contra
 à des features actives choisies au hasard (effet quasi nul). L'explication n'est pas
 une justification a posteriori déconnectée du mécanisme réel.
 
-### 3.8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
+### 8.2. Plausibilité (un lecteur trouve-t-il l'explication convaincante ?)
 
 Test par choix forcé au niveau document (`scripts/explanation_plausibility_test.py`,
 juge Gemma-3-12B-it — un jugement comparatif comme l'odd-one-out plutôt qu'une
@@ -710,7 +725,7 @@ au-dessus du hasard, mais loin d'être parfaite : dans 28,3% des cas le juge pr�
 décoy aléatoire, cohérent avec le taux d'interprétabilité résiduel (~45-55%) mesuré
 par ailleurs.
 
-### 3.8.3. Protocole d'évaluation complet du dépôt
+### 8.3. Protocole d'évaluation complet du dépôt
 
 Ces deux tests s'inscrivent dans un protocole plus large couvrant l'ensemble des
 méthodes du dépôt sous conditions fixées (`docs/evaluation_protocol.md`) : 16
@@ -730,7 +745,7 @@ bien les axes email (−2,2 points), la métrique la plus proche des objectifs
 métier. Aucun écart n'est de l'ordre d'un problème majeur ; pas de justification
 claire pour préférer l'un à l'autre sur ce projet.
 
-## 3.9. Limites de cette investigation
+## 9. Limites de cette investigation
 
 - Le taux d'interprétabilité obtenu après correction (~41-45%) reste loin de 100% :
   environ 55 à 59% des features d'extension restent non interprétables par le juge même
@@ -747,7 +762,7 @@ claire pour préférer l'un à l'autre sur ce projet.
   (~8h30 GPU cumulées pour les trois runs plutôt qu'un partage possible de l'étape
   d'extraction, identique entre les trois configurations).
 
-## 3.10. Ablation de mise à l'échelle du volume d'entraînement et de labellisation (v12)
+## 10. Ablation de mise à l'échelle du volume d'entraînement et de labellisation (v12)
 
 Question posée en fin de stage, dans le même esprit que l'ablation du §4/§5 mais sur
 un axe différent : une fois le domaine du corpus corrigé (§3) et le résidu
@@ -770,7 +785,7 @@ d'évaluation, §8.3) :
 | `N_TOKENS_EXTRA_TRAIN` | 500 000 | 500 000 (inchangé) | — (déjà démontré non limitant, §5.2) |
 | Backbone Pipeline 2 | F2LLM-v2-80M | F2LLM-v2-330M | (condition fixée du protocole d'évaluation, §8.3) |
 
-### 3.10.1. Résultats du run combiné
+### 10.1. Résultats du run combiné
 
 | Métrique | Run principal (16k) | Run v12 (65k, échelle) |
 |---|---|---|
@@ -788,7 +803,7 @@ combine trois leviers à la fois (largeur, époques, nombre de features jugées)
 cohérent avec un plafond déjà proche pour cette tâche plutôt qu'un signal de
 dégradation.
 
-### 3.10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
+### 10.2. Le rang par magnitude n'est pas un bon proxy de l'interprétabilité
 
 Analyse à coût nul (aucun calcul GPU, relecture de l'ordre de sélection déjà en
 cache) pour savoir si les 450 features supplémentaires labellisées par le scale-up
@@ -808,7 +823,7 @@ moyenne n'est donc pas un proxy fiable de l'interprétabilité potentielle d'une
 feature : restreindre la labellisation aux features de plus forte magnitude exclut
 systématiquement des candidates au moins aussi bonnes, voire meilleures.
 
-### 3.10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
+### 10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
 
 Le test de plausibilité (§8.2) donnait un résultat fortement dégradé sur ce run
 (56,7% contre 71,7% sur le run principal), en contradiction apparente avec la hausse
@@ -830,7 +845,7 @@ cosmétique des exemples exportés, restait numériquement valide (recalculé pa
 prudence, résultat dans le même ordre de grandeur). Détail complet dans
 `RESULTS_TESTS.md` §17.3/17.6.
 
-### 3.10.4. Décomposition largeur / époques / capacité (ablations isolées)
+### 10.4. Décomposition largeur / époques / capacité (ablations isolées)
 
 Trois runs à facteur unique, isolant respectivement la largeur du SAE core, le
 nombre d'époques et la capacité de l'extension (`D_EXTRA`/`K_EXTRA`, toutes choses
@@ -861,7 +876,7 @@ corpus (§3-5) et par le protocole de jugement lui-même (§7.1), pas par le vol
 d'aucun des quatre paramètres d'échelle testés à ce jour (tokens, largeur, époques,
 capacité).
 
-## 3.11. Sanity check : le protocole d'évaluation distingue-t-il un SAE entraîné d'un décodeur aléatoire ?
+## 11. Sanity check : le protocole d'évaluation distingue-t-il un SAE entraîné d'un décodeur aléatoire ?
 
 Question posée par la lecture critique de Korznikov et al. (2026, *Sanity Checks
 for Sparse Autoencoders*, chapitre 1) : leurs résultats montrent qu'un SAE dont le
@@ -876,7 +891,7 @@ l'encodeur s'entraîne normalement.
 
 | Métrique | Run principal (décodeur entraîné) | Frozen Decoder (décodeur figé) | Écart (significativité) |
 |---|---|---|---|
-| Interprétabilité odd-one-out | 45,3% (68/150) | 29,3% (44/150) | −16,0 points (z=2,91, p<0,01) |
+| Interprétabilité odd-one-out | 45,3% (68/150) | 29,3% (44/150) | −16,0 points (z=2,86, p<0,01) |
 | Classification en aval (14 classes) | 93,5% | 91,2% | −2,3 points (z=2,86, p<0,01) |
 
 **Résultat nuancé** : sur l'interprétabilité odd-one-out, l'écart est net et
@@ -896,7 +911,7 @@ différente (ablation directe des features, jugement humain-like sur le document
 entier), ne sont pas concernés par cette réserve. Détail complet et calculs de
 significativité : `RESULTS_TESTS.md` §19.
 
-## 3.12. Ablation de variance de seed
+## 12. Ablation de variance de seed
 
 Question posée par la littérature (*Unstable Features, Reproducible Subspaces*,
 arXiv:2606.12138 ; *Toward Identifiable Sparse Autoencoders*, arXiv:2605.31245) :
@@ -921,7 +936,7 @@ catégorie de concepts récurrente, pas des atomes stables et reproductibles du
 dictionnaire ; seul le taux agrégé d'interprétabilité doit être lu comme une mesure
 fiable de la qualité du SAE. Détail : `RESULTS_TESTS.md` §21.
 
-## 3.13. Biais multilingue du juge (français vs anglais traduit)
+## 13. Biais multilingue du juge (français vs anglais traduit)
 
 Question posée par la littérature sur l'interprétabilité multilingue (Resck et al.
 2025 ; *Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse
@@ -948,59 +963,40 @@ surface (ordre ou langue), justifiant le vote majoritaire comme protocole par
 défaut. Détail et limites assumées (traduction par le même modèle juge, pas de
 réentraînement sur corpus anglais natif) : `RESULTS_TESTS.md` §22.
 
-## 3.14. Ablation volume à grande échelle (~100-120M tokens)
+## 14. Ablation volume à grande échelle (25M tokens)
 
 Suite directe du chapitre 1 ("Perspectives critiques") : le papier SAE Boost
 montre qu'un SAE résiduel a besoin de 100-200M tokens pour converger sans
-dégrader la performance générale — 50 à 100x au-dessus du volume testé dans notre
-ablation initiale (§5, jusqu'à 2M). Le corpus emails+augmentés (~6M tokens) étant
-très insuffisant pour cette échelle, plusieurs sources de complément ont été
-évaluées :
+dégrader la performance générale — 50 à 100x au-dessus du volume testé dans
+l'ablation initiale (§5, jusqu'à 2M). Le corpus emails+augmentés (~6M tokens)
+étant insuffisant pour cette échelle, le réservoir de résidus est complété par
+un filler échantillonné sur FineWeb2-fr sans filtre thématique (le filler
+isole un effet de volume brut de tokens, pas de pertinence thématique),
+ajouté **uniquement** au réservoir résiduel (`volume_filler_texts`), jamais
+au corpus utilisé pour la sélection des features à labelliser ni pour la
+sonde de classification, pour ne pas réintroduire le biais de domaine
+diagnostiqué au chapitre 3. Le réservoir de résidus est memory-mapped sur
+disque plutôt qu'alloué en RAM (`open_mmap_reservoir`, `src/sae/saev5.py`),
+ce qui permet de viser des volumes proches du seuil du papier (jusqu'à 200M
+tokens) sans demande mémoire proche de la capacité totale d'un nœud de
+calcul.
 
-- **SignalConso** (réclamations consommateurs officielles françaises) : écarté
-  après vérification empirique directe — l'export public ne contient que des
-  métadonnées catégorielles, aucun texte libre.
-- **FineWeb2-fr filtré par mots-clés** : trois configurations testées
-  empiriquement, aucune ne donnant un filtre véritablement propre (le registre
-  "réclamation client" est partagé par de nombreux secteurs, pas spécifique à
-  l'énergie). La meilleure configuration trouvée (phrases composées spécifiques)
-  atteint un hit rate de 0,275% avec une précision qualitative estimée à 15-20%
-  sur échantillon manuel — retenue comme compromis assumé, pas comme solution
-  propre.
+**Résultat à 25M tokens** (`results_v13_ablation_volume25m`) : **81/150 =
+54,0%** d'interprétabilité (odd-one-out), contre 45,3% pour le run principal
+(500k tokens) et 44,7% pour l'ablation initiale à 2M — écart numérique de
++8,7 points mais **non significatif** (test z sur deux proportions, z=-1,50,
+seuil \|z\|>1,96). `clf_acc_email_axes` recule légèrement (93,5% → 91,3%).
+Porter le volume à 25M tokens (12x l'ablation initiale, toujours 50-100x en
+dessous du seuil 100-200M de SAE Boost) ne change donc pas la conclusion
+qualitative : le problème diagnostiqué en §2 était bien le domaine du
+corpus, pas son volume brut. Cet écart directionnel (+8,7 points, non
+significatif) est du même ordre de grandeur que celui observé
+indépendamment pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non
+significatif) — à prendre comme une piste à répliquer plutôt qu'un résultat
+établi. Un run au seuil exact 100-200M reste à exécuter. Détail complet :
+`RESULTS_TESTS.md` §23.3/§54.
 
-Le filler retenu est ajouté **uniquement** au réservoir de tokens résiduels
-(nouveau paramètre `volume_filler_texts`, `run_llm_max_pool_pipeline`), jamais au
-corpus utilisé pour la sélection des features à labelliser ni pour la sonde de
-classification — ceci pour ne pas réintroduire le biais de domaine diagnostiqué et
-corrigé au chapitre 3.
-
-**Incident et correction** : la première tentative (`N_TOKENS_EXTRA_TRAIN=100 000 000`,
-job 41176) a été tuée par OOM après 2h39 (24% de l'extraction). Cause : le buffer
-réservoir de résidus bruts alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
-**en RAM hôte**, indépendamment de la taille du corpus — pour Gemma-3-12B
-(hidden_size=3840) et 100M tokens, cela représente 768 Go, largement au-delà des
-180 Go demandés et proche de la RAM totale du nœud (1 To, partagé). Le run était
-par ailleurs sain (extraction normale, filler correctement construit) — seule la
-mémoire était en cause. Corrigé en réduisant la cible à
-`N_TOKENS_EXTRA_TRAIN=25 000 000` (buffer ≈ 192 Go, `--mem=500G`) : n'atteint pas
-le seuil exact de 100-200M du papier SAE Boost, mais teste un volume ~12x
-supérieur à l'ablation initiale (2M tokens, §5), suffisant pour détecter un effet
-monotone s'il existe. Relancé sous `results_v13_ablation_volume25m` (job 41375).
-
-**Résultat** (job 41375, terminé en 18h17min) : **81/150 = 54,0%** d'interprétabilité
-(odd-one-out), contre 45,3% pour le run principal (500k tokens) et 44,7% pour
-l'ablation initiale à 2M — écart numérique de +8,7 points mais **non significatif**
-(test z sur deux proportions, z=-1,50, seuil \|z\|>1,96). `clf_acc_email_axes` recule
-légèrement (93,5% → 91,3%). Porter le volume à 25M tokens (12x l'ablation initiale,
-toujours 50-100x en dessous du seuil 100-200M de SAE Boost) ne change donc pas la
-conclusion qualitative : le problème diagnostiqué en §2 était bien le domaine du
-corpus, pas son volume brut. Fait notable : cet écart directionnel (+8,7 points,
-non significatif) est du même ordre de grandeur que celui observé indépendamment
-pour l'ablation `K_EXTRA=5` (+9,4 points, §16, également non significatif) — à
-prendre comme une piste à répliquer plutôt qu'un résultat établi. Détail complet,
-y compris le diagnostic de l'incident OOM : `RESULTS_TESTS.md` §23.3.
-
-## 3.15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
+## 15. Fidélité du steering (`steer_and_decode`) : jamais testé, résultat très hétérogène par intention
 
 Le steering (`steer_activations`/`steer_and_decode`, `src/sae/sae_shared.py`)
 existe dans le dépôt depuis le début mais n'était jamais réellement exercé : seule
@@ -1032,25 +1028,36 @@ dépend fortement de la structure de corrélation entre features propre à chaqu
 intention. Détail complet (protocole, limite méthodologique du pooling par
 document, fuite résiduelle mesurée) : `RESULTS_TESTS.md` §24.
 
-## 3.16. Ablation `K_EXTRA=5` (SAE Boost, piste flaguée non testée)
+## 16. Ablation `K_EXTRA=5` (SAE Boost)
 
-Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un SAE
-résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en dessous de
-cette valeur. Run `results_v13_ablation_k_extra5` (job 41404, terminé en
-3h51min) : **82/150 = 54,7%** d'interprétabilité contre 45,3% pour le run
-principal — écart de +9,4 points, **non significatif** (z=-1,62) mais le plus
-proche du seuil conventionnel de toutes les ablations de ce chapitre. `rho_sae`
-(fidélité de reconstruction du résidu) recule sensiblement (0,906 → 0,849),
-cohérent avec un budget de capacité par token plus faible. Direction cohérente
-avec l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
-directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md` §25.
+Le papier SAE Boost trouve k=5 optimal dans son étude de sensibilité pour un
+SAE résiduel — notre `K_EXTRA=32` par défaut n'avait jamais été testé en
+dessous de cette valeur. Sur `results_v13_ablation_k_extra5` : **82/150 =
+54,7%** d'interprétabilité contre 45,3% pour le run principal — écart de
++9,4 points, **non significatif** (z=-1,62) mais le plus proche du seuil
+conventionnel de toutes les ablations de ce chapitre. `rho_sae` (fidélité de
+reconstruction du résidu) recule sensiblement (0,906 → 0,849), cohérent avec
+un budget de capacité par token plus faible. Direction cohérente avec
+l'hypothèse du papier, mais à confirmer (cf. §14 pour la coïncidence
+directionnelle avec l'ablation volume). Détail complet : `RESULTS_TESTS.md`
+§25.
 
-## 3.17. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
+Deux seeds supplémentaires (7, 99) confirment la direction sur les 3 : 50,0%
+et 55,3% d'interprétabilité, contre 54,7% pour le seed original et 45,3%
+pour le baseline `K_EXTRA=32`. Test z groupé sur les 3 seeds combinés
+(240/450 vs 68/150) : z=1,70, p≈0,089 — toujours sous le seuil conventionnel,
+et probablement optimiste (le calcul groupé ignore la corrélation
+intra-seed, et le baseline `K_EXTRA=32` n'a qu'un seul seed pour comparer).
+La piste `K_EXTRA=5` se renforce (3/3 seeds dans la même direction) sans
+pour autant passer d'hypothèse à répliquer à résultat établi. Détail :
+`RESULTS_TESTS.md` §45.
+
+## 17. Évaluation quantitative du retrieval Latent Terms
 
 `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
 entraîné par pure reconstruction, Clavié et al. 2026) n'était exercé que par
 inspection visuelle sur données de substitution. Protocole quantitatif
-(`scripts/latent_retrieval_precision_eval.py`, job 41484) : Precision@10/@20
+(`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20
 contre les labels faibles d'intention (§8), sur 4 requêtes en paraphrase, comparé
 à une baseline TF-IDF, sur les 3480 mails originaux.
 
@@ -1070,7 +1077,7 @@ intersection non nulle avec elles — limite structurelle du BM25 sur vocabulair
 latent très parcimonieux (k=16), pas un bug ni un raté sémantique. Détail
 complet : `RESULTS_TESTS.md` §26.
 
-## 3.18. Ablation "échelle du modèle" : un effet dose-réponse net et significatif
+## 18. Ablation "échelle du modèle" : un effet dose-réponse net et significatif
 
 Toutes les ablations précédentes gardent le modèle extracteur/juge fixé à
 gemma-3-12b-it. Test avec gemma-3-1b-it et gemma-3-4b-it (+ leurs GemmaScope
@@ -1107,7 +1114,7 @@ largeur testée ne change l'interprétabilité, et souligne par contraste à que
 point l'effet de l'échelle du MODÈLE ci-dessus est hors norme parmi tous les
 leviers testés dans ce projet. Détail complet : `RESULTS_TESTS.md` §29.
 
-## 3.19. Balayage `MATRYOSHKA_DIM` (F2LLM) : dégradation graduelle, pas abrupte
+## 19. Balayage `MATRYOSHKA_DIM` (F2LLM) : dégradation graduelle, pas abrupte
 
 `MATRYOSHKA_DIM` (troncature de l'embedding F2LLM, défaut 320) n'avait jamais
 été varié — fait notable découvert en creusant : F2LLM-80M a `hidden_size=320`,
@@ -1132,598 +1139,452 @@ pratique : tronquer à 64-128 dimensions coûterait peu en performance pour un
 gain de calcul/mémoire de 5-10x, si jamais nécessaire. Détail complet :
 `RESULTS_TESTS.md` §31.
 
-# Chapitre 4 — Inspection des erreurs et corrections
+## 20. Balayage du layer d'extraction (12/31/41) : le choix par défaut n'est pas optimal
 
-Ce chapitre consolide, dans l'ordre chronologique des quatre phases du stage
-(cf. introduction), l'ensemble des dysfonctionnements identifiés et corrigés. Il
-regroupe des informations autrement dispersées entre `Context.md` (journal d'audit) et
-`RESULTS_TESTS.md` (journal d'expériences), pour répondre spécifiquement à l'exigence
-d'un rapport de stage de documenter non seulement ce qui a fonctionné, mais aussi les
-erreurs rencontrées et la façon dont elles ont été diagnostiquées.
+Le layer 24 (Pipeline 1) a toujours été choisi sur un seul critère : la
+couverture des labels Neuronpedia (Chapitre 1), jamais sur un critère
+d'interprétabilité mesuré empiriquement. Trois runs à facteur unique (même
+protocole que le run principal, seul `LAYER` varie) comblent ce manque :
 
-## Phase 1 — Audit et fiabilisation initiale
+| Layer | Taux interp. | z vs layer 24 |
+|---|---|---|
+| 12 | 45,3% (68/150) | z=0,00, p=1,000 |
+| 24 (défaut, run principal) | 45,3% (68/150) | — |
+| 31 | **58,0% (87/150)** | **z=2,20, p=0,028** |
+| 41 | 52,7% (79/150) | z=1,27, p=0,204 |
 
-Le pipeline hérité présentait plusieurs bugs bloquants ou silencieux, découverts par
-exécution réelle (aucun n'était détecté par une simple lecture de code) :
+Layer 31 est le seul écart nominalement significatif du balayage (+12,7
+points), et layer 12 reproduit le taux du layer 24 au feature près — une
+coïncidence numérique, pas un signe de couplage entre les deux. Comme pour
+le reste de ce chapitre (aucune correction multi-tests appliquée, cf. §21
+ci-après pour le rappel), ce résultat doit être lu comme une piste à
+répliquer sur un second seed avant adoption, pas comme un changement de
+configuration déjà acquis -- mais c'est la première fois que le choix du
+layer 24 apparaît potentiellement sous-optimal sur le critère qui compte
+réellement pour ce projet. Détail complet : `RESULTS_TESTS.md` §51.
 
-| Bug | Symptôme | Cause | Correction |
-|---|---|---|---|
-| Overflow fp16 sur activations massives | `Loss=nan` dès la 1ère époque d'entraînement de `ExtendedSAE` | Gemma-3 présente des activations de norme très élevée (~1e5) dans son residual stream, au-delà du maximum représentable en fp16 (~65 504) | Précision par défaut passée à **bf16** partout, y compris en local (même plage d'exposant que fp32) |
-| Cast dtype global cassant le backward | `RuntimeError: Found dtype BFloat16 but expected Float` après le fix bf16 | `FrozenCoreResidualSAE` castée en bloc via `.to(TORCH_DTYPE)`, alors que sa branche "extra" est conçue pour rester fp32 | Cast restreint à `core_sae` uniquement ; `residual` explicitement recasté en fp32 dans `forward()` |
-| `hook_layer` figé en dur | Mauvaise couche extraite sur les modèles autres que 12b/layer-24 | Valeur `24` codée en dur, biais historique | Dérivée dynamiquement du `hook_name` résolu |
-| `d_in` incorrect pour 270m | Dimensions incohérentes au chargement du SAE | Valeur supposée (1024) tirée de spécifications génériques publiques | Corrigée à **640**, confirmée empiriquement sur les poids réellement téléchargés |
-| Route REST Neuronpedia cassée | Récupération de labels systématiquement vide | `/api/explanation/export` non fiable | Téléchargement direct des lots `.jsonl.gz` du bucket S3 public `neuronpedia-datasets` |
-| Repos HuggingFace incorrects | Téléchargements en échec (404) | `gemma-scope-2-4b-it-res` figé en dur ; org F2LLM `Alibaba-NLP` inexistante | `download_sae.py` réécrit pour lire `src/config.py` ; org corrigée en `codefuse-ai` |
-| Crashs sur petits corpus | `ValueError`/`TypeError` (UMAP/HDBSCAN, `corpus_diff_stats`) | Aucune garde pour 0 feature active ou `N_DOCS` trop petit pour l'initialisation spectrale | Dégradation propre ajoutée (résultat vide bien formé plutôt qu'exception) |
-| Imports cassés | `ModuleNotFoundError` / échec de collecte pytest | Chemin `sys.path` erroné, import relatif incorrect, symbole inexistant importé | Chemins et imports corrigés ; test réécrit sur la fonction réellement maintenue |
+## 21. Balayage du point d'extraction (`resid_post` vs `attn_out` vs `mlp_out`)
 
-Validation de cette phase : suite de tests (8/8 passants) et run complet de bout en
-bout sur **Gemma-3-270M-it** (profil réduit, 6 Go VRAM), qui a permis d'itérer
-rapidement avant tout passage à l'échelle coûteux sur 12B. Cette validation locale a
-aussi révélé une **limite** qui deviendra le sujet central de la phase 2 : les
-features de l'extension `ExtendedSAE` restaient `dead_feature` (jamais activées) avec
-un budget d'entraînement modeste.
+Dernier volet du balayage : à layer fixe (24), comparer le residual stream
+(`resid_post`, utilisé partout dans ce rapport) aux deux autres points de
+hook publiés par GemmaScope-2 pour ce modèle (chapitre 1) :
 
-## Phase 2 — Diagnostic du taux d'interprétabilité (cœur du stage)
+| Point d'extraction | Taux interp. | z vs `resid_post` |
+|---|---|---|
+| `resid_post` (défaut, run principal) | 45,3% (68/150) | — |
+| `mlp_out` | 52,7% (79/150) | z=1,27, p=0,204 |
+| `attn_out` | 35,3% (53/150) | z=-1,77, p=0,078 |
 
-Sur le premier run à l'échelle complète disponible (Gemma-3-12B-it, `results_v9_full`),
-la limite ci-dessus se manifestait différemment : les features n'étaient plus mortes
-(0/10), mais seules 2/10 (20%) passaient le test d'auto-interprétation odd-one-out.
-La démarche de diagnostic complète (élimination de l'hypothèse "features mortes",
-inspection qualitative des exemples présentés au juge, lecture du code d'assemblage
-du corpus) est détaillée au chapitre 3. Elle a révélé une **erreur de conception**,
-plus qu'un bug au sens strict : le corpus utilisé pour entraîner le SAE d'extension
-était construit **exclusivement** à partir de textes génériques (FineWeb-2/Wikipedia
-filtrés par mots-clés), les emails originaux n'étant chargés que pour une visualisation
-post-hoc, jamais vus pendant l'entraînement. Corrigée par
-`build_email_train_test_corpus()` (corpus principal = emails + augmentés, split
-group-aware par mail d'origine), cette correction a fait passer le taux
-d'interprétabilité de 20% à ~41-45%, l'effet dominant identifié dans tout le stage.
+Aucun des deux écarts individuels contre `resid_post` n'atteint la
+significativité conventionnelle, mais **`mlp_out` contre `attn_out`
+directement l'est nettement : z=3,02, p=0,0025**. Cohérent avec un a priori
+raisonnable sur l'architecture : `attn_out` capte l'entrée de la projection
+de sortie de l'attention (`self_attn.o_proj`), un espace multi-head pas
+encore recombiné vers la dimension du residual stream, tandis que `mlp_out`
+(sortie du MLP, déjà reprojetée) en reste proche. Illustration qualitative :
+la feature choisie pour la démo de steering sur `attn_out` s'est labellisée
+"variable assignment `p =`" -- un type de concept qui ne ressemble à rien
+de ce qu'on observe sur `resid_post`/`mlp_out`, cohérent avec un espace
+moins structuré sémantiquement à ce point précis du réseau. `attn_out` est
+le point d'extraction le moins prometteur des cinq configurations testées
+dans ce chapitre (layers 12/24/31/41 + `mlp_out`). Détail complet :
+`RESULTS_TESTS.md` §53.
 
-Un bug secondaire a été découvert en instrumentant la validation de cette correction :
-la sonde de classification multi-classe sur les 14 axes de perturbation échouait
-silencieusement (exception attrapée, métrique `NaN`) car `LogisticRegression
-(solver="liblinear")` ne supporte, dans les versions récentes de scikit-learn, que la
-classification binaire. Corrigé par sélection dynamique du solveur (`lbfgs` au-delà de
-deux classes), sans régresser le probe binaire préexistant.
+**Note transversale sur les §20-21** : ni ce balayage ni le reste du
+chapitre 3 n'appliquent de correction pour comparaisons multiples (rappel
+déjà fait au §11 pour le sanity check, et documenté comme lacune du chapitre
+en `04_limites_et_perspectives.md`) -- sur ~20 ablations à ce stade, un seul
+résultat significatif à p<10⁻⁹ (§18, échelle du modèle) et une poignée entre
+0,03 et 0,10 (K_EXTRA=5, layer 31, `mlp_out` vs `attn_out`) sont à traiter
+comme des pistes cohérentes entre elles, pas comme des résultats
+individuellement établis.
 
-## Phase 3 — Relecture critique face à la littérature de référence
+## 22. Le core seul égale-t-il core+extension sur les métriques en aval ?
 
-Une relecture ligne à ligne du code du projet face au papier de référence
-(*Interpretable Embeddings with Sparse Autoencoders*, Jiang, Sun et al. 2025,
-Appendices C/E/F) a mis au jour quatre écarts, tous corrigés ou explicitement
-documentés comme piste non intégrée :
+Question centrale pour juger si `FrozenCoreResidualSAE` ajoute réellement du
+signal exploitable, ou seulement des dimensions supplémentaires sans effet :
+sur les mêmes activations en cache, mêmes folds de validation croisée, comparer
+le SAE core seul (16384 dimensions) à core+extension (17408 dimensions) sur la
+silhouette (structure de cluster, axes email) et deux sondes de classification
+déjà utilisées dans ce chapitre (axes email 14 classes, diffing energy/sports).
 
-- **Retrieval et clustering ciblé par sous-chaîne littérale** (`word in label`) plutôt
-  que par similarité d'embedding sémantique (méthode de la référence) — ratait des
-  labels sémantiquement liés mais formulés différemment, et retournait des faux
-  positifs sur un mot partagé sans rapport de sens. Corrigé par une nouvelle fonction
-  `select_latents_by_similarity` (embeddings **bge-m3**, choisi après comparaison
-  empirique face à F2LLM : ce dernier donnait de bons résultats sur une requête mais
-  des résultats sans rapport sur une autre, pooling dernier-token mal adapté aux
-  labels courts en contexte multilingue).
-- **Détection de corrélations "intéressantes" jamais câblée** : la fonction NPMI +
-  communautés Louvain existait mais n'était appelée nulle part dans le pipeline
-  principal, aucun filtre "NPMI élevé + similarité sémantique faible" (méthode de la
-  référence) n'était implémenté. Nouvelle fonction `find_interesting_pairs` ajoutée et
-  intégrée au pipeline principal.
-- **Marqueurs erronés sur les exemples négatifs** dans le test de labellisation
-  contrastive directe (protocole alternatif de la référence, Appendix C) : bug trouvé
-  en écrivant le test de comparaison lui-même.
-- **Prompt contenant un exemple de valeur JSON littéral** que le modèle recopiait
-  verbatim pour ~59% des features testées — un "succès" en apparence (champ `confident`
-  à `true`) qui masquait un défaut de prompt. Corrigé en remplaçant l'exemple par une
-  notation `<placeholder>` explicite et une instruction de ne pas la recopier ; la
-  proportion de copies a diminué mais le champ `confident` auto-rapporté reste peu
-  fiable (`true` pour 150/150 features dans les deux runs, avant et après le fix), un
-  résultat en soi (l'auto-évaluation de confiance d'un LLM ne peut pas se substituer à
-  une mesure indépendante — cf. chapitre 5).
-- **Biais résiduel "Objet:"/"Subject:"** dans le corpus augmenté : 20,6% des mails
-  générés conservaient une ligne d'objet que les mails originaux n'ont pas, un artefact
-  de formatage risquant d'être appris comme signal par le SAE plutôt que le contenu
-  réel. Corrigé au chargement (`load_augmented`, 0,0% après fix) ; effet mesuré sur le
-  diffing complet (réduction de 65% et 49% du nombre de features "significatives" sur
-  les deux axes orthographiques les plus confondables avec l'artefact) — plus modeste
-  qu'attendu à l'échelle du corpus complet, mais réel et désormais éliminé.
+| Métrique | Core seul | Core+extension |
+|---|---|---|
+| `silhouette` | 0,0086430470 | 0,0086430488 |
+| `clf_acc_email_axes` | 93,67% | 93,59% |
+| `clf_acc_sae` (energy/sports) | 60,0% | 60,0% |
 
-## Phase 4 — Mise à l'échelle et consolidation
-
-- **Bug de configuration réseau récurrent (3 occurrences séparées)** : les nœuds de
-  calcul du cluster SLURM sont isolés du réseau (`HF_HUB_OFFLINE=1`) ; le `MODEL_ID`
-  par défaut (`src/config.py`) résout vers un identifiant de dépôt HuggingFace distant
-  plutôt qu'un chemin disque local. Trois jobs différents (test de plausibilité
-  d'explication, rerun Pipeline 2 avec F2LLM-330M) ont échoué pour cette raison avant
-  d'être identifiés et corrigés par surcharge explicite de la variable d'environnement
-  — un rappel que ce risque doit être vérifié systématiquement à chaque nouveau script
-  SLURM plutôt que découvert à l'exécution.
-- **Mélange de types dans l'affichage du dashboard** : une colonne de métriques
-  mêlant valeurs numériques et texte libre provoquait un avertissement de conversion
-  silencieuse côté pyarrow — corrigé en séparant l'affichage du texte libre.
-- **Choix de largeur du SAE core reposant sur une donnée non vérifiée** : la
-  documentation initiale du projet ne comparait la couverture Neuronpedia qu'entre 16k
-  et 262k pour le modèle 12B (16k retenu, 262k écarté). Une largeur intermédiaire,
-  65k, n'avait jamais été vérifiée spécifiquement pour ce modèle (seule une couverture
-  ~98% pour 65k était documentée, mais mesurée sur un modèle différent,
-  gemma-3-270m-it). Une vérification empirique systématique des quatre largeurs
-  disponibles (16k/65k/262k/1m) a montré que 65k est en réalité la meilleure
-  couverture pour 12B (87,8%, 57 551 features labellisées), meilleure que 16k (82,6%,
-  13 535) — largeur adoptée pour le run de mise à l'échelle final (chapitre 3).
-- **Suppression accidentelle d'un lien symbolique confondu avec un doublon** : lors
-  d'un nettoyage disque, un dossier racine de 30 Go (`saes/`) a été identifié comme un
-  doublon legacy de `local_data/saes/` (ancienne convention de nommage) et supprimé
-  après confirmation. En réalité, `local_data/saes/gemma-scope-2-12b-it` était un
-  **lien symbolique** vers ce même dossier, pas une copie indépendante — sa
-  suppression a donc effacé la seule copie physique des poids SAE, laissant un lien
-  cassé, détecté seulement à l'échec du job suivant (`ValueError` au chargement du
-  SAE). Impact nul sur les résultats déjà produits (artefacts déjà écrits sur disque
-  indépendamment des poids sources) ; poids retéléchargés et lien symbolique remplacé
-  par un dossier réel pour éliminer la source de confusion. Leçon retenue : vérifier
-  `ls -la`/`readlink` avant de supprimer un chemin présenté comme "doublon", pas
-  seulement sa taille ou son nom.
-- **Erreur de terminologie sur la nature du corpus "original"** : tout le rapport,
-  jusqu'à cette phase, employait "mails réels"/"emails réels"/"corpus réel EDF"
-  pour désigner `Mails.tsv`. Cette formulation est incorrecte : `Mails.tsv` est
-  lui-même un jeu de données synthétique, produit par un travail antérieur du
-  laboratoire EDF R&D (indépendant de ce stage), pas de la correspondance client
-  authentique. Ni le corpus "original" (`Mails.tsv`) ni les variantes augmentées
-  générées pendant ce stage ne sont donc des données réelles au sens strict.
-  Corrigé par une relecture terminologique complète du rapport et des documents
-  techniques (`docs/`, `RESULTS_TESTS.md`, `README.md`) : le terme "réel(s)" est
-  remplacé par "original(aux)" partout où il désignait ce corpus, avec une
-  clarification explicite ajoutée au chapitre 2. Erreur sans impact sur la
-  validité des résultats eux-mêmes (aucune métrique ne dépend de l'authenticité du
-  corpus), mais une imprécision qu'un rapport de stage se doit de corriger.
-- **OOM par dimensionnement erroné d'un buffer mémoire à grande échelle** : le run
-  d'ablation volume à 100M tokens (job 41176) a été tué par OOM après 2h39,
-  `--mem=180G` demandé contre 187,5 Go effectivement utilisés. Le calcul avait été
-  fait à l'envers : le buffer réservoir de résidus bruts (échantillonnage de
-  Vitter, `saev5.py`) alloue `N_TOKENS_EXTRA_TRAIN × hidden_size × 2 octets`
-  **en RAM hôte**, indépendamment de la taille du corpus/filler — pour
-  Gemma-3-12B (hidden_size=3840) et 100M tokens, cela représente 768 Go, un ordre
-  de grandeur jamais vérifié avant de lancer le job. Corrigé en recalculant
-  explicitement ce coût avant toute relance et en réduisant la cible à 25M tokens
-  (buffer ≈ 192 Go, `--mem=500G`) plutôt que de simplement augmenter `--mem` sans
-  comprendre l'origine du pic mémoire. Leçon retenue : pour un paramètre qui
-  dimensionne un buffer en mémoire (ici un multiple direct de la dimension
-  cachée du modèle), calculer l'empreinte mémoire théorique avant de soumettre un
-  job à grande échelle, plutôt que de découvrir le problème par un crash après
-  plusieurs heures de calcul. Détail complet : `RESULTS_TESTS.md` §23.3.
-
-## Constat transversal
-
-Sur l'ensemble du stage, la quasi-totalité des bugs significatifs ont été détectés par
-**exécution réelle et inspection directe des résultats intermédiaires** (valeurs de
-perte, exemples présentés au juge, couverture mesurée empiriquement), jamais par
-relecture de code seule. Ceci a orienté une pratique systématique : ne jamais publier
-un résultat sans avoir inspecté au moins un échantillon qualitatif des données qui
-l'ont produit — pratique qui a directement permis de découvrir l'erreur de conception
-du corpus (phase 2, le résultat le plus important du stage) et le biais "Objet:"
-(phase 3), tous deux invisibles à la seule lecture des métriques agrégées.
-
-
-\newpage
+Un test de McNemar apparié (mêmes documents, mêmes folds) ne détecte aucune
+différence significative sur la sonde email (p=0,26) ; sur la sonde
+energy/sports, les deux conditions classent les 600 documents de façon
+**strictement identique** (zéro désaccord, p=1,0). L'extension n'apporte donc
+ni gain ni dégradation mesurable sur ces sondes linéaires -- ni pollution du
+signal du core, ni signal supplémentaire linéairement décodable pour ces deux
+tâches précises. Cohérent avec le reste du chapitre : la valeur mesurée de
+l'extension dans ce projet tient à l'interprétabilité individuelle de ses
+features (45,3% au test odd-one-out, chapitre 3 §2-5) et à la couverture de
+concepts absents du core, pas à un gain de séparabilité linéaire en aval que
+le core seul n'atteignait pas déjà. Détail complet : `RESULTS_TESTS.md` §55.
 
 ---
 
-# Chapitre 5 — Limites et perspectives
+# Chapitre 4 — Limites et perspectives
 
 ## Limites actuelles
 
-### Taux d'interprétabilité résiduel (~55-59% de features non interprétées)
+### Taux d'interprétabilité résiduel (~55% de features non interprétées)
 
-Établi comme n'étant pas dû au volume de tokens (cf. `03_experiences_et_resultats.md`).
+Ce résidu n'est pas dû au volume de tokens du corpus (`03_experiences_et_resultats.md`).
+Il est en revanche en bonne partie attribuable au bruit du protocole de jugement :
+en répétant la question odd-one-out 5 fois par feature avec un ordre de mélange
+différent à chaque fois (`RESULTS_TESTS.md` §13.1), seulement 30,7% des features
+obtiennent une décision unanime sur les 5 répétitions ; le taux agrégé
+d'interprétabilité bouge peu (45,3%→48,7%) mais 31,3% des features changent
+individuellement de statut selon l'ordre de présentation. Une partie substantielle
+du résidu non interprété est donc due au bruit du protocole (décision greedy
+unique, sensible à l'ordre), pas nécessairement à un défaut réel des features —
+un vote majoritaire sur plusieurs répétitions serait préférable comme protocole
+par défaut à une seule décision greedy.
 
-**Mise à jour (testé)** : la piste "robustesse du protocole de jugement" a été
-vérifiée (`scripts/judge_robustness_check.py`, `RESULTS_TESTS.md` §13.1). En
-répétant la question odd-one-out 5 fois par feature avec un ordre de mélange
-différent à chaque fois : seulement 30,7% des features obtiennent une décision
-unanime sur les 5 répétitions ; le taux agrégé d'interprétabilité bouge peu (45,3%→
-48,7%) mais 31,3% des features changent individuellement de statut selon l'ordre de
-présentation. **Confirmé : une partie substantielle du résidu non-interprété est due
-au bruit du protocole de jugement (décision greedy unique, sensible à l'ordre), pas
-nécessairement à un défaut réel des features.** Un vote majoritaire sur plusieurs
-répétitions devrait être adopté comme protocole par défaut plutôt qu'une seule
-décision greedy.
+Le taux de 45,3% cité dans ce rapport n'est pas non plus robuste au choix du
+modèle juge : remplacer gemma-3-12b-it par gemma-3-4b-it comme juge (mêmes
+features, mêmes exemples) fait chuter le taux mesuré à 24,7%. Une partie de ce
+que ce rapport attribue à la qualité des features apprises dépend donc aussi de
+la capacité du juge à raisonner sur 9 exemples, pas uniquement des features
+elles-mêmes — cohérent avec l'effet dose-réponse de l'échelle du modèle
+documenté au §18 de `03_experiences_et_resultats.md`.
 
-Pistes encore non testées par manque de temps, par ordre de coût croissant :
+L'effet "domaine, pas volume" qui sous-tend l'ensemble du rapport
+(`03_experiences_et_resultats.md` §2-5) est statistiquement confirmé à n
+apparié : 30,0% (45/150) sur corpus générique contre 45,3% (68/150) sur corpus
+emails, z=2,74, p≈0,006 (`RESULTS_TESTS.md` §46).
 
-1. ~~**Robustesse du protocole de jugement**~~ **FAIT**, cf. ci-dessus.
-2. **Qualité du contrôle négatif** : le contrôle négatif (`build_feature_examples_with_control`)
-   est actuellement un document sous un quantile bas d'activation pour la feature
-   testée, pas nécessairement un contre-exemple "propre" conceptuellement. Une
-   feature réellement monosémantique pourrait échouer au test si le contrôle négatif
-   choisi partage accidentellement une propriété de surface avec les exemples positifs.
-3. ~~**Capacité architecturale de l'extension** (`D_EXTRA=1024`, `K_EXTRA=32`)~~
-   **FAIT** : capacité doublée ensemble (§17.5, 40,0% -- pire, non concluant seul),
-   `K_EXTRA=5` seul (§25, +9,4 points non significatif), `D_EXTRA=2048` seul à
-   `K_EXTRA` fixe (§27, 46,0% -- aucun écart, z=-0,12). Conclusion : aucune
-   configuration de capacité testée à ce jour ne change significativement le taux
-   d'interprétabilité une fois le corpus corrigé.
-4. **Fiabilité du juge/extracteur selon la taille du modèle** : observée comme
-   dégradée sur `gemma-3-270m-it` par rapport à un modèle plus grand lors de la
-   validation locale initiale (`Context.md`). *[En cours au moment de la rédaction
-   de cette version]* : ablation à l'échelle complète avec gemma-3-4b-it et
-   gemma-3-1b-it (+ leurs GemmaScope dédiés) à la place de gemma-3-12b-it, sur le
-   corpus emails complet (pas juste une validation locale) -- résultats à venir.
+Piste encore non résolue : la **qualité du contrôle négatif**
+(`build_feature_examples_with_control`) reste un document sous un quantile bas
+d'activation pour la feature testée, pas nécessairement un contre-exemple
+"propre" conceptuellement — une feature réellement monosémantique pourrait
+échouer au test si le contrôle négatif choisi partage accidentellement une
+propriété de surface avec les exemples positifs. Les ablations de capacité de
+l'extension (`D_EXTRA`/`K_EXTRA`, doublées ensemble, `K_EXTRA=5` seul,
+`D_EXTRA=2048` seul) ne changent significativement le taux d'interprétabilité
+dans aucune configuration testée une fois le corpus corrigé (`RESULTS_TESTS.md`
+§17.5/§25/§27).
 
-**Mise à jour (testé, session interp_embed)** : une piste supplémentaire, plus
-fondamentale, a été testée (`scripts/contrastive_labeling_test.py`,
-`RESULTS_TESTS.md` §15.4) — le protocole de la référence (interp_embed, Appendix C)
-ne gate JAMAIS la labellisation derrière un test odd-one-out : il génère toujours un
-label par contraste direct (10 positifs + 10 négatifs). Sur les 82 features
-originellement rejetées par notre gate, la génération contrastive directe produit un
-label spécifique et qualitativement plausible pour la totalité d'entre elles après
-correction de deux bugs trouvés en écrivant le test (marqueurs `<<>>` erronés sur les
-négatifs ; un exemple de valeur JSON dans le prompt que le modèle recopiait
-littéralement pour ~59% des features au premier essai). Exemples de labels récupérés :
-`Mise en service énergie`, `Numéro de contrat`, `Demande de résiliation`,
-`Informations bancaires`, `Sentiment d'urgence`. **Limite** : le champ `confident`
-auto-rapporté par le LLM reste à `true` pour 150/150 features dans les deux runs —
-pas un signal de qualité fiable en l'état, il faudrait le remplacer par une
-validation croisée indépendante (ρ_interp déjà implémenté, ou vote majoritaire
-odd-one-out en aval plutôt qu'en amont de la labellisation). **Non intégré au
-pipeline de production dans cette session** — changerait le chiffre central du
-rapport (45,3%), nécessite de refaire tourner une validation à l'échelle comparable
-avant adoption.
+Une piste plus fondamentale a également été testée : le protocole de la
+référence *Interpretable Embeddings with Sparse Autoencoders* (Appendix C) ne
+gate jamais la labellisation derrière un test odd-one-out, il génère toujours
+un label par contraste direct (10 positifs + 10 négatifs). Sur les 82 features
+originellement rejetées par notre gate, la génération contrastive directe
+produit un label spécifique et qualitativement plausible pour la totalité
+d'entre elles (`scripts/contrastive_labeling_test.py`, `RESULTS_TESTS.md`
+§15.4) — exemples : `Mise en service énergie`, `Numéro de contrat`, `Demande
+de résiliation`, `Informations bancaires`, `Sentiment d'urgence`. Limite :
+le champ `confident` auto-rapporté par le LLM reste à `true` pour 150/150
+features dans les deux runs testés — pas un signal de qualité fiable en
+l'état. Une validation systématique (comptage sur les 82 labels, pas un
+échantillon) montre que 45% partagent leur label avec un autre, et un cas de
+feature quasi-morte (freq=0%) reçoit malgré tout un label confiant — le
+"100% de récupération" apparent est un artefact de complaisance du juge, pas
+un signal de qualité. Le protocole odd-one-out reste la référence retenue
+dans ce rapport ; la labellisation contrastive directe n'est pas intégrée au
+pipeline de production (changerait le chiffre central du rapport, 45,3%,
+sans validation à l'échelle comparable).
 
 ### Rigueur statistique des comparaisons d'ablation
 
-Audit rétroactif (`RESULTS_TESTS.md` §30) : deux comparaisons (biais
-multilingue §22, robustesse du juge §13.1) testent en réalité les MÊMES 150
-features sous deux conditions -- un plan apparié -- mais avaient été analysées
-avec un test à deux proportions indépendantes plutôt que McNemar. Recalcul
-avec le test approprié : mêmes conclusions (p=0,894 et p=0,560, non
-significatifs), mais méthodologiquement plus correct. Aucune correction pour
-comparaisons multiples n'a non plus été appliquée aux ~15 tests d'ablation de
-ce chapitre (contrairement au diffing par feature, qui utilise déjà
-Benjamini-Hochberg) -- sans conséquence sur les conclusions actuelles (le seul
-résultat significatif, l'échelle du modèle, l'est à p<10⁻⁹), mais une lacune à
-corriger pour toute extension future où des résultats plus proches du seuil
-pourraient apparaître. L'effet dose-réponse de l'échelle du modèle a par
-ailleurs été reconfirmé par un test de tendance dédié (Cochran-Armitage,
-p≈1,6×10⁻¹⁰), plus adapté qu'une série de tests par paires à un plan à niveaux
-ordonnés.
+Deux comparaisons (biais multilingue, robustesse du juge) testent en réalité
+les mêmes 150 features sous deux conditions — un plan apparié — mais avaient
+été analysées avec un test à deux proportions indépendantes plutôt que
+McNemar. Le recalcul avec le test approprié donne les mêmes conclusions
+(p=0,894 et p=0,560, non significatifs), mais méthodologiquement plus
+correct (`RESULTS_TESTS.md` §30). Aucune correction pour comparaisons
+multiples n'est appliquée aux ~15 tests d'ablation de ce chapitre
+(contrairement au diffing par feature, qui utilise déjà Benjamini-Hochberg) —
+sans conséquence sur les conclusions actuelles (le seul résultat
+significatif, l'échelle du modèle, l'est à p<10⁻⁹), mais une lacune pour
+toute extension future où des résultats plus proches du seuil pourraient
+apparaître. L'effet dose-réponse de l'échelle du modèle est par ailleurs
+confirmé par un test de tendance dédié (Cochran-Armitage, p≈1,6×10⁻¹⁰), plus
+adapté qu'une série de tests par paires à un plan à niveaux ordonnés.
 
 ### Comparaisons avec l'état de l'art
 
-`Context.md` (règle n°2) demande une comparaison documentée et systématique avec
-SAELens. **Fait** (`scripts/saelens_numeric_comparison.py`, `docs/references.md`) :
-comparaison chiffrée, sur le même SAE natif sae-lens et les mêmes activations réelles,
-entre notre formule de variance expliquée et les deux formules maintenues par
-`sae_lens.evals` elle-même. Résultat notable : désaccord numérique important entre
-les trois (0,41 / 0,83 / 1,00) causé par les activations massives de Gemma-3 — la
-formule qui somme sur les dimensions avant de normaliser est mécaniquement dominée
-par une seule dimension outlier et rapporte une variance quasi-totalement expliquée,
-sans rapport avec la qualité de reconstruction réelle. Recommandation retenue : ne
-jamais publier un score de variance expliquée sans préciser la formule exacte utilisée
-sur ce modèle. La comparaison avec `interp_embed` reste partielle (test optionnel
-dépendant d'une installation non faite par défaut).
+Une comparaison chiffrée avec SAELens (`scripts/saelens_numeric_comparison.py`,
+`docs/references.md`), sur le même SAE natif sae-lens et les mêmes
+activations réelles, entre notre formule de variance expliquée et les deux
+formules maintenues par `sae_lens.evals`, révèle un désaccord numérique
+important entre les trois (0,41 / 0,83 / 1,00) causé par les activations
+massives de Gemma-3 — la formule qui somme sur les dimensions avant de
+normaliser est mécaniquement dominée par une seule dimension outlier et
+rapporte une variance quasi-totalement expliquée, sans rapport avec la
+qualité de reconstruction réelle. Ne jamais publier un score de variance
+expliquée sur ce modèle sans préciser la formule exacte utilisée. La
+comparaison avec `interp_embed` reste partielle (test optionnel dépendant
+d'une installation non faite par défaut).
 
-**Mise à jour (identifié, session pdf/)** : "SAE Boost" (Koriagin et al., COLM 2025)
-n'était pas "non fait" mais déjà implémenté sans le savoir --
-`FrozenCoreResidualSAE`/`ExtendedSAE` EST une implémentation de SAE Boost (même
-architecture : SAE résiduel sur l'erreur de reconstruction d'un core gelé, sommé à
-l'inférence). Deux écarts identifiés par la relecture du papier, **tous deux
-testés depuis** : (1) leur étude de sensibilité montre qu'un `K_EXTRA` plus
-faible (k=5 optimal chez eux, contre 32 dans ce projet) améliore
-l'interprétabilité au prix d'un peu d'EV domaine — **testé** (`RESULTS_TESTS.md`
-§25) : direction cohérente (54,7% vs 45,3%, +9,4 points) mais non significatif
-(z=-1,62) ; (2) leur étude montre qu'un budget de 100-200M tokens est nécessaire
-pour que le SAE résiduel converge sans dégrader la performance générale (jusqu'à
--31% d'EV en dessous de 100M) — **testé partiellement** à 25M tokens (12x
-l'ablation initiale, toujours 50-100x en dessous du seuil du papier,
-`RESULTS_TESTS.md` §23.4) : même conclusion qualitative (pas d'effet
-significatif, +8,7 points non significatif), mais toujours pas de test au seuil
-exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis pour la contrainte
-mémoire rencontrée). Aucune comparaison chiffrée avec leurs baselines
-alternatives (Extended SAE random/most-active init, SAE Stitching, full
-fine-tuning) n'a été menée sur ce projet.
+`FrozenCoreResidualSAE`/`ExtendedSAE` est une implémentation de SAE Boost
+(Koriagin et al., COLM 2025) : même architecture, un SAE résiduel entraîné
+sur l'erreur de reconstruction d'un core gelé, sommé à l'inférence. Deux
+écarts avec le papier ont été testés : (1) leur étude de sensibilité montre
+qu'un `K_EXTRA` plus faible (k=5 optimal chez eux, contre 32 dans ce projet)
+améliore l'interprétabilité au prix d'un peu d'EV domaine — direction
+cohérente sur ce corpus (54,7% vs 45,3%, +9,4 points) mais non significatif
+(z=-1,62, `RESULTS_TESTS.md` §25) ; (2) leur étude montre qu'un budget de
+100-200M tokens est nécessaire pour que le SAE résiduel converge sans
+dégrader la performance générale (jusqu'à -31% d'EV en dessous de 100M) —
+testé partiellement à 25M tokens (12x l'ablation initiale, toujours 50-100x
+en dessous du seuil du papier, `RESULTS_TESTS.md` §23.4) : même conclusion
+qualitative (+8,7 points, non significatif). Le run au seuil exact
+100-200M reste à exécuter — le réservoir de résidus, initialement une
+allocation RAM proportionnelle au volume de tokens (limitant la faisabilité
+pratique d'un tel run), est désormais memory-mapped sur disque
+(`RESULTS_TESTS.md` §54), rendant ce run schedulable. Aucune comparaison
+chiffrée avec les baselines alternatives du papier (Extended SAE
+random/most-active init, SAE Stitching, full fine-tuning) n'a été menée sur
+ce projet.
 
-**Mise à jour (testé, session pdf/)** : une question plus fondamentale a été
-posée par *Sanity Checks for Sparse Autoencoders* (Korznikov et al., 2026) --
-un SAE dont le décodeur est figé à une initialisation aléatoire (jamais entraîné)
-égale, dans leur étude, un SAE réellement entraîné sur interprétabilité automatique,
-sparse probing et édition causale. Reproduit sur ce projet
-(`FrozenDecoderExtendedSAE`, `SANITY_CHECK_FROZEN_DECODER=1`) : cf.
-`RESULTS_TESTS.md` §19 — l'interprétabilité odd-one-out résiste bien (45,3%
-entraîné vs 29,3% figé aléatoire, écart significatif) mais la classification en
-aval y résiste beaucoup moins (93,5% vs 91,2%), répliquant partiellement le
-constat du papier.
+Une question plus fondamentale, posée par *Sanity Checks for Sparse
+Autoencoders* (Korznikov et al., 2026) : un SAE dont le décodeur est figé à
+une initialisation aléatoire (jamais entraîné) égale, dans leur étude, un
+SAE réellement entraîné sur interprétabilité automatique, sparse probing et
+édition causale. Reproduit sur ce projet (`FrozenDecoderExtendedSAE`,
+`SANITY_CHECK_FROZEN_DECODER=1`, `RESULTS_TESTS.md` §19) : résultat nuancé —
+l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé
+aléatoire, écart significatif) mais la classification en aval y résiste
+beaucoup moins (93,5% vs 91,2%), répliquant partiellement le constat du
+papier.
 
 ### Biais de génération résiduel dans le corpus augmenté
 
-**Corrigé et mesuré** (`RESULTS_TESTS.md` §14.1) : 20,6% des mails augmentés
-contenaient encore une ligne "Objet :"/"Subject :" que les mails originaux n'ont pas.
-Fix appliqué au chargement (`load_augmented`, pas de régénération nécessaire — 0,0%
-après fix) et effet mesuré sur le diffing complet : réduction de 65% et 49% du nombre
-de features "significatives" sur les deux axes orthographiques (les plus confondables
-avec l'artefact), effet modéré sur l'urgence (−7,5%/−3,1%), négligeable ailleurs.
-Contrairement à l'hypothèse initiale, l'artefact ne dominait déjà pas la majorité des
+20,6% des mails augmentés contenaient une ligne "Objet :"/"Subject :" que les
+mails originaux n'ont pas (`RESULTS_TESTS.md` §14.1). Fix appliqué au
+chargement (`load_augmented`, 0,0% après fix) ; effet mesuré sur le diffing
+complet : réduction de 65% et 49% du nombre de features "significatives" sur
+les deux axes orthographiques (les plus confondables avec l'artefact), effet
+modéré sur l'urgence (−7,5%/−3,1%), négligeable ailleurs. Contrairement à
+l'observation initiale sur l'échantillon test à 60 mails (où l'artefact
+dominait 8/13 classements), l'artefact ne domine pas la majorité des
 features significatives à l'échelle du corpus complet (0,21% des features
-significatives portaient un label "Subject:"/"Objet:", avant comme après) — son effet
-mesuré est réel mais plus circonscrit que ce que suggérait l'observation initiale sur
-l'échantillon test à 60 mails (§6, où l'artefact dominait 8/13 classements).
+significatives portaient un label "Subject:"/"Objet:", avant comme après) —
+son effet réel est plus circonscrit qu'attendu.
 
-### Retrieval par propriétés et clustering ciblé (bug corrigé)
+### Retrieval par propriétés et clustering ciblé
 
-**Corrigé** (`RESULTS_TESTS.md` §15.1-15.2) : `property_based_retrieval` et
-`targeted_clustering_by_axis` sélectionnaient les latents pertinents pour une
-requête par matching de sous-chaîne littérale (`word in label`) plutôt que par
-similarité d'embedding (méthode de la référence, interp_embed §4.4/Appendix F.1) —
-vérifié empiriquement que ça ratait des labels sémantiquement liés mais formulés
-différemment, et retournait des faux positifs (mot partagé sans rapport de sens).
-Bug additionnel dans `property_based_retrieval` : la pondération "température"
-utilisait l'ordre d'itération du dict de labels comme proxy de pertinence, pas un
-rang réel. Fix : nouvelle fonction `select_latents_by_similarity`
-(`src/sae/saev5.py`), embeddings **bge-m3** (pas F2LLM, testé et rejeté : bons
-résultats sur une requête, résultats sans rapport sur une autre — pooling
-dernier-token mal adapté à des labels courts en contexte cross-lingue). Validé
-bout-en-bout sur les activations déjà en cache, non revalidé par un run complet
-(ne change pas la reconstruction des activations elles-mêmes, seulement la
-sélection de latents en aval).
+`property_based_retrieval` et `targeted_clustering_by_axis` sélectionnent les
+latents pertinents pour une requête par similarité d'embedding
+(`select_latents_by_similarity`, `src/sae/saev5.py`, embeddings **bge-m3**),
+pas par matching de sous-chaîne littérale — vérifié empiriquement que ce
+dernier rate des labels sémantiquement liés mais formulés différemment, et
+retourne des faux positifs (mot partagé sans rapport de sens). bge-m3 est
+retenu après comparaison à F2LLM (bons résultats sur une requête, résultats
+sans rapport sur une autre — pooling dernier-token mal adapté à des labels
+courts en contexte cross-lingue), `RESULTS_TESTS.md` §15.1-15.2. Validé sur
+les activations déjà en cache (ne change pas la reconstruction elle-même,
+seulement la sélection de latents en aval).
 
-### Corrélations "intéressantes" (gap comblé, résultat peu concluant)
+### Corrélations "intéressantes" entre features
 
-**Corrigé** (`RESULTS_TESTS.md` §15.3) : `cooccurrence_graph` (NPMI + communautés
-Louvain) n'était jamais appelée dans le pipeline principal — seule la matrice NPMI
-brute était calculée et cachée, sans analyse en sortie. Nouvelle fonction
-`find_interesting_pairs` (`src/analysis/cooccurrence.py`), filtre NPMI élevé +
-similarité sémantique des labels faible (méthode interp_embed §4.2/Appendix E.1).
-**Calculée rétroactivement** (`scripts/compute_interesting_correlations_retro.py`,
-`RESULTS_TESTS.md` §16.3) sur `results_v10_emails_main` sans réextraction Gemma-3 :
-seulement 3 paires retenues sur 26 579 arêtes du graphe (3 395 nœuds), et 2 des 3
-impliquent une feature non labellisée — résultat honnête mais peu exploitable en
-l'état (impossible de juger la pertinence d'une corrélation quand un des deux côtés
-n'a pas de label). Piste retenue : élargir la plage de fréquence ou prioriser les
-paires où les deux features sont labellisées.
+`find_interesting_pairs` (`src/analysis/cooccurrence.py`) filtre les paires à
+NPMI élevé et similarité sémantique des labels faible (méthode interp_embed
+§4.2/Appendix E.1), calculé sur `results_v10_emails_main` sans réextraction
+Gemma-3 (`scripts/compute_interesting_correlations_retro.py`,
+`RESULTS_TESTS.md` §15.3/§16.3) : seulement 3 paires retenues sur 26 579
+arêtes du graphe (3 395 nœuds), et 2 des 3 impliquent une feature non
+labellisée — résultat peu exploitable en l'état (impossible de juger la
+pertinence d'une corrélation quand un des deux côtés n'a pas de label).
+Élargir la plage de fréquence ou prioriser les paires où les deux features
+sont labellisées reste à faire.
 
-### Qualité de l'explication document-level (nouveau, testé)
+### Qualité de l'explication document-level
 
-Question distincte de tout ce qui précède (qui évalue une feature isolée ou une
-capacité globale) : pour UN document donné, l'explication produite (features
-actives + labels) est-elle bonne ?
-- **Fidélité** (`scripts/explanation_fidelity_test.py`, ablation) : chute de 58 à 100
-  points de probabilité en ablatant les 10 features "explicatives", chute quasi nulle
-  (<0,4 point) en ablatant des features aléatoires ou peu contributives (ratios de
-  250× à 576 000× selon l'intention). Résultat sans ambiguïté : l'explication porte
-  réellement la décision.
-- **Plausibilité** (`scripts/explanation_plausibility_test.py`, choix forcé, juge
-  Gemma-3-12B-it) : 71,7% (43/60) de choix corrects contre 50% au hasard (p < 0,001) —
-  significativement au-dessus du hasard, mais loin d'être parfait (cohérent avec le
-  taux d'interprétabilité résiduel ~45-55%).
+Question distincte de tout ce qui précède (qui évalue une feature isolée ou
+une capacité globale) : pour UN document donné, l'explication produite
+(features actives + labels) est-elle bonne ?
+- **Fidélité** (`scripts/explanation_fidelity_test.py`, ablation) : chute de
+  58 à 100 points de probabilité en ablatant les 10 features "explicatives",
+  chute quasi nulle (<0,4 point) en ablatant des features aléatoires ou peu
+  contributives (ratios de 250× à 576 000× selon l'intention) — l'explication
+  porte réellement la décision.
+- **Plausibilité** (`scripts/explanation_plausibility_test.py`, choix forcé,
+  juge Gemma-3-12B-it) : 71,7% (43/60) de choix corrects contre 50% au hasard
+  (p < 0,001) — significativement au-dessus du hasard, mais loin d'être
+  parfait, cohérent avec le taux d'interprétabilité résiduel.
 
-Détail complet : `RESULTS_TESTS.md` §16.1-16.2, `report/03_experiences_et_resultats.md`
+Détail complet : `RESULTS_TESTS.md` §16.1-16.2, `03_experiences_et_resultats.md`
 §8, dashboard (onglet "Explication (fidélité/plausibilité)").
 
-### Comparaison du backbone d'embedding Pipeline 2 : F2LLM-80M vs -330M (nouveau, testé)
+### Backbone d'embedding Pipeline 2 : F2LLM-80M vs -330M
 
-Résultat **mixte** (`RESULTS_TESTS.md` §16.5) : -330M reconstruit légèrement mieux
-(NMSE −7,5%) et sépare un peu mieux le corpus de diffing générique (+2 points), mais
-sépare légèrement MOINS bien les axes email (−2,2 points, la métrique la plus
-proche des objectifs métier). Aucun écart n'est de l'ordre d'un problème majeur ; pas
-de justification claire pour préférer l'un à l'autre sur ce projet à ce stade.
+Résultat mixte (`RESULTS_TESTS.md` §16.5) : -330M reconstruit légèrement
+mieux (NMSE −7,5%) et sépare un peu mieux le corpus de diffing générique (+2
+points), mais sépare légèrement moins bien les axes email (−2,2 points, la
+métrique la plus proche des objectifs métier). Aucun écart n'est de l'ordre
+d'un problème majeur ; pas de justification claire pour préférer l'un à
+l'autre sur ce projet.
 
 ### Facteurs non contrôlés dans le corpus augmenté
 
-Les variantes augmentées sont générées par le même modèle (Gemma-3-12B-it) qui sert
-aussi de juge d'interprétation et d'extracteur d'activations. Un style de génération
-propre au modèle (tournures récurrentes, longueur, structure) pourrait constituer un
-facteur de confusion partagé entre "ce qui rend une variante reconnaissable comme
-augmentée" et "ce que le SAE apprend à détecter" — non quantifié dans cette
-investigation.
+Les variantes augmentées sont générées par le même modèle (Gemma-3-12B-it)
+qui sert aussi de juge d'interprétation et d'extracteur d'activations. Un
+style de génération propre au modèle pourrait constituer un facteur de
+confusion partagé entre "ce qui rend une variante reconnaissable comme
+augmentée" et "ce que le SAE apprend à détecter". Trois vérifications
+indépendantes (`RESULTS_TESTS.md` §44/§48/§50/§52) convergent vers une
+réponse négative : aucune corrélation significative entre la part
+d'exemples "augmentés" parmi les 9 exemples positifs d'une feature et son
+statut interprétable (p=0,418) ; des features core totalement étrangères à
+cette boucle (labellisées indépendamment par Neuronpedia) présentent le même
+taux élevé d'exemples augmentés, confirmant qu'il s'agit d'une propriété du
+corpus (92% augmenté) et non d'un biais spécifique au pipeline ; un
+re-jugement complet des 150 features avec le même SAE et le même juge, mais
+des exemples positifs restreints aux mails originaux uniquement (zéro texte
+généré par Gemma vu par le juge), donne 44,7% (67/150) contre 45,3% (68/150)
+en référence — écart non significatif (z=-0,12, p=0,908). Comme pour les
+autres perturbations testées (ordre de présentation, langue), le statut
+d'une feature individuelle reste bruité (55,3% d'accord, 44,7% de bascule)
+mais le taux agrégé est stable. **La boucle auto-référentielle
+juge/générateur n'explique pas le taux d'interprétabilité mesuré dans ce
+rapport.**
 
-En contrepoint, un aspect qui *est* contrôlé : `src/data/augmentation.py::validate`
-rejette une variante générée si elle est trop courte (<30 caractères), si son ratio
-de longueur par rapport au mail original sort de l'intervalle [0,4 ; 2,5], si elle
-est strictement identique au parent, ou (sauf pour l'axe orthographe) si elle perd
-une entité numérique du mail d'origine (montant, numéro de compte/contrat, date).
-Sur l'ensemble du corpus augmenté (45 240 générations), **11,7% (5291) sont
-rejetées** par ce garde-fou — texte non conservé (`text: null`), motif de rejet
-conservé pour audit (`facts_lost=[...]`, `length_ratio=...`, etc.). Sans impact sur
-les résultats de ce rapport : `load_augmented` filtre ces lignes rejetées avant
-qu'elles n'atteignent le pipeline SAE, elles n'ont donc jamais été vues par
-l'extension ni par la sonde de classification.
+En contrepoint, un aspect qui est contrôlé : `src/data/augmentation.py::validate`
+rejette une variante générée si elle est trop courte (<30 caractères), si son
+ratio de longueur par rapport au mail original sort de l'intervalle
+[0,4 ; 2,5], si elle est strictement identique au parent, ou (sauf pour
+l'axe orthographe) si elle perd une entité numérique du mail d'origine
+(montant, numéro de compte/contrat, date). Sur l'ensemble du corpus augmenté
+(45 240 générations), 11,7% (5291) sont rejetées par ce garde-fou — motif de
+rejet conservé pour audit (`facts_lost=[...]`, `length_ratio=...`, etc.).
+Sans impact sur les résultats de ce rapport : `load_augmented` filtre ces
+lignes rejetées avant qu'elles n'atteignent le pipeline SAE.
 
-### Pistes issues d'une relecture élargie de la littérature (nouveau)
+### Fidélité du steering comme méthode d'explication
 
-Une relecture de l'ensemble des PDF de référence disponibles (`pdf/`, au-delà des
-seuls SAE Boost et sanity checks déjà traités ci-dessus) fait ressortir trois pistes
-non testées, chacune directement actionnable mais représentant un effort
-d'implémentation plus substantiel que les corrections déjà apportées :
+`steer_activations`/`steer_and_decode` (`src/sae/sae_shared.py`) — mesuré en
+faisant réellement décoder puis ré-encoder un code stimulé (suppression des
+top-10 features explicatives d'une intention, `RESULTS_TESTS.md` §24) :
+résultat très hétérogène selon l'intention — le round-trip neutralise quasi
+entièrement l'intervention pour 2 intentions sur 4 (ratio 0,00-0,02× vs.
+l'ablation en place), la préserve pour une troisième (0,90×), et l'amplifie
+pour la dernière (1,74×). `steer_and_decode` n'est donc pas un mécanisme
+d'intervention causale fiable et prévisible à partir du simple test
+d'ablation en place — son effet dépend fortement de la structure de
+corrélation entre features propre à chaque intention.
 
-- **Feature splitting/absorption comme cause possible du résidu non-interprété**
-  (*Matryoshka SAEs*, Bussmann et al. 2025) : leur travail montre qu'agrandir
-  simplement un dictionnaire SAE (notre ablation capacité, `D_EXTRA` 1024→2048,
-  chapitre 3 §10.4) peut dégrader la qualité des features de haut niveau par
-  fragmentation/absorption plutôt que de mieux couvrir le domaine — cohérent avec le
-  fait que notre ablation capacité n'a montré aucun gain d'interprétabilité. Leur
-  solution (dictionnaires SAE emboîtés, entraînés simultanément à plusieurs tailles)
-  n'a pas été implémentée : changement de la boucle d'entraînement plus substantiel
-  que le sanity check Frozen Decoder déjà réalisé. **Ne pas confondre** avec
+### Biais multilingue et variance de seed
+
+Pas de différence significative d'interprétabilité entre français et anglais
+traduit (46,9% vs 45,5%, z=0,24, `RESULTS_TESTS.md` §22), mais 38,6% des
+features changent individuellement de statut selon la langue — un taux de
+bruit supérieur à celui déjà mesuré pour le réordonnancement des exemples
+(§13.1, 31,3%). Pas de biais systématique détecté envers l'anglais sur ce
+test précis (l'hypothèse alternative — entraîner le SAE sur un corpus
+anglais natif plutôt que de traduire la vue du juge — reste à tester).
+
+Le taux d'interprétabilité agrégé est stable entre deux seeds d'entraînement
+du SAE (45,3% vs 47,3%, `RESULTS_TESTS.md` §21), mais seulement 28,2% de
+recouvrement exact des labels individuels obtenus entre les deux seeds — les
+features individuelles ne sont pas reproductibles à l'identique d'un seed à
+l'autre, contrairement au taux agrégé. Les exemples de features cités dans
+ce rapport (chapitre 3) sont donc représentatifs d'une catégorie récurrente
+de concepts, pas des atomes stables du dictionnaire.
+
+### Pistes non implémentées issues de la littérature
+
+- **Feature splitting/absorption comme cause possible du résidu
+  non-interprété** (*Matryoshka SAEs*, Bussmann et al. 2025) : leur travail
+  montre qu'agrandir simplement un dictionnaire SAE (notre ablation
+  capacité, `D_EXTRA` 1024→2048, `03_experiences_et_resultats.md` §10.4)
+  peut dégrader la qualité des features de haut niveau par
+  fragmentation/absorption plutôt que de mieux couvrir le domaine — cohérent
+  avec l'absence de gain d'interprétabilité observée sur cette ablation.
+  Leur solution (dictionnaires SAE emboîtés, entraînés simultanément à
+  plusieurs tailles) n'est pas implémentée. À ne pas confondre avec
   `MATRYOSHKA_DIM` (`src/config.py`), qui ne concerne que la troncature des
-  embeddings F2LLM, un mécanisme complètement différent (cf. `docs/references.md`).
-- **Entraînement supervisé conjoint SAE+classifieur pour la classification**
-  (*ClassifSAE*, Le Bail et al. 2025) : ce projet extrait des concepts de façon
-  totalement non supervisée puis les relie à la classification par une sonde
-  post-hoc (`downstream_classification`). ClassifSAE propose d'entraîner le SAE
-  conjointement avec un classifieur (avec une pénalité de parcimonie sur le taux
-  d'activation), spécifiquement pour concentrer les concepts pertinents à la tâche —
-  directement aligné avec les objectifs "détection d'urgence"/"détection d'intention"
-  du cadrage initial. Non implémenté : nécessiterait une nouvelle boucle
-  d'entraînement (SAE + tête de classification jointe), distincte de l'architecture
-  actuelle des deux pipelines.
-- **Steering comme méthode d'explication "output-based"** (taxonomie de *A Survey
-  on Sparse Autoencoders*, Shu et al. 2025) : **mesuré** (`RESULTS_TESTS.md` §24) —
-  `steer_activations`/`steer_and_decode` (`src/sae/sae_shared.py`) existaient dans
-  le dépôt depuis le début mais n'avaient jamais été réellement exercés au-delà
-  d'une vérification géométrique superficielle (`run_steering_demo`). Testé en
-  faisant réellement décoder puis ré-encoder un code stimulé (suppression des
-  top-10 features explicatives d'une intention) : résultat très hétérogène selon
-  l'intention — le round-trip neutralise quasi entièrement l'intervention pour
-  2 intentions sur 4 (ratio 0,00-0,02× vs. l'ablation en place), la préserve pour
-  une troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
-  n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
-  du simple test d'ablation en place du chapitre 3 — son effet dépend fortement de
-  la structure de corrélation entre features propre à chaque intention.
-- **Biais multilingue** (*survey* sur l'explicabilité des LLM multilingues, Resck et
-  al. 2025) : **mesuré** (`RESULTS_TESTS.md` §22) — pas de différence significative
-  d'interprétabilité entre français et anglais traduit (46,9% vs 45,5%), mais 38,6%
-  des features changent individuellement de statut selon la langue, un taux de
-  bruit supérieur à celui déjà mesuré pour le réordonnancement des exemples (§13.1,
-  31,3%). Pas de biais systématique détecté envers l'anglais sur ce test précis.
-- **Variance de seed d'entraînement du SAE** (*Unstable Features, Reproducible
-  Subspaces*, arXiv:2606.12138) : **mesurée** (`RESULTS_TESTS.md` §21) — taux
-  d'interprétabilité agrégé stable entre deux seeds (45,3% vs 47,3%), mais
-  seulement 28,2% de recouvrement exact des labels individuels obtenus. Les
-  features prises individuellement ne sont pas reproductibles à l'identique d'un
-  seed à l'autre, contrairement au taux agrégé.
+  embeddings F2LLM, un mécanisme complètement différent
+  (`docs/references.md`).
+- **Entraînement supervisé conjoint SAE+classifieur** (*ClassifSAE*, Le
+  Bail et al. 2025) : ce projet extrait des concepts de façon totalement non
+  supervisée puis les relie à la classification par une sonde post-hoc
+  (`downstream_classification`). ClassifSAE propose d'entraîner le SAE
+  conjointement avec un classifieur (pénalité de parcimonie sur le taux
+  d'activation), spécifiquement pour concentrer les concepts pertinents à la
+  tâche — directement aligné avec les objectifs de détection
+  d'urgence/d'intention. Non implémenté : nécessiterait une nouvelle boucle
+  d'entraînement jointe.
 
-## Perspectives pour la suite du stage
+## Perspectives
 
-1. ~~Tester en priorité la robustesse du protocole de jugement (vote majoritaire)~~
-   **FAIT** (cf. section "Limites actuelles" ci-dessus) — passer ce vote majoritaire
-   en protocole par défaut de `odd_one_out_judge` (actuellement une fonction séparée,
-   `scripts/judge_robustness_check.py`, à fusionner dans `src/sae/judge.py` si adopté).
-2. ~~Formaliser la comparaison **chiffrée** avec SAELens~~ **FAIT** (cf. section
-   "Comparaisons avec l'état de l'art" ci-dessus) — a révélé un problème plus large
-   (désaccord entre formules de variance expliquée sur activations à magnitude
-   hétérogène) qu'une simple validation d'implémentation. Reste à faire : implémenter
-   la métrique robuste aux outliers proposée (médiane des ratios par token).
-3. Poursuivre la factorisation de `src/sae/saev5.py` vers l'architecture cible décrite
-   dans `Context.md` (`src/models/`, séparation training/extraction) — dette technique
-   qui n'affecte pas la validité des résultats mais complique la maintenance.
-4. ~~Dashboard interactif (Streamlit)~~ **FAIT** : `src/visualization/dashboard.py`
-   (`RESULTS_TESTS.md` §14.2) — vue d'ensemble, UMAP interactif, features (avec
-   exemples positifs/négatifs), diffing, recherche par mot-clé, urgence/robustesse.
-   Limite : recherche par mot-clé sur les labels déjà attribués, pas une ré-inférence
-   BM25 live sur le vocabulaire latent complet (`src/sae/retrieval/latent_terms.py`,
-   évalué quantitativement en `RESULTS_TESTS.md` §26 — Precision@10 parfaite sur
-   2 intentions/4 mais échec complet sur une troisième, limite structurelle du
-   BM25 sur vocabulaire très parcimonieux) ; pas de déploiement serveur
-   persistant, lancement manuel.
-5. ~~Exploiter le résultat de séparabilité linéaire des axes de perturbation... pour
-   un cas d'usage concret de détection d'urgence/d'intention sur mails originaux~~
-   **FAIT** : `scripts/intent_urgency_probe.py`, `RESULTS_TESTS.md` §13.2 — sonde sur
-   les labels faibles réels (regex, indépendants du corpus augmenté) : +27,0 points
-   sur l'urgence, +42,6 points sur la réclamation par rapport à la baseline classe
-   majoritaire. Reste à faire : évaluer sur un jeu de labels d'urgence/intention
-   annotés manuellement plutôt que des labels faibles par regex (limite ci-dessous),
-   et sur le Pipeline 2 (F2LLM) en plus du Pipeline 1 déjà testé.
-6. ~~Corriger le retrieval/clustering ciblé (matching par sous-chaîne) et brancher
-   les corrélations "intéressantes"~~ **FAIT** (cf. sections ci-dessus,
-   `RESULTS_TESTS.md` §15.1-15.3) — validés sur les activations déjà en cache, pas
-   encore par un run complet à l'échelle (aucun changement des activations
-   elles-mêmes, seulement de la sélection de latents en aval).
-7. ~~Adopter le protocole de labellisation contrastive directe (§15.4)~~
-   **ÉCARTÉ** : validation croisée faite (comptage systématique des 82 labels,
-   pas un échantillon) -- 45% partagent leur label avec un autre. Le
-   "100% de récupération" est un artefact de complaisance du LLM juge, pas un
-   signal de qualité (un cas trouvé de feature quasi-morte, freq=0%, recevant
-   quand même un label confiant). Le protocole odd-one-out reste la seule
-   référence publiable.
-8. ~~Calculer `find_interesting_pairs` (corrélations)~~ **FAIT** (rétroactivement,
-   sans réextraction, `RESULTS_TESTS.md` §16.3) — résultat peu concluant (3 paires
-   seulement, 2/3 avec une feature non labellisée). Reste à faire : comparer à des
-   biais/artefacts réels connus du corpus (ex. le biais "Objet :" avant correction,
-   §14.1) pour valider empiriquement la méthode sur ce projet, à la manière de la
-   validation par injection synthétique du papier de référence (§4.2, Appendix E.2) ;
-   élargir la plage de fréquence de `cooccurrence_graph` pour augmenter le rappel.
-9. ~~Mettre en place un test de qualité de l'explication document-level (fidélité +
-   plausibilité)~~ **FAIT** (`RESULTS_TESTS.md` §16.1-16.2) — résultats très positifs
-   sur la fidélité, positifs mais imparfaits sur la plausibilité. Reste à faire :
-   étendre le test de plausibilité au Pipeline 2, et à un échantillon plus large que
-   60 documents pour resserrer l'intervalle de confiance.
-10. ~~Comparer le backbone d'embedding Pipeline 2 (F2LLM-80M vs -330M vs -160M)~~
-    **FAIT** (`RESULTS_TESTS.md` §16.5-16.6) — résultat mixte, aucune taille ne
-    domine. ~~Tester bge-m3 comme backbone Pipeline 2~~ **FAIT** (§16.7) —
-    nécessitait un vrai correctif de code (pooling dernier-token câblé en dur,
-    incorrect pour un encodeur bidirectionnel comme bge-m3, cf. nouveau
-    `EMB_POOLING`) : résultat net et positif, bge-m3 domine sur NMSE (−18,8% vs
-    le meilleur F2LLM), taux de features mortes, silhouette, et acc_SAE diffing --
-    candidat par défaut recommandé pour une suite de stage.
-11. ~~Concevoir un protocole de test complet du dépôt sous conditions fixées~~ **FAIT** :
-    `docs/evaluation_protocol.md` + `scripts/consolidate_evaluation_report.py` +
-    onglet dashboard "Rapport consolidé". Aucun problème majeur rencontré sur cette
-    passe (cf. les critères de décision du protocole) — la comparaison multi-modèles/
-    conditions que j'envisage peut être considérée en suite de stage.
-12. ~~Identifier et documenter la correspondance avec SAE Boost~~ **FAIT**
-    (`RESULTS_TESTS.md` §18). ~~Tester un `K_EXTRA` plus faible (proche de leur
-    k=5 optimal)~~ **FAIT** (§25) : direction cohérente (+9,4 points) mais non
-    significatif. ~~Un run à volume plus élevé pour vérifier le seuil de
-    convergence~~ **FAIT partiellement** (25M tokens, §23.4, 12x l'ablation
-    initiale mais toujours 50-100x en dessous du seuil du papier) : même
-    conclusion qualitative (+8,7 points, non significatif). Reste à faire : un
-    run au seuil exact 100-200M (coût GPU/RAM substantiel, cf. §23.3bis) ;
-    comparer chiffré à leurs baselines alternatives (Extended SAE, SAE Stitching,
-    full fine-tuning) sur le corpus emails ; répliquer K_EXTRA=5 et le volume 25M
-    sur plusieurs seeds pour trancher si l'écart directionnel commun aux deux
-    (+8,7/+9,4 points, chacun non significatif seul) reflète un effet réel.
-13. ~~Reproduire le sanity check "Frozen Decoder" (Korznikov et al. 2026)~~ **FAIT**
-    (`RESULTS_TESTS.md` §19, `FrozenDecoderExtendedSAE`) — résultat **nuancé** :
-    l'interprétabilité odd-one-out résiste bien (45,3% entraîné vs 29,3% figé
-    aléatoire, écart significatif) mais la classification en aval y résiste beaucoup
-    moins (93,5% vs 91,2% — un décodeur aléatoire capture déjà la quasi-totalité du
-    signal), répliquant partiellement le constat du papier sur le sparse probing.
-    Reste à faire : étendre le sanity check au Pipeline 2 (`PhraseLevelSAE`,
-    entraîné from-scratch, jamais testé contre un décodeur figé) ; envisager les
-    métriques plus exigeantes du papier (AutoInterp par description+détection sur
-    échantillon non vu, sparse probing SAEBench) en remplacement de la sonde de
-    classification actuelle, dont ce sanity check a montré la faible sensibilité.
-14. Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*, Bussmann et al. 2025)
-    pour l'extension P1, comme piste alternative à l'ablation capacité simple
-    (`D_EXTRA`/`K_EXTRA`, déjà testée sans effet) pour expliquer/réduire le résidu
-    non-interprété — nécessite une nouvelle boucle d'entraînement multi-échelle.
-15. Entraîner un SAE supervisé conjointement avec un classifieur (*ClassifSAE*,
-    Le Bail et al. 2025) pour la détection d'urgence/intention, en alternative à la
-    sonde post-hoc actuelle (`downstream_classification`) — permettrait de comparer
-    directement la précision et l'interprétabilité des concepts obtenus.
-16. ~~Évaluer le steering (`steer_activations`/`steer_and_decode`, déjà implémenté
-    mais jamais utilisé comme méthode d'explication à part entière) comme complément
-    "output-based" aux protocoles "input-based" déjà validés (chapitre 3)~~ **FAIT**
-    (`RESULTS_TESTS.md` §24) — résultat hétérogène et non trivial : le round-trip
-    decode/ré-encodage neutralise quasi entièrement l'intervention pour 2 intentions
-    sur 4 testées (ratio 0,00-0,02× vs. ablation en place), la préserve pour une
-    troisième (0,90×), et l'amplifie pour la dernière (1,74×). `steer_and_decode`
-    n'est donc pas un mécanisme d'intervention causale fiable et prévisible à partir
-    du simple test d'ablation en place. Reste à faire : étendre à un échantillon plus
-    large de features/intentions pour caractériser ce qui distingue les cas où le
-    round-trip "tient" de ceux où il ne tient pas (structure de corrélation entre
-    features ? spécificité de l'intention ?).
-17. ~~Quantifier le biais multilingue potentiel du juge d'auto-interprétation~~
-    **FAIT** (`RESULTS_TESTS.md` §22) — résultat **nul sur l'hypothèse testée** :
-    aucune différence significative entre le taux d'interprétabilité en français et
-    en anglais traduit (46,9% vs 45,5%, z=0,24). Renforce en revanche le constat du
-    §13.1 : 38,6% des features changent de statut selon la langue de présentation
-    (contre 31,3% pour un simple réordonnancement), confirmant que le protocole
-    odd-one-out à décision unique reste globalement bruyant face à toute
-    perturbation de surface, pas spécifiquement biaisé envers l'anglais sur ce
-    corpus. Reste à faire : tester l'hypothèse alternative (entraîner le SAE sur un
-    corpus anglais natif équivalent, pas seulement traduire la vue du juge).
-18. ~~Tester la variance de seed d'entraînement du SAE~~ **FAIT**
-    (`RESULTS_TESTS.md` §21, *Unstable Features, Reproducible Subspaces*,
-    arXiv:2606.12138) — taux d'interprétabilité agrégé stable entre seeds (45,3% vs
-    47,3%, non significatif) mais seulement 28,2% de recouvrement exact des labels
-    individuels obtenus. Confirme que les features individuelles ne sont pas
-    reproductibles à l'identique (seule la performance agrégée et la thématique
-    générale le sont) — nuance importante pour la lecture des exemples de features
-    cités dans ce rapport (chapitre 3) : à comprendre comme représentatifs d'une
-    catégorie récurrente de concepts, pas comme des atomes stables du dictionnaire.
+- Clarifier avec le commanditaire si le système, à terme, constitue une
+  décision automatisée au sens de l'article 22 du RGPD ou reste une aide à
+  la décision (un humain reste dans la boucle) — un fait de conception du
+  déploiement final, pas une question expérimentale, mais qui détermine le
+  cadre légal applicable et n'est pas encore tranché.
+- Passer le vote majoritaire en protocole par défaut de `odd_one_out_judge`
+  (actuellement une fonction séparée, `scripts/judge_robustness_check.py`, à
+  fusionner dans `src/sae/judge.py`).
+- Implémenter la métrique de variance expliquée robuste aux outliers
+  proposée en comparaison SAELens (médiane des ratios par token).
+- Remplacer les intervalles de confiance approximatifs (Wald) encore utilisés
+  ponctuellement au chapitre 3 par `proportion_with_ci` (Wilson,
+  `src/analysis/stats.py`), déjà la référence pour le reste du module
+  statistique.
+- Poursuivre la factorisation de `src/sae/saev5.py` (séparer entraînement et
+  extraction, réduire un fichier monolithique) — dette technique qui
+  n'affecte pas la validité des résultats mais complique la maintenance.
+- Étendre le sanity check "Frozen Decoder" au Pipeline 2 (`PhraseLevelSAE`,
+  entraîné from-scratch, jamais testé contre un décodeur figé) ; envisager
+  les métriques plus exigeantes du papier (AutoInterp par
+  description+détection sur échantillon non vu, sparse probing SAEBench) en
+  remplacement de la sonde de classification actuelle, dont ce sanity check
+  a montré la faible sensibilité.
+- Tester des dictionnaires SAE emboîtés (*Matryoshka SAEs*) pour l'extension
+  P1, comme alternative à l'ablation capacité simple pour réduire le résidu
+  non interprété.
+- Entraîner un SAE supervisé conjointement avec un classifieur (*ClassifSAE*)
+  pour la détection d'urgence/intention, en alternative à la sonde post-hoc
+  actuelle.
+- Étendre le test de plausibilité de l'explication document-level au
+  Pipeline 2, et à un échantillon plus large que 60 documents pour resserrer
+  l'intervalle de confiance.
+- Caractériser ce qui distingue les cas où le round-trip du steering "tient"
+  de ceux où il ne tient pas (structure de corrélation entre features ?
+  spécificité de l'intention ?) sur un échantillon plus large de
+  features/intentions.
+- Exécuter le run à 200M tokens (seuil exact SAE Boost, désormais
+  schedulable) et comparer chiffré aux baselines alternatives du papier
+  (Extended SAE random/most-active init, SAE Stitching, full fine-tuning) ;
+  répliquer `K_EXTRA=5` et le volume 25M sur plusieurs seeds pour trancher si
+  l'écart directionnel commun aux deux (+8,7/+9,4 points, chacun non
+  significatif seul) reflète un effet réel.
+- Comparer `find_interesting_pairs` à des biais/artefacts réels connus du
+  corpus (ex. le biais "Objet :" avant correction) pour valider
+  empiriquement la méthode sur ce projet, à la manière de la validation par
+  injection synthétique du papier de référence (§4.2, Appendix E.2) ;
+  élargir la plage de fréquence de `cooccurrence_graph` pour augmenter le
+  rappel.
+- Évaluer un jeu de labels d'urgence/intention annotés manuellement plutôt
+  que des labels faibles par regex pour la sonde de détection d'urgence
+  (`scripts/intent_urgency_probe.py`), et étendre au Pipeline 2.
+
+---
 
 # Conclusion générale
 
 ## Bilan par rapport aux objectifs initiaux
 
 Le stage visait à rendre fonctionnelle et exploitable une plateforme d'analyse
-interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Au terme des
-quatre phases décrites dans ce rapport, les deux pipelines (Gemma-3 + GemmaScope
-étendu ; F2LLM + SAE dédié) fonctionnent de bout en bout sur le corpus original, avec des
-résultats quantifiés et reproductibles sur l'ensemble des capacités visées par
-l'énoncé initial :
+interprétable de mails clients EDF fondée sur des Sparse Autoencoders. Les deux
+pipelines (Gemma-3 + GemmaScope étendu ; F2LLM + SAE dédié) fonctionnent de bout
+en bout sur le corpus original, avec des résultats quantifiés et reproductibles
+sur l'ensemble des capacités visées par l'énoncé initial :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes
-  synthétiques (93,5%/79,3% selon le pipeline) et gain net mesuré sur des labels
-  faibles indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
-  +42,6 points sur la réclamation par rapport à la baseline naïve).
+  synthétiques (93,5%/79,3% selon le pipeline — à lire avec la réserve de
+  `03_experiences_et_resultats.md` §5.4, ~93% de ce chiffre étant reproductible par un
+  baseline TF-IDF sans sémantique) et gain net mesuré sur des labels faibles
+  indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
+  +42,6 points sur la réclamation par rapport à la baseline naïve — preuve la plus
+  fiable des deux, non affectée par cette réserve).
 - **Explication des décisions** : deux tests indépendants (fidélité par ablation,
   plausibilité par choix forcé) confirment que les features désignées comme
   explication d'un document portent réellement la décision, et sont perçues comme
@@ -1736,12 +1597,16 @@ l'énoncé initial :
   formules de variance expliquée à magnitude d'activation hétérogène) qui ont une
   valeur méthodologique au-delà du seul projet.
 
-Le résultat le plus significatif du stage reste le diagnostic du chapitre 3 : le taux
+Le résultat le plus central du stage reste le diagnostic du chapitre 3 : le taux
 d'auto-interprétation des features, initialement très faible (20%), n'était pas
 limité par le volume d'entraînement mais par une erreur de conception du corpus
 d'entraînement de l'extension — un exemple concret de la valeur d'une démarche
 d'ablation contrôlée plutôt que d'une intuition non testée ("il faut probablement plus
-de données").
+de données"). À distinguer de l'effet le plus fort mesuré en valeur absolue
+(§18, dose-réponse de l'échelle du modèle, p<10⁻⁹) : les deux résultats
+répondent à des questions différentes — l'un explique pourquoi le pipeline
+fonctionne sur ce corpus, l'autre identifie le levier le plus déterminant
+parmi tous ceux testés.
 
 ## Compétences mobilisées et acquises
 
@@ -1757,7 +1622,7 @@ justifications).
 
 ## Perspectives
 
-Le chapitre 5 détaille les limites et pistes de poursuite technique. Deux directions
+Le chapitre 4 détaille les limites et pistes de poursuite technique. Deux directions
 plus larges se dégagent pour la suite :
 
 1. **Comparaison inter-modèles et inter-conditions**, envisagée dès le cadrage de
@@ -1770,9 +1635,6 @@ plus larges se dégagent pour la suite :
    (labellisation contrastive directe, vote majoritaire du juge odd-one-out comme
    protocole par défaut) — les deux nécessitent une repasse de validation à l'échelle
    avant de remplacer les chiffres actuellement publiés dans ce rapport.
-
-
-\newpage
 
 ---
 
@@ -1787,19 +1649,33 @@ présente dans `report/README.md`.
 
 ## Références académiques
 
-- Jiang, N., Sun, R. et al. (2025). *Interpretable Embeddings with Sparse
-  Autoencoders: A Data Analysis Toolkit* (`pdf/InterpretableSAE_Embeddings.pdf`,
-  [github.com/nickjiang2378/interp_embed](https://github.com/nickjiang2378/interp_embed)).
+- Jiang, N., Sun, X. et al. (2025). *Interpretable Embeddings with Sparse
+  Autoencoders: A Data Analysis Toolkit*
+  ([arXiv:2512.10092](https://arxiv.org/abs/2512.10092), ICML 2026,
+  `pdf/InterpretableSAE_Embeddings.pdf`,
+  [github.com/nickjiang2378/interp-embed](https://github.com/nickjiang2378/interp-embed)).
   Référence méthodologique principale du stage : protocole de labellisation
   contrastive (Appendix C), détection de corrélations "intéressantes" (§4.2,
   Appendix E), retrieval par propriétés et clustering ciblé par similarité
-  d'embedding (§4.3/4.4, Appendix F.1). Une relecture ligne à ligne de cette
-  référence face au code du projet a permis d'identifier quatre écarts
-  méthodologiques (cf. chapitre 4).
+  d'embedding (§4.3/4.4, Appendix F.1) — méthodes reprises et discutées au
+  chapitre 4.
 - Bills, S. et al. (2023). *Language models can explain neurons in language models*
   (OpenAI). Origine de la mesure ρ_interp (corrélation de Spearman entre intensité
   jugée par un LLM et activation réelle) utilisée dans le protocole
-  d'auto-interprétation local (`src/sae/judge.py`).
+  d'auto-interprétation local (`src/sae/judge.py`) — implémentation locale utilisant
+  un proxy de rang plutôt que l'activation continue réelle, cf. `01_etat_de_lart.md`.
+- Karvonen, A. et al. (2025). *SAEBench: A Comprehensive Benchmark for Sparse
+  Autoencoders in Language Model Interpretability*
+  ([arXiv:2503.09532](https://arxiv.org/abs/2503.09532), ICML 2025). Source du
+  protocole odd-one-out cité au chapitre "État de l'art" et de la "sparse probing
+  SAEBench" évoquée comme piste alternative en limites.
+- Chanin, D., Wilken-Smith, J., Dulka, T., Bhatnagar, H., Golechha, S., Bloom, J.
+  (2024). *A is for Absorption: Studying Feature Splitting and Absorption in Sparse
+  Autoencoders* ([arXiv:2409.14507](https://arxiv.org/abs/2409.14507)). Article
+  définissant le phénomène de "feature absorption", distinct du "feature splitting" —
+  pertinent pour le résidu non-interprété (`04_limites_et_perspectives.md`), dont
+  Matryoshka SAEs (Bussmann et al. 2025, ci-dessous) est présenté comme correctif
+  possible.
 - Koriagin, N., Aksenov, Y., Laptev, D., Gerasimov, G., Balagansky, N., Gavrilov, D.
   (2025). *Teach Old SAEs New Domain Tricks with Boosting*
   ([arXiv:2507.12990](https://arxiv.org/abs/2507.12990), COLM 2025,
@@ -1824,11 +1700,12 @@ présente dans `report/README.md`.
   (cf. `docs/references.md`).
 - Rajamanoharan, S., Lieberum, T., Sonnerat, N. et al. (2024). *Jumping Ahead:
   Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders*
-  (`pdf/jumpRELU.pdf`). Architecture du SAE core GemmaScope-2 (Pipeline 1).
+  ([arXiv:2407.14435](https://arxiv.org/abs/2407.14435), `pdf/jumpRELU.pdf`).
+  Architecture du SAE core GemmaScope-2 (Pipeline 1).
 - Bussmann, B., Nabeshima, N., Karvonen, A., Nanda, N. (2025). *Learning Multi-Level
   Features with Matryoshka Sparse Autoencoders*
   ([arXiv:2503.17547](https://arxiv.org/abs/2503.17547), `pdf/Matryoshka.pdf`).
-  Piste non implémentée pour le résidu non-interprété (chapitre 5) — à ne pas
+  Piste non implémentée pour le résidu non-interprété (chapitre 4) — à ne pas
   confondre avec `MATRYOSHKA_DIM` du projet (cf. `docs/references.md`).
 - Le Bail, M., Dentan, J., Buscaldi, D., Vanier, S. (2025). *Unveiling
   Decision-Making in LLMs for Text Classification: Extraction of Influential and
@@ -1837,10 +1714,11 @@ présente dans `report/README.md`.
   `pdf/UnveilingDecision-MakinginLLMsforTextClassification.pdf`). Introduit
   ClassifSAE (SAE supervisé conjoint SAE+classifieur) — piste non implémentée,
   directement pertinente pour les objectifs détection d'urgence/intention
-  (chapitre 5).
+  (chapitre 4).
 - Shu, D., Wu, X., Zhao, H. et al. (2025). *A Survey on Sparse Autoencoders:
-  Interpreting the Internal Mechanisms of Large Language Models* (EMNLP 2025
-  Findings, `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
+  Interpreting the Internal Mechanisms of Large Language Models*
+  ([arXiv:2503.05613](https://arxiv.org/abs/2503.05613), EMNLP 2025 Findings,
+  `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
   métriques structurelles/fonctionnelles, utilisée pour cadrer le chapitre 1.
 - Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
   Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
@@ -1860,9 +1738,15 @@ présente dans `report/README.md`.
   au chapitre 3, §12 (ablation de variance de seed) : taux agrégé stable (45,3% vs
   47,3%, non significatif) mais seulement 28,2% de recouvrement exact des libellés
   de features entre les deux graines, confirmant la thèse des deux papiers.
+- Clavié, B., Lee, S., Shakir, A., Kato, M. P. (2026). *Latent Terms: Dense
+  Retrievers Contain Trivially Extractable BM25-ready Zipfian Vocabularies*
+  ([arXiv:2605.29384](https://arxiv.org/abs/2605.29384)). Méthode de retrieval BM25
+  sur le vocabulaire latent d'un SAE — **implémentée et évaluée quantitativement**
+  au chapitre 3, §17 (Precision@10 parfaite sur 3 intentions/4, échec structurel
+  diagnostiqué sur la 4ᵉ, `RESULTS_TESTS.md` §26).
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
-  Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
-  cité en introduction.
+  Language Models* ([arXiv:2507.08017](https://arxiv.org/abs/2507.08017),
+  `pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique cité en introduction.
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,
@@ -1879,8 +1763,10 @@ comparaison) :
 - **SAELens** — [github.com/jbloomAus/SAELens](https://github.com/jbloomAus/SAELens) —
   chargement/encodage du SAE GemmaScope-2 préentraîné.
 - **GemmaScope** —
-  [github.com/google-deepmind/gemma-scope](https://github.com/google-deepmind/gemma-scope) —
-  poids des SAE préentraînés sur Gemma-3.
+  [huggingface.co/google/gemma-scope](https://huggingface.co/google/gemma-scope) —
+  poids des SAE préentraînés sur Gemma-3 (lien GitHub `google-deepmind/gemma-scope`
+  précédemment cité corrigé : ce dépôt n'existe pas, les poids sont hébergés sur
+  Hugging Face).
 - **Neuronpedia** — [neuronpedia.org](https://www.neuronpedia.org) — labels officiels
   des features GemmaScope "core".
 - **F2LLM-v2** (`codefuse-ai/F2LLM-v2-{80M,160M,330M}`) — modèle d'embeddings de

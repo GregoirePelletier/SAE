@@ -9,19 +9,33 @@ présente dans `report/README.md`.
 
 ## Références académiques
 
-- Jiang, N., Sun, R. et al. (2025). *Interpretable Embeddings with Sparse
-  Autoencoders: A Data Analysis Toolkit* (`pdf/InterpretableSAE_Embeddings.pdf`,
-  [github.com/nickjiang2378/interp_embed](https://github.com/nickjiang2378/interp_embed)).
+- Jiang, N., Sun, X. et al. (2025). *Interpretable Embeddings with Sparse
+  Autoencoders: A Data Analysis Toolkit*
+  ([arXiv:2512.10092](https://arxiv.org/abs/2512.10092), ICML 2026,
+  `pdf/InterpretableSAE_Embeddings.pdf`,
+  [github.com/nickjiang2378/interp-embed](https://github.com/nickjiang2378/interp-embed)).
   Référence méthodologique principale du stage : protocole de labellisation
   contrastive (Appendix C), détection de corrélations "intéressantes" (§4.2,
   Appendix E), retrieval par propriétés et clustering ciblé par similarité
-  d'embedding (§4.3/4.4, Appendix F.1). Une relecture ligne à ligne de cette
-  référence face au code du projet a permis d'identifier quatre écarts
-  méthodologiques (cf. chapitre 4).
+  d'embedding (§4.3/4.4, Appendix F.1) — méthodes reprises et discutées au
+  chapitre 4.
 - Bills, S. et al. (2023). *Language models can explain neurons in language models*
   (OpenAI). Origine de la mesure ρ_interp (corrélation de Spearman entre intensité
   jugée par un LLM et activation réelle) utilisée dans le protocole
-  d'auto-interprétation local (`src/sae/judge.py`).
+  d'auto-interprétation local (`src/sae/judge.py`) — implémentation locale utilisant
+  un proxy de rang plutôt que l'activation continue réelle, cf. `01_etat_de_lart.md`.
+- Karvonen, A. et al. (2025). *SAEBench: A Comprehensive Benchmark for Sparse
+  Autoencoders in Language Model Interpretability*
+  ([arXiv:2503.09532](https://arxiv.org/abs/2503.09532), ICML 2025). Source du
+  protocole odd-one-out cité au chapitre "État de l'art" et de la "sparse probing
+  SAEBench" évoquée comme piste alternative en limites.
+- Chanin, D., Wilken-Smith, J., Dulka, T., Bhatnagar, H., Golechha, S., Bloom, J.
+  (2024). *A is for Absorption: Studying Feature Splitting and Absorption in Sparse
+  Autoencoders* ([arXiv:2409.14507](https://arxiv.org/abs/2409.14507)). Article
+  définissant le phénomène de "feature absorption", distinct du "feature splitting" —
+  pertinent pour le résidu non-interprété (`04_limites_et_perspectives.md`), dont
+  Matryoshka SAEs (Bussmann et al. 2025, ci-dessous) est présenté comme correctif
+  possible.
 - Koriagin, N., Aksenov, Y., Laptev, D., Gerasimov, G., Balagansky, N., Gavrilov, D.
   (2025). *Teach Old SAEs New Domain Tricks with Boosting*
   ([arXiv:2507.12990](https://arxiv.org/abs/2507.12990), COLM 2025,
@@ -46,11 +60,12 @@ présente dans `report/README.md`.
   (cf. `docs/references.md`).
 - Rajamanoharan, S., Lieberum, T., Sonnerat, N. et al. (2024). *Jumping Ahead:
   Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders*
-  (`pdf/jumpRELU.pdf`). Architecture du SAE core GemmaScope-2 (Pipeline 1).
+  ([arXiv:2407.14435](https://arxiv.org/abs/2407.14435), `pdf/jumpRELU.pdf`).
+  Architecture du SAE core GemmaScope-2 (Pipeline 1).
 - Bussmann, B., Nabeshima, N., Karvonen, A., Nanda, N. (2025). *Learning Multi-Level
   Features with Matryoshka Sparse Autoencoders*
   ([arXiv:2503.17547](https://arxiv.org/abs/2503.17547), `pdf/Matryoshka.pdf`).
-  Piste non implémentée pour le résidu non-interprété (chapitre 5) — à ne pas
+  Piste non implémentée pour le résidu non-interprété (chapitre 4) — à ne pas
   confondre avec `MATRYOSHKA_DIM` du projet (cf. `docs/references.md`).
 - Le Bail, M., Dentan, J., Buscaldi, D., Vanier, S. (2025). *Unveiling
   Decision-Making in LLMs for Text Classification: Extraction of Influential and
@@ -59,10 +74,11 @@ présente dans `report/README.md`.
   `pdf/UnveilingDecision-MakinginLLMsforTextClassification.pdf`). Introduit
   ClassifSAE (SAE supervisé conjoint SAE+classifieur) — piste non implémentée,
   directement pertinente pour les objectifs détection d'urgence/intention
-  (chapitre 5).
+  (chapitre 4).
 - Shu, D., Wu, X., Zhao, H. et al. (2025). *A Survey on Sparse Autoencoders:
-  Interpreting the Internal Mechanisms of Large Language Models* (EMNLP 2025
-  Findings, `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
+  Interpreting the Internal Mechanisms of Large Language Models*
+  ([arXiv:2503.05613](https://arxiv.org/abs/2503.05613), EMNLP 2025 Findings,
+  `pdf/SurveySAE.pdf`). Taxonomie explications input-based/output-based et
   métriques structurelles/fonctionnelles, utilisée pour cadrer le chapitre 1.
 - Resck, L., Augenstein, I., Korhonen, A. (2025). *Explainability and
   Interpretability of Multilingual Large Language Models: A Survey* (EMNLP 2025,
@@ -82,14 +98,15 @@ présente dans `report/README.md`.
   au chapitre 3, §12 (ablation de variance de seed) : taux agrégé stable (45,3% vs
   47,3%, non significatif) mais seulement 28,2% de recouvrement exact des libellés
   de features entre les deux graines, confirmant la thèse des deux papiers.
-- Clavié, B. et al. (2026). *Latent Terms: Sparse BM25-Style Retrieval over Sparse
-  Autoencoder Vocabularies* (arXiv:2605.29384). Méthode de retrieval BM25 sur le
-  vocabulaire latent d'un SAE — **implémentée et évaluée quantitativement** au
-  chapitre 3, §17 (Precision@10 parfaite sur 3 intentions/4, échec structurel
+- Clavié, B., Lee, S., Shakir, A., Kato, M. P. (2026). *Latent Terms: Dense
+  Retrievers Contain Trivially Extractable BM25-ready Zipfian Vocabularies*
+  ([arXiv:2605.29384](https://arxiv.org/abs/2605.29384)). Méthode de retrieval BM25
+  sur le vocabulaire latent d'un SAE — **implémentée et évaluée quantitativement**
+  au chapitre 3, §17 (Precision@10 parfaite sur 3 intentions/4, échec structurel
   diagnostiqué sur la 4ᵉ, `RESULTS_TESTS.md` §26).
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding in Large
-  Language Models* (`pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique
-  cité en introduction.
+  Language Models* ([arXiv:2507.08017](https://arxiv.org/abs/2507.08017),
+  `pdf/MechanisticIndicatorsinLLM.pdf`). Cadrage philosophique cité en introduction.
 - Documents complémentaires consultés sur l'application des SAE aux embeddings
   denses et à la recherche documentaire (retrieval), disponibles sous `pdf/` :
   `DisentanglingDenseEmbeddingswithSAE.pdf`,
@@ -106,8 +123,10 @@ comparaison) :
 - **SAELens** — [github.com/jbloomAus/SAELens](https://github.com/jbloomAus/SAELens) —
   chargement/encodage du SAE GemmaScope-2 préentraîné.
 - **GemmaScope** —
-  [github.com/google-deepmind/gemma-scope](https://github.com/google-deepmind/gemma-scope) —
-  poids des SAE préentraînés sur Gemma-3.
+  [huggingface.co/google/gemma-scope](https://huggingface.co/google/gemma-scope) —
+  poids des SAE préentraînés sur Gemma-3 (lien GitHub `google-deepmind/gemma-scope`
+  précédemment cité corrigé : ce dépôt n'existe pas, les poids sont hébergés sur
+  Hugging Face).
 - **Neuronpedia** — [neuronpedia.org](https://www.neuronpedia.org) — labels officiels
   des features GemmaScope "core".
 - **F2LLM-v2** (`codefuse-ai/F2LLM-v2-{80M,160M,330M}`) — modèle d'embeddings de

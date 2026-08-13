@@ -10,16 +10,11 @@ SEED = int(os.environ.get("SEED", "42"))
 # Seed DÉCOUPLÉE de SEED pour le split train/test du corpus emails
 # (build_email_train_test_corpus) : permet de faire varier SEED (init des poids SAE,
 # échantillonnage feature_selection_by_magnitude, etc.) pour une ablation de variance
-# d'entraînement (cf. Unstable Features, Reproducible Subspaces, RESULTS_TESTS.md §21)
-# SANS changer le split train/test lui-même — sinon la comparaison entre deux SEED
-# mélangerait variance d'entraînement et variance de corpus. Défaut 42 : tous les runs
-# précédents (SEED=42 partout) ont un split identique à celui-ci, aucune régression.
+# d'entraînement SANS changer le split train/test lui-même — sinon la comparaison
+# entre deux SEED mélangerait variance d'entraînement et variance de corpus.
 CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 
 # ─── Pipeline 2 (F2LLM) ───
-# Repo HF réel confirmé : codefuse-ai/F2LLM-v2-80M (l'org "Alibaba-NLP" utilisée
-# ailleurs dans le dépôt historique n'existe pas -> 404). Résolu depuis le cache HF
-# après un premier téléchargement (huggingface_hub.snapshot_download), comme MODEL_ID.
 EMB_MODEL      = os.environ.get("EMB_MODEL", "codefuse-ai/F2LLM-v2-80M")
 # "last_token" (défaut) : backbone décodeur causal (F2LLM). "cls" : backbone
 # encodeur bidirectionnel entraîné pour ce pooling (bge-m3) -- cf.
@@ -28,14 +23,11 @@ EMB_POOLING    = os.environ.get("EMB_POOLING", "last_token")
 MATRYOSHKA_DIM = int(os.environ.get("MATRYOSHKA_DIM", "320"))
 
 # Modèle d'embedding pour select_latents_by_similarity (src/sae/saev5.py) --
-# recherche de latents par similarité de leur label à une requête (Tâches 3/4,
-# clustering ciblé + retrieval par propriétés). Testé empiriquement contre F2LLM
-# (déjà utilisé en Pipeline 2, pooling dernier-token) sur deux requêtes de
-# validation : F2LLM donne de bons résultats sur l'une ("urgence réclamation
-# client") mais des résultats sans rapport sur l'autre ("facturation résiliation
-# panne" -> "fact statement", "unlock loss cash"...). bge-m3 (pooling CLS,
-# multilingue, conçu pour la similarité sémantique/retrieval) donne de bons
-# résultats sur les deux -- cf. RESULTS_TESTS.md pour le détail de la comparaison.
+# recherche de latents par similarité de leur label à une requête (clustering
+# ciblé + retrieval par propriétés). bge-m3 (pooling CLS, multilingue, conçu
+# pour la similarité sémantique/retrieval) retenu après comparaison empirique
+# à F2LLM (pooling dernier-token, adapté à la génération plutôt qu'à la
+# similarité de courts labels).
 LATENT_LABEL_EMB_MODEL = os.environ.get("LATENT_LABEL_EMB_MODEL", "./models/bge-m3")
 D_SAE          = int(os.environ.get("D_SAE", "8192"))
 K_SPARSE       = int(os.environ.get("K_SPARSE", "16"))
@@ -60,54 +52,38 @@ SANITY_CHECK_FROZEN_DECODER = os.environ.get("SANITY_CHECK_FROZEN_DECODER", "0")
 N_FEATURES_TO_LABEL  = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
 
 # ─── Modèle Gemma-3 / GemmaScope ───
-# Défaut : 12b (expérimentation transférée sur une machine avec plus de VRAM — la
-# variante 270m locale 6 Go a servi à valider le pipeline de bout en bout, cf.
-# Context.md, mais sa capacité d'auto-interprétation (labels juge) est limitée).
 MODEL_SIZE = os.environ.get("MODEL_SIZE", "12b")
 
 # (model_path, release_id, sae_id_default, layer, d_model)
 # d_model sert de repli pour mocked_get_safetensors_tensor_shapes (saev5.py) quand
-# aucune config locale n'est trouvée en cache.
-# MODEL_ID pointe directement le repo HF (pas un chemin disque) : après download_sae.py,
-# il est résolu depuis le cache HF par from_pretrained(local_files_only=True) — portable
-# entre machines, contrairement aux anciens chemins /home/h21486/SAE/... codés en dur.
-# RELEASE_ID vérifié empiriquement (API HF authentifiée) : le repo réel est
-# "google/gemma-scope-2-{taille}-it" SANS suffixe "-res" (l'ancien suffixe, hérité de
-# GemmaScope v1, pointait vers un repo inexistant — jamais vérifié avant ce passage).
+# aucune config locale n'est trouvée en cache. MODEL_ID pointe directement le
+# repo HF (pas un chemin disque) : après download_sae.py, il est résolu depuis
+# le cache HF par from_pretrained(local_files_only=True), portable entre
+# machines. RELEASE_ID : le repo réel est "google/gemma-scope-2-{taille}-it",
+# sans suffixe "-res".
 _PRESETS = {
-    # Couverture Neuronpedia mesurée empiriquement pour gemma-3-12b-it/layer 24
-    # (fetch_neuronpedia_labels, cf. RESULTS_TESTS.md) : 16k -> 13535/16384 = 82.6% ;
-    # 65k -> 57551/65536 = 87.8% (meilleure couverture ET ~4.3x plus de features
-    # labellisées en absolu) ; 262k -> 13851/262144 = 5.3% (confirme le ~10k estimé
-    # manuellement, très en dessous) ; 1m -> HTTP 404, pas de labels hébergés.
-    # 65k est donc la largeur retenue pour le run à grande échelle (meilleure des
-    # deux métriques), remplaçant 16k comme choix par défaut ci-dessous.
-    # d_model=3840 confirmé empiriquement (text_config.hidden_size du config.json de
-    # gemma-3-12b-it) -- corrige une valeur de 4096 restée fausse depuis l'ajout initial
-    # de ce preset (jamais exercée jusqu'ici : le seul code qui lit D_MODEL pour
-    # préallouer un buffer de cette forme exacte, saev5.py::run_llm_max_pool_pipeline,
-    # est une correction récente non encore testée en conditions réelles, cf.
-    # RESULTS_TESTS.md §23.3 -- tous les runs 12b antérieurs utilisaient l'ancienne
-    # implémentation par liste+cat, indifférente à D_MODEL).
+    # Largeur du SAE core : couverture Neuronpedia mesurée empiriquement pour
+    # gemma-3-12b-it/layer 24 (fetch_neuronpedia_labels) -- 16k -> 82,6%
+    # (13535/16384) ; 65k -> 87,8% (57551/65536, meilleure couverture ET ~4,3x
+    # plus de features labellisées en absolu) ; 262k -> 5,3% (13851/262144) ;
+    # 1m -> pas de labels hébergés. 65k retenue comme largeur par défaut.
     "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_65k_l0_medium", 24, 3840),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),
     "1b":   ("google/gemma-3-1b-it",  "gemma-scope-2-1b-it",  "layer_13_width_16k_l0_medium", 13, 1152),
     # google/gemma-3-270m-it (LM) + google/gemma-scope-2-270m-it (SAE, resid_post,
-    # layer 12, largeur 65k confirmée via Neuronpedia : gemma-3-270m-it/12-gemmascope-2-res-65k).
-    # d_model=640 confirmé empiriquement (w_enc.shape du SAE téléchargé), pas 1024 comme
-    # supposé initialement d'après des specs publiques génériques du modèle. Utilisé pour
-    # la validation locale (6 Go VRAM) — cf. Context.md pour les résultats et limites.
+    # layer 12, largeur 65k confirmée via Neuronpedia). d_model=640 confirmé
+    # empiriquement (w_enc.shape du SAE téléchargé). Profil réduit (6 Go VRAM)
+    # pour validation locale du pipeline de bout en bout.
     "270m": ("google/gemma-3-270m-it", "gemma-scope-2-270m-it", "layer_12_width_65k_l0_medium", 12, 640),
 }
 _m, RELEASE_ID, _sae_default, LAYER, D_MODEL = _PRESETS.get(MODEL_SIZE, _PRESETS["270m"])
 MODEL_ID  = os.environ.get("MODEL_ID", _m)
 SAE_ID    = os.environ.get("SAE_ID", _sae_default)
 HOOK_TYPE = os.environ.get("HOOK_TYPE", "resid_post")
-# Override pour le balayage layer/hook-point GemmaScope-2 (RESULTS_TESTS.md §36) :
-# LAYER par défaut vient du preset MODEL_SIZE (24 pour 12b), jamais questionné --
-# ici explicitement overridable pour tester les autres layers "curés" (12/31/41)
-# publiés par GemmaScope-2 pour gemma-3-12b-it. SAE_ID doit être mis à jour en
-# cohérence (le layer y est encodé dans le nom, ex. "layer_31_width_16k_l0_medium").
+# LAYER par défaut vient du preset MODEL_SIZE (24 pour 12b) ; overridable pour
+# tester les autres layers "curés" (12/31/41) publiés par GemmaScope-2 pour
+# gemma-3-12b-it. SAE_ID doit être mis à jour en cohérence (le layer y est
+# encodé dans le nom, ex. "layer_31_width_16k_l0_medium").
 LAYER = int(os.environ.get("LAYER", LAYER))
 LOCAL_SAE_ROOT = os.environ.get("LOCAL_SAE_DIR", f"./local_data/saes/{RELEASE_ID}")
 SAE_SNAPSHOT   = os.environ.get("SAE_SNAPSHOT", "0" * 40)
@@ -137,12 +113,9 @@ CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 LOCAL_DATASET_PATH = os.environ.get(
     "LOCAL_DATASET_PATH",
     "./local_data/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet")
-# Corpus EDF réel + variantes augmentées (générées par scripts/run_augmentation.py,
-# cf. RESULTS_TESTS.md §0) : emplacement canonique unique, utilisé par saev5.py,
-# scripts/run_augmentation.py et scripts/baseline_gemmascope.py. Anciennement
-# Mails.tsv à la racine et augmented_mails.jsonl sous un results_*/ de run
-# particulier (accidentel : un jeu de données d'entrée ne doit pas vivre sous un
-# dossier de résultats d'expérience).
+# Corpus emails EDF originaux + variantes augmentées (générées par
+# scripts/run_augmentation.py) : emplacement canonique unique, utilisé par
+# saev5.py, scripts/run_augmentation.py et scripts/baseline_gemmascope.py.
 LOCAL_MAILS_PATH = os.environ.get("LOCAL_MAILS_PATH", "./local_data/emails/Mails.tsv")
 LOCAL_AUGMENTED_MAILS_PATH = os.environ.get(
     "LOCAL_AUGMENTED_MAILS_PATH", "./local_data/emails/augmented_mails.jsonl")
@@ -151,8 +124,8 @@ LOCAL_AUGMENTED_MAILS_PATH = os.environ.get(
 # les runs (indépendant de SAVE_DIR/CACHE_DIR), régénérable hors-cluster via
 # fetch_neuronpedia_labels() mais réutilisé tel quel une fois présent -- jamais
 # re-téléchargé, jamais dupliqué par run. Override par env si besoin d'un autre jeu.
-# Largeur dérivée de SAE_ID (ex. "layer_24_width_16k_l0_medium" -> "16k") au lieu
-# d'être figée en dur : varie selon MODEL_SIZE (65k pour 270m, 16k pour 12b/4b/1b).
+# Largeur dérivée de SAE_ID (ex. "layer_24_width_65k_l0_medium" -> "65k") au lieu
+# d'être figée en dur : varie selon MODEL_SIZE (cf. _PRESETS ci-dessus).
 _WIDTH_MATCH = re.search(r"width_(\w+?)_l0", SAE_ID)
 _SAE_WIDTH = _WIDTH_MATCH.group(1) if _WIDTH_MATCH else "16k"
 NEURONPEDIA_LABELS_PATH = os.environ.get(

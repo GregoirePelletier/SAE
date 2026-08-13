@@ -1,10 +1,9 @@
 """
-frozen_core.py — v9. FrozenCoreResidualSAE / ExtendedSAE avec BatchTopKEncoder
-(seuil θ persistant) et AuxK sur la branche extra.
+frozen_core.py — FrozenCoreResidualSAE / ExtendedSAE : extension résiduelle
+avec BatchTopKEncoder (seuil θ persistant) et AuxK sur la branche extra.
 
-Invariants préservés : clés de sortie du forward, encode/decode concaténés
-[core | extra], core gelé, normalize_decoder, export fp32, init PCA.
-Ajouts : "aux_loss" dans les sorties ; steps_since_active_extra (buffer).
+encode/decode concaténés [core | extra], core gelé, décodeur normalisé,
+branche extra en fp32, initialisation PCA sur le résidu.
 """
 
 import torch

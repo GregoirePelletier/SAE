@@ -65,11 +65,10 @@ SEED = 42
 TOP_K = 10
 N_DOCS_SAMPLE = 200
 D_EXTRA, K_EXTRA = 1024, 32   # doit matcher le checkpoint chargé (run principal)
-# Pinné en dur (PAS le défaut ambiant de src.config, qui a été relevé à 65k après le
-# run v12, cf. RESULTS_TESTS.md §10.3) : les activations en cache
-# (p1_all_doc_acts_ext_d1024.pt) de results_v10_emails_main ont été produites avec le
-# core SAE 16k -- charger le mauvais SAE_ID casserait silencieusement d_core et donc
-# tout le découpage core/extra dans decode()/encode().
+# Pinné en dur (PAS le défaut ambiant de src.config, désormais 65k) : les
+# activations en cache (p1_all_doc_acts_ext_d1024.pt) de results_v10_emails_main
+# ont été produites avec le core SAE 16k -- charger le mauvais SAE_ID casserait
+# silencieusement d_core et donc tout le découpage core/extra dans decode()/encode().
 SAE_ID = "layer_24_width_16k_l0_medium"
 rng_np = np.random.default_rng(SEED)
 

@@ -1,39 +1,23 @@
 """
-scripts/feature_group_reproducibility_test.py — Phase 1.4 de l'audit
-méthodologique (cf. plan approuvé 2026-08-07).
+scripts/feature_group_reproducibility_test.py — Grouper les features
+d'extension gagne-t-il en reproductibilité inter-seed par rapport à la
+feature individuelle ?
 
 Contexte : `RESULTS_TESTS.md` §21 (ablation seed-variance, SEED=42 "run
 principal" `results_v10_emails_main` vs SEED=123 `results_v13_ablation_seed123`)
 montre qu'au niveau INDIVIDUEL seulement 22/78 = 28,2% des labels de features
 d'extension sont des chaînes de caractères IDENTIQUES entre les deux seeds.
-Piste de l'utilisateur : grouper les features (clustering, Louvain) devrait
-gagner en reproductibilité par rapport à la feature individuelle.
 
-**Pivot méthodologique par rapport à la conception initiale** (documenté ici
-pour traçabilité) : l'approche prévue (apparier les features d'extension
-entre seeds par corrélation d'activation, `src/sae/compare/model_compare.py
-::match_features`, sur les MÊMES documents de test, puis comparer les
-communautés Louvain de `src/analysis/cooccurrence.py::cooccurrence_graph`)
-s'est révélée infaisable avec les données actuellement sur disque, pour deux
-raisons constatées empiriquement en préparant ce script :
-  1. Le cache d'activations brutes (`p1_all_doc_acts.pt`) de
-     `results_v13_ablation_seed123` a été purgé après le run (seuls
-     `p1_judge_labels_extended.json` et `p1_npmi.pt` subsistent) — pas de
-     matrice d'activation pour calculer une corrélation cross-seed.
-  2. Même avec les activations, `cooccurrence_graph` (filtre de fréquence
-     document ∈ [0.01, 0.5]) et la sélection des 150 features jugées
-     (`feature_selection_by_magnitude`, sélection par MAGNITUDE, pas
-     fréquence) ciblent des ensembles quasi disjoints : **0 des 150 features
-     jugées par seed n'apparaît comme nœud du graphe NPMI déjà en cache**,
-     dans les DEUX seeds. Les features TopK-sparses (K_EXTRA=32/1024) à forte
-     magnitude s'activent trop rarement en fréquence documentaire pour passer
-     le filtre de `cooccurrence_graph`.
-
-Approche retenue (utilise UNIQUEMENT `p1_top_extended_features.json`, déjà en
-cache pour les deux seeds -- aucune activation brute requise) : grouper les
-labels par SIMILARITÉ SÉMANTIQUE (embeddings bge-m3, `src/sae/saev5.py
-::_embed_bge_m3`, déjà utilisé ailleurs dans le projet pour ce rôle) plutôt
-que par co-activation. Compare deux façons d'apparier les features
+Groupement par SIMILARITÉ SÉMANTIQUE (embeddings bge-m3,
+`src/sae/saev5.py::_embed_bge_m3`) des labels plutôt que par co-activation :
+`cooccurrence_graph` (filtre de fréquence document ∈ [0.01, 0.5]) et la
+sélection des 150 features jugées (`feature_selection_by_magnitude`, par
+magnitude, pas fréquence) ciblent des ensembles disjoints -- aucune des 150
+features jugées par seed n'apparaît comme nœud du graphe NPMI, dans les deux
+seeds (les features TopK-sparses à forte magnitude s'activent trop rarement
+en fréquence documentaire pour passer ce filtre). Utilise uniquement
+`p1_top_extended_features.json`, déjà en cache pour les deux seeds -- aucune
+activation brute requise. Compare deux façons d'apparier les features
 interprétables entre seed=42 et seed=123 SUR LA MÊME MÉTRIQUE (similarité
 cosinus d'embedding de label, via appariement hongrois -- même primitive que
 `match_features`, appliquée ici aux embeddings de label plutôt qu'aux
