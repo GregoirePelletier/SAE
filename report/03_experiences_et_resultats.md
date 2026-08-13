@@ -438,11 +438,20 @@ Porter le volume à 25M tokens (12x l'ablation initiale, toujours 50-100x en
 dessous du seuil 100-200M de SAE Boost) ne change donc pas la conclusion
 qualitative : le problème diagnostiqué en 1.2 était bien le domaine du
 corpus, pas son volume brut. Cet écart directionnel (+8,7 points, non
-significatif) est du même ordre de grandeur que celui observé
+significatif) était du même ordre de grandeur que celui observé
 indépendamment pour l'ablation `K_EXTRA=5` (+9,4 points, 3.3 ci-dessous,
-également non significatif) — à prendre comme une piste à répliquer plutôt
-qu'un résultat établi. Un run au seuil exact 100-200M reste à exécuter.
-Détail complet : `RESULTS_TESTS.md` §23.3/§54.
+également non significatif seul) — une coïncidence entre deux leviers
+différents suffisamment notable pour justifier une réplication.
+
+**Réplication sur deux seeds supplémentaires** (7 et 99, `RESULTS_TESTS.md`
+§56) : ne reproduit pas l'écart. Les deux nouveaux seeds retombent quasiment
+sur la référence (46,0% et 44,7% contre 45,3%), loin des 54,0% du seed
+original. Les 3 seeds combinés donnent 48,2% (217/450, z=0,61, p=0,54) —
+nettement plus proche de la référence que ne le suggérait le seed unique. Le
+résultat initial était vraisemblablement du bruit d'échantillonnage : la
+coïncidence de direction avec `K_EXTRA=5` ne constituait pas un indice
+fiable. Un run au seuil exact 100-200M reste à exécuter si le temps du
+stage le permet. Détail complet : `RESULTS_TESTS.md` §23.3/§54/§56.
 
 ### 3.3. Capacité de l'extension : `K_EXTRA=5`
 
@@ -517,7 +526,8 @@ statistique complet : sections ci-dessus et `RESULTS_TESTS.md` (colonne §).
 | Capacité seule (D=2048, K=64) | 150 | 40,0% (60/150) | −5,3 pts | proportions | non significatif |
 | Combiné, tranche rang 1-150 | 150 | 44,0% (66/150) | −1,3 pt | proportions | non significatif |
 | Combiné, run complet (4 leviers) | 600 | 53,7% (322/600) | +8,4 pts | non testé (voir décomposition 3.1) | — |
-| Volume 25M tokens | 150 | 54,0% (81/150) | +8,7 pts | z=−1,50 | non significatif |
+| Volume 25M tokens (seed original) | 150 | 54,0% (81/150) | +8,7 pts | z=−1,50 | non significatif |
+| Volume 25M tokens, 3 seeds combinés | 450 | 48,2% (217/450) | +2,9 pts | z=0,61 | p=0,54 |
 | K_EXTRA=5 | 150 | 54,7% (82/150) | +9,4 pts | z=−1,62 | non significatif |
 | K_EXTRA=5, 3 seeds combinés | 450 | 53,3% (240/450) | +8,0 pts | z=1,70 | p≈0,089 |
 
@@ -525,12 +535,15 @@ statistique complet : sections ci-dessus et `RESULTS_TESTS.md` (colonne §).
 
 Aucun des hyperparamètres testés isolément (largeur, époques, capacité, volume,
 `K_EXTRA`) ne modifie significativement le taux d'interprétabilité odd-one-out une
-fois le domaine du corpus corrigé. Les écarts positifs les plus proches du seuil
-conventionnel (volume 25M, `K_EXTRA=5`, tous deux autour de +9 points, z≈1,5-1,6)
-pointent dans la même direction sans être individuellement établis — des candidats à
-répliquer, pas des résultats acquis. La hausse observée sur le run combiné
-(45,3%→53,7%) s'explique par la composition du pool de features jugées, pas par un
-gain de qualité d'entraînement. Le backbone d'embedding et la dimension Matryoshka
+fois le domaine du corpus corrigé. Le volume 25M, répliqué sur 3 seeds, ne
+tient pas (48,2%, z=0,61) : l'écart de +8,7 points mesuré sur le seed
+original était du bruit d'échantillonnage. `K_EXTRA=5` reste, lui, cohérent
+sur ses 3 seeds (53,3%, z=1,70, p≈0,089) sans atteindre le seuil
+conventionnel — un candidat à confirmer, pas un résultat acquis, mais qui
+n'a pas été infirmé par sa réplication comme volume 25M l'a été par la
+sienne. La hausse observée sur le run combiné (45,3%→53,7%) s'explique par
+la composition du pool de features jugées, pas par un gain de qualité
+d'entraînement. Le backbone d'embedding et la dimension Matryoshka
 n'offrent pas de justification claire pour s'écarter des valeurs par défaut sur ce
 projet.
 

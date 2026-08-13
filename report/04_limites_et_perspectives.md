@@ -104,8 +104,10 @@ cohérente sur ce corpus (54,7% vs 45,3%, +9,4 points) mais non significatif
 dégrader la performance générale (jusqu'à -31% d'EV en dessous de 100M) —
 testé partiellement à 25M tokens (12x l'ablation initiale, toujours 50-100x
 en dessous du seuil du papier, `RESULTS_TESTS.md` §23.4) : même conclusion
-qualitative (+8,7 points, non significatif). Le run au seuil exact
-100-200M reste à exécuter — le réservoir de résidus, initialement une
+qualitative, et l'écart numérique initial (+8,7 points) ne réplique pas sur
+deux seeds supplémentaires (48,2% sur 3 seeds combinés, z=0,61,
+`RESULTS_TESTS.md` §56). Le run au seuil exact 100-200M reste à exécuter —
+le réservoir de résidus, initialement une
 allocation RAM proportionnelle au volume de tokens (limitant la faisabilité
 pratique d'un tel run), est désormais memory-mapped sur disque
 (`RESULTS_TESTS.md` §54), rendant ce run schedulable. Aucune comparaison
@@ -322,10 +324,11 @@ de concepts, pas des atomes stables du dictionnaire.
   features/intentions.
 - Exécuter le run à 200M tokens (seuil exact SAE Boost, désormais
   schedulable) et comparer chiffré aux baselines alternatives du papier
-  (Extended SAE random/most-active init, SAE Stitching, full fine-tuning) ;
-  répliquer `K_EXTRA=5` et le volume 25M sur plusieurs seeds pour trancher si
-  l'écart directionnel commun aux deux (+8,7/+9,4 points, chacun non
-  significatif seul) reflète un effet réel.
+  (Extended SAE random/most-active init, SAE Stitching, full fine-tuning).
+  Le volume 25M a été répliqué sur 3 seeds (`RESULTS_TESTS.md` §56) : ne
+  tient pas, l'écart initial était du bruit d'échantillonnage. `K_EXTRA=5`
+  reste à confirmer au-delà de sa réplication actuelle sur 3 seeds
+  (53,3%, z=1,70, p≈0,089, sous le seuil conventionnel).
 - Comparer `find_interesting_pairs` à des biais/artefacts réels connus du
   corpus (ex. le biais "Objet :" avant correction) pour valider
   empiriquement la méthode sur ce projet, à la manière de la validation par

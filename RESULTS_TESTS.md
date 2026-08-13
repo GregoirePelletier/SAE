@@ -66,6 +66,7 @@ n'est datée en prose dans ce fichier).
 | 53 | Hook-point resid_post vs attn_out vs mlp_out | 150×3 | mlp_out > attn_out significatif (z=3,02) | confirmé |
 | 54 | Infrastructure de diagnostic + fix du réservoir mémoire | — | memmap disque, courbes, playbook | confirmé |
 | 55 | Le SAE core seul égale-t-il core+extension sur les métriques en aval ? | 150 (probes) | aucune différence significative | confirmé |
+| 56 | Réplication seed multiple de l'ablation volume 25M (§23.4) | 150×2 | +0,7pt et -0,6pt vs référence, ne réplique pas le seed original | confirmé, piste abandonnée |
 
 ## 0. Corpus complet — augmentation parallélisée (8 shards) + baseline
 
@@ -1450,9 +1451,9 @@ ablations testant des leviers complètement différents (volume de tokens vs
 capacité/parcimonie de l'extension) serait surprenante, mais rester prudent :
 deux résultats non significatifs qui pointent dans la même direction ne
 constituent pas une preuve combinée sans un test dédié (ex. répliquer sur
-plusieurs seeds). Piste à explorer si le temps du stage le permet : une
-réplication à seed multiple pour trancher si cet écart directionnel reflète un
-effet réel de petite taille ou une coïncidence entre deux ablations.
+plusieurs seeds). **Réplication faite au §56 : ne tient pas** — les deux
+seeds supplémentaires retombent sur la référence (46,0% et 44,7%), le pool à
+3 seeds (48,2%) est loin du 54,0% mesuré ici.
 
 Aucun signal de dégradation liée au filler générique (FineWeb2-fr, ~15-20% de
 précision qualitative sur le thème énergie, cf. §23.1) : le taux d'interprétabilité
@@ -2793,4 +2794,51 @@ spécifiquement dans l'interprétabilité individuelle des features
 concepts absents du core, pas dans un signal linéairement séparable
 supplémentaire pour des sondes de classification déjà proches de saturation
 sur le core seul (`clf_acc_email_axes` core-seul, 93,67%, dépasse même de
+peu le run principal cœur+extension, 93,5%).
+
+## 56. Réplication seed multiple de l'ablation volume 25M (§23.4)
+
+**Question** : le §23.4 mesurait un écart numérique de +8,7 points sur un
+seul seed (54,0% vs 45,3% référence), non significatif seul mais notée comme
+piste à répliquer, coïncidant en direction avec l'ablation `K_EXTRA=5`
+(§25/§45). Deux seeds supplémentaires (7, 99) tranchent-ils entre effet réel
+de petite taille et coïncidence entre les deux ablations ?
+
+**Écart à la configuration de référence** : identique à `results_v13_ablation_volume25m`
+(§23.4) — `N_TOKENS_EXTRA_TRAIN=25 000 000`, filler FineWeb2-fr sur le
+réservoir résiduel uniquement, `PIPELINES=p1` — seul `SEED` change (7 et 99
+au lieu de 42).
+
+**Méthode statistique** : test z sur deux proportions (`src/analysis/stats.py`),
+chaque seed comparé individuellement au run principal (68/150), puis les 3
+seeds (42 original + 7 + 99) combinés.
+
+**n** : 150 features jugées par seed (450 au total, 3 seeds).
+
+**Résultat** (jobs 42949 seed=7, 42950 seed=99, `results_v13_ablation_volume25m_seed7`/`_seed99`) :
+
+| Seed | Interprétabilité | Écart au run principal (45,3%) | z | p |
+|---|---|---|---|---|
+| 42 (original, §23.4) | 54,0% (81/150) | +8,7 pts | −1,50 | 0,133 |
+| 7 | 46,0% (69/150) | +0,7 pt | 0,12 | 0,908 |
+| 99 | 44,7% (67/150) | −0,6 pt | −0,12 | 0,908 |
+| **3 seeds combinés** | **48,2% (217/450)** | +2,9 pts | 0,61 | 0,540 |
+
+`clf_acc_email_axes` reste stable sur les deux nouveaux seeds (91,2% et
+91,0%, cohérent avec 91,3% pour le seed original).
+
+**Conclusion** : les deux seeds supplémentaires ne reproduisent pas l'écart
+du seed original — ils se situent quasiment sur la référence (46,0% et
+44,7% contre 45,3%), loin du 54,0% initial. Le pool des 3 seeds combinés
+(48,2%, z=0,61) est nettement plus proche de la référence que ne le
+suggérait le seed unique. **La piste "volume 25M améliore l'interprétabilité"
+ne réplique pas** : le résultat du seed 42 était vraisemblablement du bruit
+d'échantillonnage plutôt qu'un effet de volume, contrairement à ce que la
+coïncidence directionnelle avec `K_EXTRA=5` (§25/§45) laissait supposer.
+
+**Limite connue** : la coïncidence de direction avec `K_EXTRA=5` était notée
+au §23.4 comme un indice faible, pas une preuve combinée — cette réplication
+ne teste que le levier volume, pas `K_EXTRA=5` lui-même (déjà répliqué
+séparément sur 3 seeds au §45, résultat qui lui reste cohérent sur les 3
+seeds, contrairement à celui-ci).
 peu le run principal cœur+extension, 93,5%).
