@@ -928,7 +928,7 @@ de features labellisées en absolu que 16k) — jamais vérifiée spécifiquemen
 modèle avant cette passe (seule une couverture ~98% pour 65k était documentée, mais
 mesurée sur `gemma-3-270m-it`, un modèle différent). Poids SAE 65k téléchargés via
 `download_sae.py --sae-only` (`SAE_ID=layer_24_width_65k_l0_medium`) : absents du
-premier essai de lancement du run v12 (jobs 40833/40827 en échec, poids jamais
+premier essai de lancement de ce run (jobs 40833/40827 en échec, poids jamais
 téléchargés — seuls les LABELS avaient été vérifiés, pas les poids du SAE
 lui-même), corrigé avant resoumission (jobs 40844/40845).
 
@@ -936,7 +936,7 @@ lui-même), corrigé avant resoumission (jobs 40844/40845).
 
 Trois leviers augmentés SIMULTANÉMENT par rapport au run principal (`results_v10_emails_main`) :
 
-| Paramètre | Run principal | Run v12 | Facteur |
+| Paramètre | Run principal | Run à l'échelle | Facteur |
 |---|---|---|---|
 | Largeur SAE core | 16k | 65k | — |
 | `EPOCHS_EXTRA` | 10 | 40 | ×4 |
@@ -946,7 +946,7 @@ Trois leviers augmentés SIMULTANÉMENT par rapport au run principal (`results_v
 
 **Résultats** :
 
-| Métrique | Run principal (16k) | Run v12 (65k, échelle) |
+| Métrique | Run principal (16k) | Run à l'échelle (65k) |
 |---|---|---|
 | Taux d'interprétabilité (odd-one-out, n features jugées) | 45,3% (68/150) | **53,7% (322/600)** |
 | Taux d'interprétabilité, vote majoritaire 5 répétitions | 48,7% | 55,5% |
@@ -984,7 +984,7 @@ systématiquement des features au moins aussi (ici plus) interprétables plus ba
 le classement. Élargir `N_FEATURES_TO_LABEL` n'est donc pas qu'un gain de puissance
 statistique : cela change la composition qualitative de l'échantillon labellisé.
 
-### 17.3. Bug trouvé lors de l'analyse du run v12 : chemin de labels figé sur 16k
+### 17.3. Alignement label/feature : chemin de labels figé sur 16k
 
 Le test de plausibilité (`scripts/explanation_plausibility_test.py`) donnait un
 résultat très dégradé sur ce run : **56,7% (34/60)** contre 71,7% (43/60) sur
@@ -1063,7 +1063,7 @@ Une fois le bug §17.3 corrigé (labels dérivés de `SAE_ID` au lieu du chemin 
 les tests de fidélité et de plausibilité ont été recalculés sur `results_v12_scaled_65k`
 (jobs 40947 fidélité, 40946 plausibilité) :
 
-| Métrique | Run principal (v10, 16k) | Run v12 buggé (16k chargé à tort) | **Run v12 corrigé (65k)** |
+| Métrique | Run principal (16k) | Run à l'échelle, labels 16k (chargés à tort) | **Run à l'échelle, labels corrigés (65k)** |
 |---|---|---|---|
 | Plausibilité (choix forcé, 60 documents) | 71,7% (43/60) | 56,7% (34/60) | **88,3% (53/60)** |
 | Fidélité (ratio top/random, moyenne 4 intentions) | 250×-576 000× | *(non affecté, cosmétique)* | 890,9×-32 992,3× (même ordre de grandeur) |
