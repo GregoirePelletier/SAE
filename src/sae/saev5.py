@@ -334,7 +334,7 @@ def generate_llm_diff_hypothesis(
 # ══════════════════════════════════════════════════════════════════════════════
 # SÉLECTION DE LATENTS PAR SIMILARITÉ D'EMBEDDING (Tâches 3 & 4)
 # ══════════════════════════════════════════════════════════════════════════════
-# interp_embed (Jiang, Sun et al. 2025 -- Context.md, référence n°3) sélectionne les
+# interp_embed (Jiang, Sun et al. 2025) sélectionne les
 # latents pertinents pour une requête par SIMILARITÉ D'EMBEDDING DENSE entre le label
 # du latent et la requête (§4.4, Appendix F.1 : "top k latents whose labels' dense
 # embeddings are the most similar to that of a provided keyphrase"), pas par matching

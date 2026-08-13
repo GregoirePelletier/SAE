@@ -1,9 +1,9 @@
 """
 src/visualization/dashboard.py — Dashboard interactif (Streamlit).
 
-Fonctionnalité future listée dès l'énoncé initial du projet (Context.md,
-"Fonctionnalités futures / Dashboard") : UMAP, features activées, exemples positifs/
-négatifs, recherche. Lit UNIQUEMENT des artefacts déjà produits sur disque par
+Fonctionnalité listée dès l'énoncé initial du projet : UMAP, features
+activées, exemples positifs/négatifs, recherche. Lit UNIQUEMENT des artefacts
+déjà produits sur disque par
 src/sae/saev5.py / scripts/baseline_gemmascope.py (JSON, parquet, CSV) -- aucun
 modèle chargé, aucun GPU requis, démarre en quelques secondes sur n'importe quelle
 machine ayant accès au dépôt.

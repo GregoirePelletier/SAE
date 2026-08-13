@@ -15,8 +15,8 @@ export HF_DATASETS_OFFLINE=1
 # ── Ablation "échelle du modèle" : gemma-3-1b-it à la place de gemma-3-12b-it ──
 # Même protocole que run_ablation_model_scale_4b.slurm (cf. son commentaire pour
 # le détail du raisonnement) -- ce run teste le point le plus extrême de
-# réduction d'échelle disponible avec un GemmaScope officiel (hors 270m, cf.
-# Context.md pour ses limites déjà notées). gemma-3-1b-it + gemma-scope-2-1b-it
+# réduction d'échelle disponible avec un GemmaScope officiel (hors 270m, profil
+# de validation rapide à capacité de juge limitée). gemma-3-1b-it + gemma-scope-2-1b-it
 # (resid_post/layer_13_width_16k_l0_medium, d_model=1152) téléchargés pour ce
 # run. PIPELINES=p1 uniquement.
 export SEED=42

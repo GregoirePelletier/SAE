@@ -1,11 +1,10 @@
 """
 scripts/judge_sampling_ensemble_test.py — robustesse du juge par ÉCHANTILLONNAGE
 (temperature>0), distinct de judge_robustness_check.py (réordonnancement des
-exemples, décision toujours greedy do_sample=False). Context.md flague le vote
-majoritaire sur générations comme piste non testée -- judge_robustness_check.py
-ne le fait pas : il ne varie que l'ordre de présentation, jamais la génération
-elle-même. Ce script isole la variance pure de génération : MÊME ordre
-d'exemples à chaque répétition, seul do_sample=True/temperature change.
+exemples, décision toujours greedy do_sample=False) : celui-ci ne varie que
+l'ordre de présentation, jamais la génération elle-même. Ce script isole la
+variance pure de génération : MÊME ordre d'exemples à chaque répétition, seul
+do_sample=True/temperature change.
 
 Usage :
     SAVE_DIR=./results_v10_emails_main/ PYTHONPATH=. \

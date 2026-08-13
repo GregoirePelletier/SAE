@@ -72,7 +72,7 @@ uv.lock
 !.python-version
 !.gitignore
 !README.md
-!Context.md
+!CLAUDE.md
 !pyproject.toml
 
 # ============================================================
@@ -102,4 +102,3 @@ slurm-*.err
 # Force l'exclusion de tous les dossiers de résultats
 results/
 results_*/
-CLAUDE.md

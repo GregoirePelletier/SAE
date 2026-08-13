@@ -20,8 +20,8 @@ export HF_DATASETS_OFFLINE=1
 # refaite intégralement (pas de partage de cache avec run_sae_v10_emails.slurm) :
 # le cache des résidus bruts (p1_raw_residuals.pt) est dimensionné à
 # N_TOKENS_EXTRA_TRAIN à sa création -- le partager entre configs différentes
-# réutiliserait silencieusement la mauvaise taille (contamination, cf. Context.md
-# "évite toute contamination par du cache de tailles/dimensions incompatibles").
+# réutiliserait silencieusement la mauvaise taille (contamination par du cache
+# de tailles/dimensions incompatibles).
 # Coût : re-extraction complète (~identique en temps à run_sae_v10_emails.slurm),
 # accepté ici pour garantir la validité de la comparaison.
 export SEED=42

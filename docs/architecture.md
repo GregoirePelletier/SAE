@@ -54,7 +54,7 @@ protocole de labellisation par juge LLM local (`local_gemma_judge`, `src/sae/jud
 
 ## Corpus (`src/data/preparation.py`)
 
-Deux rôles bien séparés depuis la session v10 (cf. `RESULTS_TESTS.md` §12 pour le
+Deux rôles bien séparés (cf. `RESULTS_TESTS.md` §12 pour le
 diagnostic qui a motivé cette séparation) :
 
 - **Corpus principal** (`build_email_train_test_corpus`) : mails originaux
@@ -92,18 +92,176 @@ Source unique de vérité, tout surchargeable par variable d'environnement (comp
 `sbatch`). Presets modèle/SAE par taille (`MODEL_SIZE` ∈ {12b, 4b, 1b, 270m}), chemins
 de données canoniques (`LOCAL_MAILS_PATH`, `LOCAL_AUGMENTED_MAILS_PATH`,
 `NEURONPEDIA_LABELS_PATH` — tous trois partagés entre runs, indépendants de `SAVE_DIR`).
-Voir `README.md` pour la table complète des variables.
+Table complète des variables : `README.md`.
 
-## Orchestration cluster (SLURM)
+Orchestration cluster (partitions, soumission, logs) : `docs/ops.md`.
 
-Le cluster de calcul (3 partitions GPU : `a100`, `h100`, `h100-bis`, 8 GPU/nœud
-chacune) n'a pas d'accès réseau direct sur les nœuds de calcul (`HF_HUB_OFFLINE=1`
-systématique dans les scripts `.slurm`, `.venv/bin/python` plutôt que `uv run` qui
-tenterait de re-résoudre l'environnement). Scripts principaux :
+## Arborescence
 
-- `slurm/pipeline_runs/run_sae.slurm` : smoketest volumes réduits (référence stable, ne pas modifier).
-- `slurm/pipeline_runs/run_sae_full.slurm` : run à l'échelle complète, corpus historique (pré-v10).
-- `slurm/pipeline_runs/run_sae_v10_emails.slurm` / `slurm/pipeline_runs/run_sae_v10_ablation_tok{100k,2M}.slurm` : runs de
-  validation du corpus emails-dominant (cf. `docs/experiments.md`).
-- `slurm/augmentation/run_augmentation(_full).slurm`, `slurm/baseline_diffing/run_baseline(_full).slurm` : génération du corpus
-  augmenté et baseline SAE natif originaux-vs-augmentés.
+```
+src/
+  config.py              # Source unique de vérité (constantes, presets modèle/SAE)
+  sae/
+    saev5.py              # Orchestration Pipeline 1 + Pipeline 2 (point d'entrée)
+    sae_shared.py          # Harnais d'entraînement ExtendedSAE, ré-exports
+    gemma_scope_loader.py  # Chargement SAE GemmaScope-2 (disque local ou Hub)
+    neuronpedia_labels.py  # Labels de features via bucket S3 Neuronpedia
+    frozen_core.py         # FrozenCoreResidualSAE / ExtendedSAE
+    phrase_sae.py          # PhraseLevelSAE + embeddings F2LLM (Pipeline 2)
+    batch.py               # BatchTopKEncoder (seuil θ calibré)
+    judge.py               # Labellisation LLM locale (odd-one-out)
+    retrieval/latent_terms.py  # BM25 sur features SAE (Latent Terms)
+    compare/                   # Comparaison cross-modèle d'embeddings
+  analysis/
+    activations.py         # Extraction/masquage activations, max-pooling
+    cooccurrence.py         # NPMI, diffing de corpus (Fisher+BH), clustering
+    metrics.py              # FVE, NMSE, L0, classification en aval
+    stats.py                 # Tests statistiques partagés
+    plotting.py               # Figures de diagnostic réutilisables (Plotly)
+    visualization.py           # Exports Plotly HTML autonomes
+  data/
+    dataset.py               # Ingestion Mails.tsv, GoEmotions
+    preparation.py           # build_email_train_test_corpus (corpus principal,
+                              #   emails+augmentés, group-aware) + construction du
+                              #   corpus secondaire domaine (FineWeb-2/Wikipedia)
+    augmentation.py          # Génération de variantes perturbées
+    keywords.py               # Listes de mots-clés par domaine
+  storage/
+    fragment_store.py       # Stockage CSR (torch) des activations token-level
+    shards.py                # Sharding/mmap d'activations denses
+  visualization/
+    dashboard.py             # Dashboard interactif Streamlit
+scripts/                   # Points d'entrée secondaires (cf. section Scripts)
+tests/                     # Suite pytest
+external/sae-lens/         # Submodule SAELens (comparaison d'implémentation)
+local_data/
+  emails/                  # Corpus EDF : Mails.tsv + augmented_mails.jsonl
+  neuronpedia_labels/      # Cache labels Neuronpedia, partagé par tous les runs
+  saes/                    # Poids SAE téléchargés (download_sae.py)
+docs/                      # Référence technique (ce dossier)
+report/                    # Rapport de stage M2
+slurm/, logs/              # Soumission SLURM et sorties (cf. docs/ops.md)
+results_v*/                # Répertoires de résultats par run (gitignorés),
+                            #   cf. RESULTS_TESTS.md pour l'index
+```
+
+## Scripts
+
+### `download_sae.py` (racine)
+
+Télécharge le modèle Gemma-3 et le SAE GemmaScope-2 correspondant à `MODEL_SIZE` vers le
+cache HF (`HF_HOME`) et `LOCAL_SAE_DIR` respectivement.
+
+```bash
+MODEL_SIZE=12b python download_sae.py            # modèle + SAE
+python download_sae.py --model-only               # modèle seul
+python download_sae.py --sae-only                  # SAE seul
+```
+
+### `src/sae/saev5.py` — orchestration principale
+
+Point d'entrée des deux pipelines. `if __name__ == "__main__":` charge le
+corpus principal (mails originaux + variantes augmentées, via
+`build_email_train_test_corpus`, avec repli synthétique si `LOCAL_MAILS_PATH`
+est absent), puis exécute Pipeline 1 et/ou Pipeline 2 selon `PIPELINES` (`p1`,
+`p2`, ou `p1,p2`).
+
+```bash
+PYTHONPATH=. PIPELINES=p1,p2 python src/sae/saev5.py
+```
+
+Doit être lancé depuis la racine du dépôt avec `PYTHONPATH=.` (le script
+mélange imports absolus, `from src.analysis...`, et imports relatifs "à
+plat", `from sae_shared import ...`, résolus car son propre dossier est ajouté
+à `sys.path`).
+
+Variables utiles : `EMAIL_TEST_SPLIT`, `MAX_AUGMENTED_PER_MAIL`,
+`N_TOTAL_ENERGY`/`N_TOTAL_SPORTS`/`N_TOTAL_SUPPORT` (taille du corpus
+secondaire de diffing), `N_TOKENS_EXTRA_TRAIN` (budget d'entraînement de
+l'extension), `N_FEATURES_TO_LABEL` (nombre de features jugées par le LLM
+local — la puissance statistique de tout taux d'interprétabilité en dépend
+directement).
+
+Sorties dans `SAVE_DIR` : `p1_top_core_features.json` /
+`p1_top_extended_features.json` (features labellisées), `umap_pipeline1_*.html`
+/ `umap_pipeline2_*.html` (visualisations interactives — suffixe `_emails`
+pour le corpus principal, `_diffcorpus` pour le corpus secondaire),
+`p1_diff_energy_sports.csv` (diffing statistique), `cache/` (activations,
+checkpoints SAE, labels Neuronpedia, réutilisés entre runs).
+
+### `scripts/baseline_gemmascope.py`
+
+Compare mails originaux vs augmentés (perturbations contrôlées) avec le SAE
+GemmaScope natif, sans extension : quelles features de base changent
+significativement de fréquence d'activation entre les deux groupes ?
+
+```bash
+python scripts/baseline_gemmascope.py local_data/emails/Mails.tsv local_data/emails/augmented_mails.jsonl
+```
+
+Nécessite `augmented_mails.jsonl` (produit par `run_augmentation.py`, lui-même
+nécessite un `Mails.tsv`).
+
+### `scripts/relabel_diff_csvs.py`
+
+Réapplique offline (CPU, aucune réextraction) les labels Neuronpedia du cache
+canonique aux `diff_*.csv`/`.html` déjà produits par `baseline_gemmascope.py`
+— utile quand un run a tourné hors-ligne avant que le cache de labels ne soit
+disponible localement.
+
+### `scripts/run_augmentation.py`
+
+Génère des variantes de mails perturbées (émotion, registre, orthographe,
+urgence — grille `AXES` de `src/data/augmentation.py`) via Gemma-3, avec
+garde-fous factuels (numéros de contrat, montants, dates préservés).
+Nécessite un `Mails.tsv`.
+
+```bash
+LOCAL_MAILS_PATH=local_data/emails/Mails.tsv MODEL_ID=google/gemma-3-12b-it \
+  SAVE_DIR=local_data/emails/ python scripts/run_augmentation.py
+```
+
+### `scripts/retrieval_demo.py`
+
+Câble `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un
+SAE de phrases, Clavié et al. 2026) à un point d'entrée testable sans
+`Mails.tsv` : corpus de substitution public (FineWeb-2, domaine "energy").
+
+```bash
+python scripts/retrieval_demo.py --n-docs 60 --query "énergie électrique renouvelable"
+```
+
+Sur le corpus original : `src/sae/retrieval/latent_terms.py --mails <Mails.tsv> --query "..."`.
+
+### `src/sae/compare/pipeline.py`
+
+Compare deux modèles d'embeddings de phrases via leurs SAE respectifs :
+alignement cross-modèle des features (`model_compare.py`), détection de
+features non alignées, clustering/diffing pour un seul modèle (`--mode
+analysis`).
+
+```bash
+python -m src.sae.compare.pipeline --mails <Mails.tsv> --mode analysis
+python -m src.sae.compare.pipeline --mails <Mails.tsv> --mode compare \
+  --model-a codefuse-ai/F2LLM-v2-80M --model-b intfloat/multilingual-e5-small
+```
+
+### Diagnostics manuels (hors pytest)
+
+- `test_chargement_sae.py` : charge le SAE configuré, affiche ses dimensions.
+- `scripts/test_massive_acts.py` : corrélation Pearson entre pré-activations
+  "extra" et norme du token — diagnostic de pollution par activations
+  massives. Suppose des checkpoints déjà produits par un run complet.
+
+### `src/visualization/dashboard.py` — dashboard interactif (Streamlit)
+
+Lit uniquement des artefacts déjà produits sur disque (JSON, parquet, CSV) —
+aucun modèle chargé, aucun GPU requis. Vue d'ensemble par run, UMAP
+interactif, features (core Neuronpedia + extension + phrase-level, exemples
+positifs/négatifs), diffing, recherche par mot-clé, diagnostics
+d'entraînement, urgence/robustesse du juge. Sélecteur de run dans la barre
+latérale (tous les `results_*/` du dépôt).
+
+```bash
+.venv/bin/python -m streamlit run src/visualization/dashboard.py
+```

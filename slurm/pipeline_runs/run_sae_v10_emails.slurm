@@ -14,9 +14,8 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-# ── Run à l'échelle complète, corpus RESTRUCTURÉ (v10) ──────────────────────────
-# Diagnostic (cf. RESULTS_TESTS.md / Context.md, run_sae_full job 39531,
-# résultats_v9_full/cache/p1_judge_labels_extended.json) : sur le run v9 complet,
+# ── Run à l'échelle complète, corpus emails+augmentés ────────────────────────────
+# Diagnostic (cf. RESULTS_TESTS.md §12) : sur le run précédent (corpus generic),
 # 0/10 features d'extension étaient "dead_feature" (donc pas un problème de volume
 # brut) mais seulement 2/10 passaient le test odd-one-out (intruder detection) --
 # cause racine identifiée dans saev5.py : le corpus d'entraînement du SAE

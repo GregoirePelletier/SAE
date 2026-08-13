@@ -14,10 +14,9 @@ de détail :
   au jury (ex. panorama exhaustif des modèles d'embeddings français) et évite toute
   narration chronologique systématique des étapes du stage.
 - **[`RAPPORT_STAGE_ENTREPRISE.tex`](RAPPORT_STAGE_ENTREPRISE.tex)** — version sans
-  contrainte de longueur pour EDF R\&D, qui conserve/ajoute le détail technique et
-  les quelques bascules de trajectoire du stage utiles à un lecteur interne
-  (panorama complet des embeddings, corrections d'infrastructure notables,
-  ex. bug `d_model`/préallocation mémoire).
+  contrainte de longueur pour EDF R\&D, qui conserve le panorama technique complet
+  (ex. comparaison exhaustive des modèles d'embeddings) coupé dans la version
+  université.
 
 Les deux versions partagent les mêmes chiffres et conclusions scientifiques ; seules
 la portée et la profondeur de détail diffèrent. **Ne pas compiler** (pas de
@@ -27,11 +26,12 @@ confidentialité à valider avec le maître de stage avant remise.
 
 ## Rapport assemblé (matériel de travail, pas un livrable final)
 
-**[`RAPPORT_DE_STAGE.md`](RAPPORT_DE_STAGE.md)** — concaténation des fichiers
-sources ci-dessous, utile comme matériel de travail/traçabilité, mais **ce
-n'est pas le document à remettre** (voir les deux `.tex` ci-dessus). Généré
-par `scripts/generate_report.py` — ne pas éditer directement ; éditer la
-source puis relancer le script (`.venv/bin/python scripts/generate_report.py`).
+`report/dist/RAPPORT_DE_STAGE.md` — concaténation des fichiers sources
+ci-dessous, utile comme matériel de travail/traçabilité, mais **ce n'est pas
+le document à remettre** (voir les deux `.tex` ci-dessus). Généré par
+`scripts/build_report.py`, jamais versionné (`report/dist/` est gitignoré) :
+ne pas éditer directement, éditer la source puis relancer
+`.venv/bin/python scripts/build_report.py`.
 
 ## Fichiers sources
 

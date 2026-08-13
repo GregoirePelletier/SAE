@@ -1,9 +1,7 @@
 """
-La comparaison "diff_features" contre interp_embed (dépendance volontairement non
-vendorisée, cf. Context.md — inspiration seulement, jamais installée en package) ne
-peut de toute façon jamais s'exécuter : l'ancien test important `src.analysis.metrics
-.diff_features`, une fonction qui n'existe pas (échec de collection pytest). L'équivalent
-projet réellement maintenu est `corpus_diff_stats` (Fisher exact + BH) dans
+interp_embed est une dépendance volontairement non vendorisée (inspiration
+méthodologique seulement, jamais installée en package). L'équivalent projet
+réellement maintenu est `corpus_diff_stats` (Fisher exact + BH) dans
 `src.analysis.cooccurrence` — ce test l'exerce sur des données synthétiques.
 """
 import numpy as np

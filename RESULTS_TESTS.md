@@ -137,7 +137,7 @@ comme référence validée) :
   `N_TOKENS_EXTRA_TRAIN=500000` (vs 60000), `D_SAE=8192` (vs 2048), `EPOCHS=30`
   (vs 15), `N_FEATURES_TO_LABEL=10` (vs 8).
 - `SAE_ID`/largeur 16k **conservée** (pas une réduction de volume mais un choix
-  délibéré documenté dans `Context.md`/`src/config.py` : bien meilleure couverture
+  délibéré documenté dans `src/config.py` : bien meilleure couverture
   Neuronpedia que 262k).
 - **Nouveau `SAVE_DIR=./results_v9_full/`** (distinct de `results_v9_test/`) : évite
   toute contamination par du cache de tailles/dimensions incompatibles (le smoketest a
@@ -590,9 +590,8 @@ ci-dessus.
 ## 13. Suites données au diagnostic §12 : robustesse du juge et validation métier sur mails originaux
 
 Deux analyses complémentaires, lancées après le diagnostic §12, pour répondre plus
-largement aux objectifs du stage (`Context.md`, section "Projet" : détection
-d'urgence, détection d'intentions) et à la piste ouverte sur le résidu de ~55-59% de
-features non interprétées.
+largement aux objectifs du projet (détection d'urgence, détection d'intentions)
+et à la piste ouverte sur le résidu de ~55-59% de features non interprétées.
 
 ### 13.1. Le résidu non-interprété est-il dû au biais de position du protocole de jugement ?
 
@@ -701,7 +700,7 @@ maintenant corrigé.
 ### 14.2. Dashboard Streamlit
 
 `src/visualization/dashboard.py` (fonctionnalité listée dès l'énoncé initial du
-projet, `Context.md`) : lit uniquement des artefacts déjà sur disque (JSON, parquet,
+projet) : lit uniquement des artefacts déjà sur disque (JSON, parquet,
 CSV) -- aucun modèle chargé, démarre en quelques secondes. Pages : vue d'ensemble
 (métriques par run), UMAP interactif (Plotly, coloration par label/cluster), features
 (core Neuronpedia + extension + phrase-level, avec exemples positifs ET négatifs --
@@ -728,8 +727,7 @@ Gemma-3 (une dimension atteint une magnitude ~74752 contre une moyenne ~53).
 ## 15. Relecture du papier de référence (interp_embed) : 4 corrections concrètes
 
 Suite à une relecture détaillée de `pdf/InterpretableSAE_Embeddings.pdf` (Jiang, Sun
-et al. 2025 — référence n°3 de `Context.md`, comparaison "systématique" demandée par
-la règle n°2), comparaison ligne à ligne avec notre code. Quatre écarts concrets
+et al. 2025), comparaison ligne à ligne avec notre code. Quatre écarts concrets
 trouvés et corrigés, au-delà de la comparaison de formule déjà faite pour SAELens
 (§13/docs/references.md).
 
@@ -1194,8 +1192,7 @@ du classifieur indépendante du volume de labels disponibles.
 
 Lecture de `pdf/teacholdsaes.pdf` (*Teach Old SAEs New Domain Tricks with Boosting*,
 Koriagin et al., COLM 2025) — quasi certainement la référence "SAE Boost" du cadrage
-initial du stage (`Context.md`, objectif n°4, marquée "non fait" dans
-`docs/references.md` depuis le début du stage).
+initial du projet, marquée "non fait" dans `docs/references.md` jusqu'ici.
 
 ### 18.1. Constat : architecture identique, jamais identifiée comme telle
 
@@ -1252,8 +1249,8 @@ souffre d'oubli catastrophique (EV générale -28% à -36% selon le domaine) ; l
 approches "Extended SAE" sont compétitives mais moins efficientes en parcimonie.
 Ce projet n'a jamais comparé son choix architectural (`FrozenCoreResidualSAE`) à
 ces alternatives plus simples sur SON corpus — le choix a toujours reposé sur la
-littérature générale (Context.md, règle n°3 : "Conserver FrozenCoreResidualSAE"),
-jamais sur un test empirique comparatif propre à ce projet. Piste de poursuite.
+littérature générale, jamais sur un test empirique comparatif propre à ce
+projet. Piste de poursuite.
 
 ## 19. Sanity check (Korznikov et al. 2026) : le taux d'interprétabilité bat-il un décodeur aléatoire ?
 
@@ -1341,8 +1338,8 @@ des preuves plus solides de features significatives.
 
 Lors du nettoyage du dépôt (réorganisation `slurm/`/`logs/`, cf. commits précédents),
 le dossier racine `saes/` (30 Go) a été identifié comme un "doublon legacy" de
-`local_data/saes/` (ancienne convention de nommage `-res`, cf. `Context.md`) et
-supprimé après ma confirmation. **Erreur** : `local_data/saes/
+`local_data/saes/` (ancienne convention de nommage `-res`) et
+supprimé après confirmation. **Erreur** : `local_data/saes/
 gemma-scope-2-12b-it` n'était pas un dossier réel mais un **lien symbolique**
 pointant vers `saes/gemma-scope-2-12b-it-res` — la suppression du dossier racine a
 donc supprimé la seule copie physique des poids SAE GemmaScope (16k/65k/262k),
@@ -2274,8 +2271,7 @@ côté plutôt qu'en travaillant uniquement la liste de points déjà nommés
 activations SAE, `src/analysis/metrics.py::downstream_classification`,
 14 classes axis__level) est citée partout dans ce dépôt comme preuve que
 les codes latents séparent bien émotion/urgence/registre/original
-(`Context.md` : "résultat encourageant pour les cas d'usage détection
-d'urgence/intention", 93,5% rapporté). Mais le corpus augmenté est généré
+(93,5% rapporté). Mais le corpus augmenté est généré
 par un LLM sous CONTRAINTE DE STYLE explicite par axe/niveau
 (`src/data/augmentation.py::AXES`) — si le générateur retombe sur des
 formulations quasi figées par instruction (biais connu des LLM sous
@@ -2311,9 +2307,8 @@ signal rapporté comme preuve de séparation sémantique est déjà présent
 dans le texte brut, sans aucune compréhension du contenu**. Le SAE ajoute
 un gain réel mais modeste (+6,5 points), pas la démonstration forte
 suggérée par le chiffre 93,5% cité isolément. La métrique n'est pas fausse,
-mais son interprétation dans `Context.md`/le rapport de stage
-("résultat encourageant pour les cas d'usage détection d'urgence/intention")
-surestime ce qu'elle démontre : elle ne permet pas de distinguer "le SAE
+mais la citer seule surestime ce qu'elle démontre : elle ne permet pas de
+distinguer "le SAE
 comprend l'urgence" de "le générateur d'augmentation a des tics de style
 par instruction, et le SAE (comme n'importe quel modèle) les capte
 partiellement".
@@ -2327,9 +2322,7 @@ sous contrainte de style), hors de portée sans nouvelle annotation manuelle.
 
 **Recommandation** : ne plus citer `clf_acc_email_axes=93,5%` seul comme
 preuve de compréhension sémantique du SAE sans mentionner le baseline
-lexical (87,0%) à côté -- corriger `Context.md` et le rapport de stage en
-conséquence. Documenté ici plutôt que corrigé silencieusement dans
-`Context.md`, pour que la correction soit traçable.
+lexical (87,0%) à côté.
 
 ## 38. Audit méthodologique — le garde-fou qualité de l'augmentation rejette massivement 2 classes sur 13, jamais remarqué
 
