@@ -1,7 +1,7 @@
 <div align="center">
 
-**[Nom de l'établissement — Master 2, à compléter]**
-**[Intitulé du Master / de la spécialité — à compléter]**
+<!-- À COMPLÉTER: nom de l'établissement (Master 2) -->
+<!-- À COMPLÉTER: intitulé du Master / de la spécialité -->
 
 ---
 
@@ -13,27 +13,19 @@
 
 ---
 
-**Auteur** : Grégoire Pelletier *(déduit de l'adresse de contact ; à confirmer)*
+**Auteur** : Grégoire Pelletier
 
 **Entreprise d'accueil** : EDF R&D — Projet SEQUOIA
 
-**Maître de stage (entreprise)** : [Nom du tuteur EDF — à compléter]
+<!-- À COMPLÉTER: nom du maître de stage (entreprise) -->
 
-**Tuteur académique** : [Nom du tuteur académique — à compléter]
+<!-- À COMPLÉTER: nom du tuteur académique -->
 
-**Période de stage** : [Dates de début/fin — à compléter]
+<!-- À COMPLÉTER: dates de début/fin de stage -->
 
 **Date de rédaction** : 21 juillet 2026
 
 </div>
-
----
-
-## Remerciements
-
-*[Section à personnaliser par l'auteur — usuellement adressée au maître de stage, à
-l'équipe d'accueil, au tuteur académique, et à toute personne ayant contribué au bon
-déroulement du stage.]*
 
 ---
 
@@ -84,9 +76,9 @@ structurally equivalent to SAE Boost (Koriagin et al., COLM 2025) — alongside 
 independent sentence-embedding-based pipeline (F2LLM-v2, bge-m3). The initial
 end-to-end pipeline showed a low success rate (20%) on the domain-specific feature
 auto-interpretation test. A controlled-ablation diagnostic established that this
-was not a training-volume limitation but a training-corpus design flaw (generic
-text only, no domain-specific text) — once fixed, the interpretability rate rose
-to 45.3%.
+was not a training-volume limitation but a training-corpus domain issue (generic
+text only, no domain-specific text) — once corrected, the interpretability rate
+rose to 45.3%.
 
 An exhaustive ablation campaign (20+ configurations: SAE width, extension capacity
 and sparsity, token volume, training seed, embedding dimension, Pipeline-2
@@ -94,8 +86,7 @@ backbone) shows that **no SAE hyperparameter significantly changes this rate**
 once the corpus domain is fixed — except for a single lever: **the scale of the
 extractor/judge model**, which produces a clean, highly significant dose-response
 effect (12.0% at 1B parameters, 28.0% at 4B, 45.3% at 12B; Cochran-Armitage trend
-test, p≈1.6×10⁻¹⁰) — by far the most striking finding of the internship. A sanity
-check against a randomly frozen decoder (Korznikov et al., 2026) confirms that the
+test, p≈1.6×10⁻¹⁰). A sanity check against a randomly frozen decoder (Korznikov et al., 2026) confirms that the
 extension's training learns genuine structure (45.3% vs 29.3%, significant gap)
 while also revealing that downstream classification survives this degradation far
 better than qualitative interpretation does. Complementary tests (document-level
