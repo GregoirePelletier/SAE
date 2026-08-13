@@ -45,32 +45,28 @@ références lorsqu'une réimplémentation partielle s'avère nécessaire.
 
 ## Démarche
 
-Le stage a suivi une progression en quatre grandes phases, détaillées dans les
-chapitres suivants :
+Le rapport suit quatre axes, développés dans le chapitre 3 :
 
-1. **Audit et fiabilisation** du pipeline existant (chargement des SAE préentraînés,
-   récupération des labels Neuronpedia, précision numérique, robustesse) et validation
-   de bout en bout sur un modèle réduit (Gemma-3-270M-it) avant tout passage à
-   l'échelle.
-2. **Diagnostic et correction** du problème central identifié en début de stage : un
-   taux de succès très faible (20%) du protocole d'auto-interprétation des features
-   apprises spécifiquement sur le domaine, sur le run à l'échelle complète
-   (Gemma-3-12B-it) disponible au démarrage de cette phase. L'investigation a
-   déterminé, par une démarche d'ablation contrôlée, que la cause n'était **pas** un
-   volume d'entraînement insuffisant mais un défaut de conception du corpus
-   d'entraînement.
-3. **Relecture critique face à la littérature de référence** (en particulier Jiang,
-   Sun et al. 2025, *Interpretable Embeddings with Sparse Autoencoders*) pour
-   identifier les écarts méthodologiques restants (retrieval, clustering,
-   corrélations, protocole de labellisation) et les corriger ou les documenter comme
-   limites assumées.
-4. **Mise à l'échelle et consolidation** : mise en place de tests de qualité de
-   l'explication (fidélité, plausibilité), d'un protocole d'évaluation couvrant
-   l'ensemble des capacités du dépôt sous conditions fixées, d'un dashboard interactif
-   de visualisation, puis d'une ablation finale sur le **volume d'entraînement et de
-   labellisation** (nombre d'époques, nombre de features jugées, largeur du SAE
-   préentraîné) pour vérifier si un passage à l'échelle simple, sans changement de
-   méthode, améliore les résultats.
+1. **Mise en place** : chargement des SAE préentraînés, récupération des labels
+   Neuronpedia, précision numérique, robustesse — validés de bout en bout sur un
+   modèle réduit (Gemma-3-270M-it) avant tout passage à l'échelle sur
+   Gemma-3-12B-it.
+2. **Diagnostic** : le taux de succès du protocole d'auto-interprétation des
+   features apprises spécifiquement sur le domaine, initialement très faible
+   (20%), n'est pas limité par le volume d'entraînement mais par le domaine du
+   corpus d'entraînement — établi par une démarche d'ablation contrôlée.
+3. **Validité du protocole** : relecture critique face à la littérature de
+   référence (en particulier Jiang, Sun et al. 2025, *Interpretable Embeddings
+   with Sparse Autoencoders*) pour identifier les écarts méthodologiques
+   (retrieval, clustering, corrélations, protocole de labellisation) et les
+   corriger ou les documenter comme limites assumées ; tests de robustesse du
+   protocole de jugement lui-même (décodeur aléatoire, graine, langue, accord
+   inter-répétitions).
+4. **Utilité en aval** : qualité de l'explication produite (fidélité,
+   plausibilité), protocole d'évaluation couvrant l'ensemble des capacités du
+   dépôt sous conditions fixées, dashboard interactif de visualisation, et
+   ablation finale sur le volume d'entraînement et de labellisation (nombre
+   d'époques, nombre de features jugées, largeur du SAE préentraîné).
 
 ## Plan du rapport
 
