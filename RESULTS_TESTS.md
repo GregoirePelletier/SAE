@@ -182,7 +182,7 @@ Tous les scripts `.slurm` du repo ont été relus, comparés aux scripts Python 
 appellent, et testés (localement en syntaxe/imports, puis réellement soumis sur le
 cluster quand c'était possible). Détail par script ci-dessous.
 
-## 2. `slurm/pipeline_runs/run_sae.slurm` (pipeline principal v9, smoketest) — ✅ déjà validé, inchangé
+## 2. `slurm/pipeline_runs/run_sae.slurm` (smoketest du pipeline principal) — ✅ déjà validé, inchangé
 
 Aucune modification : ce script fonctionne déjà de façon reproductible. Historique des
 runs (`sae_v9_test_*.log`) :
@@ -217,7 +217,7 @@ dans les commentaires du script.
   d'autres runs comparables).
 - Entraînement stable sur 15 epochs, NMSE décroît de 0.676 → 0.298 sans divergence.
 
-**Conclusion : le pipeline v9 (`slurm/pipeline_runs/run_sae.slurm`) est fonctionnel et reproductible. Pas
+**Conclusion : le pipeline (`slurm/pipeline_runs/run_sae.slurm`) est fonctionnel et reproductible. Pas
 besoin de le relancer pour ce tour de validation.**
 
 ## 3. Tests unitaires (`pytest`, CPU seulement) — ✅ passent tous
@@ -267,7 +267,7 @@ avant un run à pleine échelle ? Vérification faite :
 - **`saev5.py` (pipeline P1/P2) n'est PAS vulnérable au bug quadratique de `maxpool_sae_docs`** :
   son pooling P1 utilise `doc_maxpool` (`src/storage/fragment_store.py`) sur des
   fragments **sparses par document** (CSR, O(nnz) par doc) — c'est justement
-  l'architecture v9 pensée pour éviter les gros tenseurs `[n_docs × d]` denses. Pas de
+  une architecture pensée pour éviter les gros tenseurs `[n_docs × d]` denses. Pas de
   correctif nécessaire ici.
 - **Mais `saev5.py:720`** (`llm(**inputs, output_hidden_states=True)`) avait le **même
   gaspillage** que celui identifié dans `activations.py` (logits calculés sur toute la
@@ -339,7 +339,7 @@ pleine échelle exécutés avec succès :
 
 | Pipeline | Statut final |
 |---|---|
-| `slurm/pipeline_runs/run_sae.slurm` (smoketest v9) | ✅ déjà validé (inchangé) |
+| `slurm/pipeline_runs/run_sae.slurm` (smoketest) | ✅ déjà validé (inchangé) |
 | `slurm/pipeline_runs/run_sae_full.slurm` (échelle complète) | ✅ COMPLETED (job 39531, 37min32s) |
 | `slurm/validation/run_test_massive.slurm` | ✅ COMPLETED (job 38948) |
 | `slurm/augmentation/run_augmentation_full.slurm` (8 shards parallèles) | ✅ COMPLETED (job 39017, 45 240 générations) |
@@ -909,7 +909,7 @@ fourchette que 160M/330M (pas de gain ni de perte notable). Backbone d'embedding
 le plus prometteur testé à ce jour pour Pipeline 2, à retenir comme candidat par
 défaut pour une suite de stage plutôt que F2LLM à n'importe quelle taille.
 
-## 17. Ablation de mise à l'échelle (v12) : largeur du SAE core, époques, N_FEATURES_TO_LABEL
+## 17. Ablation de mise à l'échelle : largeur du SAE core, époques, N_FEATURES_TO_LABEL
 
 ### 17.0. Correction préalable des largeurs de SAE disponibles pour 12b
 
