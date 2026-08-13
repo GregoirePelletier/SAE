@@ -76,6 +76,6 @@ chapitres suivants :
 
 Le chapitre 1 positionne le projet par rapport à l'état de l'art (SAE, GemmaScope,
 protocoles d'auto-interprétation). Le chapitre 2 décrit l'architecture technique mise
-en œuvre. Le chapitre 3 présente la démarche expérimentale complète et ses résultats,
-cœur scientifique du rapport. Le chapitre 4 discute les limites actuelles et les
-perspectives. Le rapport se conclut par un bilan général du stage.
+en œuvre. Le chapitre 3 présente la démarche expérimentale complète et ses résultats.
+Le chapitre 4 discute les limites actuelles et les perspectives. Le rapport se
+conclut par un bilan général du stage.

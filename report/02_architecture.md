@@ -41,7 +41,7 @@ qui ne correspondraient à aucune direction dédiée du SAE core, le Pipeline 1 
 core ne reconstruit pas. Le SAE core reste gelé (jamais réentraîné) ; seule l'extension
 est entraînée, sur le corpus du projet.
 
-### Nature du corpus "original" (`Mails.tsv`) — précision importante
+### Nature du corpus "original" (`Mails.tsv`)
 
 Le corpus `Mails.tsv`, désigné dans ce rapport par commodité comme les mails
 **"originaux"**, n'est **pas** de la correspondance client authentique : il s'agit
@@ -57,7 +57,7 @@ jamais le terme "réel"/"réels" pour ce corpus.
 
 ### Corpus d'entraînement : principal vs secondaire
 
-Distinction introduite/formalisée dans cette phase du stage (cf. chapitre suivant) :
+Distinction utilisée dans la suite du rapport (cf. chapitre suivant) :
 - Le corpus qui **entraîne** l'extension et le `PhraseLevelSAE` doit être représentatif
   du domaine cible (emails) pour que les features apprises soient interprétables dans
   ce domaine.

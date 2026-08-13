@@ -303,21 +303,22 @@ claire pour préférer l'un à l'autre sur ce projet.
   (~8h30 GPU cumulées pour les trois runs plutôt qu'un partage possible de l'étape
   d'extraction, identique entre les trois configurations).
 
-## 10. Ablation de mise à l'échelle du volume d'entraînement et de labellisation (v12)
+## 10. Ablation de mise à l'échelle du volume d'entraînement et de labellisation
 
-Question posée en fin de stage, dans le même esprit que l'ablation du §4/§5 mais sur
-un axe différent : une fois le domaine du corpus corrigé (§3) et le résidu
-non-interprété partiellement expliqué par le bruit du protocole de jugement (§7.1),
-un passage à l'échelle du **volume d'entraînement et de labellisation**, sans aucun
-autre changement de méthode, améliore-t-il la proportion de features labellisées
-avec succès et les différents scores de reconstruction/séparabilité ?
+Dans le même esprit que l'ablation du §4/§5 mais sur un axe différent : une
+fois le domaine du corpus corrigé (§3) et le résidu non-interprété
+partiellement expliqué par le bruit du protocole de jugement (§7.1), un
+passage à l'échelle du **volume d'entraînement et de labellisation**, sans
+aucun autre changement de méthode, améliore-t-il la proportion de features
+labellisées avec succès et les différents scores de reconstruction/
+séparabilité ?
 
 Trois leviers ont été augmentés simultanément par rapport au run principal du §4
 (`results_v10_emails_main`), dans un nouveau run unique (`results_v12_scaled_65k`)
 regroupant l'ensemble des analyses du dépôt (toutes les capacités du protocole
 d'évaluation, §8.3) :
 
-| Paramètre | Run principal (§4) | Run v12 (échelle) | Facteur |
+| Paramètre | Run principal (§4) | Run à l'échelle | Facteur |
 |---|---|---|---|
 | Largeur du SAE core (couverture Neuronpedia) | 16k (82,6%, 13 535 labels) | **65k (87,8%, 57 551 labels)** | — (meilleure couverture, cf. Chapitre 1) |
 | `EPOCHS_EXTRA` (SAE d'extension, Pipeline 1) | 10 | **40** | ×4 |
@@ -328,7 +329,7 @@ d'évaluation, §8.3) :
 
 ### 10.1. Résultats du run combiné
 
-| Métrique | Run principal (16k) | Run v12 (65k, échelle) |
+| Métrique | Run principal (16k) | Run à l'échelle (65k) |
 |---|---|---|
 | Taux d'interprétabilité (odd-one-out) | 45,3% (68/150) | **53,7% (322/600)** |
 | Taux d'interprétabilité, vote majoritaire (5 répétitions) | 48,7% | 55,5% |

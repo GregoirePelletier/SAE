@@ -53,7 +53,7 @@ Notre `src/analysis/metrics.py::compute_metrics` calcule
 `variance = mean_élémentwise((x - x.mean(dim=0))²)`, moyennés sur tokens ET
 dimensions en une seule fois.
 
-### Comparaison chiffrée (session v10, `scripts/saelens_numeric_comparison.py`)
+### Comparaison chiffrée (`scripts/saelens_numeric_comparison.py`)
 
 Les trois formules ont été calculées sur le **même** SAE (objet `sae_lens.SAE` natif,
 chargé via `load_gemma_scope_sae`) et les **mêmes** activations (4096 tokens réels

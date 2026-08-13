@@ -27,16 +27,16 @@ sur l'ensemble des capacités visées par l'énoncé initial :
   formules de variance expliquée à magnitude d'activation hétérogène) qui ont une
   valeur méthodologique au-delà du seul projet.
 
-Le résultat le plus central du stage reste le diagnostic du chapitre 3 : le taux
-d'auto-interprétation des features, initialement très faible (20%), n'était pas
-limité par le volume d'entraînement mais par une erreur de conception du corpus
-d'entraînement de l'extension — un exemple concret de la valeur d'une démarche
-d'ablation contrôlée plutôt que d'une intuition non testée ("il faut probablement plus
-de données"). À distinguer de l'effet le plus fort mesuré en valeur absolue
-(§18, dose-réponse de l'échelle du modèle, p<10⁻⁹) : les deux résultats
-répondent à des questions différentes — l'un explique pourquoi le pipeline
-fonctionne sur ce corpus, l'autre identifie le levier le plus déterminant
-parmi tous ceux testés.
+Le diagnostic du chapitre 3 établit que le taux d'auto-interprétation des
+features, initialement très faible (20%), n'était pas limité par le volume
+d'entraînement mais par le domaine du corpus d'entraînement de l'extension —
+un exemple concret de la valeur d'une démarche d'ablation contrôlée plutôt
+que d'une intuition non testée ("il faut probablement plus de données"). Le
+chapitre 3 mesure par ailleurs un second effet, de nature différente : une
+dose-réponse de l'échelle du modèle (§18, p<10⁻⁹). Les deux résultats
+répondent à des questions distinctes — l'un explique pourquoi le pipeline
+fonctionne sur ce corpus, l'autre identifie quel levier a le plus fait
+varier le taux d'interprétabilité parmi ceux testés.
 
 ## Compétences mobilisées et acquises
 

@@ -6,7 +6,7 @@ pipeline sur le corpus EDF (mails originaux + augmentés), et comparer toutes le
 disponibles entre elles. Ce document sert de référence reproductible : les mêmes
 étapes, avec d'autres valeurs dans la section "Conditions fixées", permettront plus
 tard une comparaison multi-modèles (explicitement mise de côté pour l'instant, cf.
-ma décision).
+critères de décision plus bas).
 
 ## Conditions fixées de cette passe
 
@@ -67,8 +67,8 @@ PYTHONPATH=. .venv/bin/python scripts/consolidate_evaluation_report.py results_v
 ## Critères de décision avant de passer à la comparaison multi-modèles
 
 Le passage à une évaluation sur plusieurs modèles/conditions (mise de côté pour
-l'instant, ma décision) est conditionné à l'absence de "problème majeur"
-sur cette passe unique. Signaux à surveiller dans le rapport consolidé :
+l'instant) est conditionné à l'absence de "problème majeur" sur cette passe
+unique. Signaux à surveiller dans le rapport consolidé :
 
 - Fidélité (#9) : le ratio chute top-K / chute random-K doit rester très supérieur à 1
   (déjà confirmé très largement le cas, cf. `RESULTS_TESTS.md`).
@@ -79,4 +79,4 @@ sur cette passe unique. Signaux à surveiller dans le rapport consolidé :
   plus gros qui dégrade la reconstruction serait un signal à investiguer avant
   d'étendre le protocole).
 - Cohérence qualitative dans le dashboard (UMAP, features, diffing) — inspection
-  visuelle finale que je veux faire avant d'élargir la comparaison.
+  visuelle finale requise avant d'élargir la comparaison.

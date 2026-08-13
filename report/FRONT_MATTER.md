@@ -48,9 +48,9 @@ stage comme structurellement équivalente à SAE Boost (Koriagin et al., COLM 20
 bge-m3). Le pipeline initial, fonctionnel de bout en bout, présentait un taux de
 succès faible (20%) au test d'auto-interprétation des features propres au domaine.
 Une démarche de diagnostic par ablation contrôlée a établi que ce taux n'était pas
-limité par le volume d'entraînement, mais par une erreur de conception du corpus
-d'entraînement (uniquement générique, sans texte du domaine cible) — corrigée,
-elle porte le taux d'interprétabilité à 45,3%.
+limité par le volume d'entraînement, mais par le domaine du corpus
+d'entraînement (uniquement générique, sans texte du domaine cible) : une fois
+ce domaine corrigé, le taux d'interprétabilité atteint 45,3%.
 
 Une campagne d'ablations exhaustive (plus de 20 configurations : largeur du SAE,
 capacité et parcimonie de l'extension, volume de tokens, graine d'entraînement,
@@ -59,8 +59,7 @@ SAE ne modifie significativement ce taux** une fois le domaine corrigé — à
 l'exception d'un unique levier : **l'échelle du modèle extracteur/juge**, qui
 produit un effet dose-réponse net et hautement significatif (12,0% à 1 milliard de
 paramètres, 28,0% à 4 milliards, 45,3% à 12 milliards ; test de tendance de
-Cochran-Armitage, p≈1,6×10⁻¹⁰) — de loin le résultat le plus marquant du stage. Un
-sanity check contre un décodeur figé aléatoire (Korznikov et al., 2026) confirme
+Cochran-Armitage, p≈1,6×10⁻¹⁰). Un sanity check contre un décodeur figé aléatoire (Korznikov et al., 2026) confirme
 que l'entraînement de l'extension apprend une structure réelle (45,3% contre
 29,3%, écart significatif) tout en révélant qu'une classification en aval résiste
 beaucoup mieux à cette dégradation que l'interprétation qualitative. Des tests

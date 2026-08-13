@@ -22,7 +22,7 @@ complexité quadratique dans le pooling (`RESULTS_TESTS.md` §0).
 |---|---|---|
 | Augmentation (8 shards parallèles) | 45 240 générations (39 949 acceptées, 88,3%) | ~7h27 |
 | Baseline (SAE natif) | 43 423 textes | 1h11min20s |
-| Run complet pipeline v9 (corpus generic) | ~9 500 textes | 37min32s |
+| Run complet pipeline (corpus generic) | ~9 500 textes | 37min32s |
 
 ## 3. Le taux de détection de l'intrus (odd-one-out) est-il limité par le volume d'entraînement ou par autre chose ?
 

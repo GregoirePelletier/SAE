@@ -42,9 +42,9 @@ ne pas éditer directement, éditer la source puis relancer
   auto-interprétation par juge LLM, positionnement du projet.
 - [`02_architecture.md`](02_architecture.md) — architecture technique du système
   (pipelines, corpus, stockage) — synthèse de `docs/architecture.md` orientée rapport.
-- [`03_experiences_et_resultats.md`](03_experiences_et_resultats.md) — **cœur du
-  rapport** : démarche expérimentale complète, du diagnostic initial à l'ablation de
-  mise à l'échelle finale, avec tables de résultats et interprétation.
+- [`03_experiences_et_resultats.md`](03_experiences_et_resultats.md) — démarche
+  expérimentale complète, du diagnostic initial à l'ablation de mise à l'échelle
+  finale, avec tables de résultats et interprétation.
 - [`04_limites_et_perspectives.md`](04_limites_et_perspectives.md) — limites
   connues, comparaisons avec l'état de l'art, pistes pour la suite du stage.
 - [`06_conclusion.md`](06_conclusion.md) — bilan général, compétences acquises,
