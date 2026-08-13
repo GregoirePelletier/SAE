@@ -10,7 +10,7 @@ sur l'ensemble des capacités visées par l'énoncé initial :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes
   synthétiques (93,5%/79,3% selon le pipeline — à lire avec la réserve de
-  `03_experiences_et_resultats.md` §5.4, ~93% de ce chiffre étant reproductible par un
+  `03_experiences_et_resultats.md` §1.5, ~93% de ce chiffre étant reproductible par un
   baseline TF-IDF sans sémantique) et gain net mesuré sur des labels faibles
   indépendants tirés de mails originaux non augmentés (+27,0 points sur l'urgence,
   +42,6 points sur la réclamation par rapport à la baseline naïve — preuve la plus
@@ -27,16 +27,15 @@ sur l'ensemble des capacités visées par l'énoncé initial :
   formules de variance expliquée à magnitude d'activation hétérogène) qui ont une
   valeur méthodologique au-delà du seul projet.
 
-Le diagnostic du chapitre 3 établit que le taux d'auto-interprétation des
-features, initialement très faible (20%), n'était pas limité par le volume
-d'entraînement mais par le domaine du corpus d'entraînement de l'extension —
-un exemple concret de la valeur d'une démarche d'ablation contrôlée plutôt
-que d'une intuition non testée ("il faut probablement plus de données"). Le
-chapitre 3 mesure par ailleurs un second effet, de nature différente : une
-dose-réponse de l'échelle du modèle (§18, p<10⁻⁹). Les deux résultats
-répondent à des questions distinctes — l'un explique pourquoi le pipeline
-fonctionne sur ce corpus, l'autre identifie quel levier a le plus fait
-varier le taux d'interprétabilité parmi ceux testés.
+Pour le cas d'usage industriel (priorisation et orientation des mails clients),
+les deux résultats du chapitre 3 ne portent pas la même conséquence : le
+diagnostic de domaine du corpus (§1.2-1.5) est actionnable dès maintenant — il
+fixe une contrainte de déploiement claire (entraîner l'extension sur des
+données du domaine cible, pas sur un substitut générique) — tandis que la
+dose-réponse de l'échelle du modèle (§4.1, p<10⁻⁹) contraint le choix d'un
+modèle extracteur/juge suffisamment grand, un arbitrage coût/interprétabilité
+à trancher au moment du déploiement plutôt qu'un résultat qui se transpose
+directement en configuration par défaut.
 
 ## Compétences mobilisées et acquises
 
