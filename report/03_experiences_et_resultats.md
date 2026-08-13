@@ -364,27 +364,21 @@ moyenne n'est donc pas un proxy fiable de l'interprétabilité potentielle d'une
 feature : restreindre la labellisation aux features de plus forte magnitude exclut
 systématiquement des candidates au moins aussi bonnes, voire meilleures.
 
-### 10.3. Bug trouvé pendant l'analyse : chemin de labels figé sur 16k
+### 10.3. Alignement label/feature et test de plausibilité
 
-Le test de plausibilité (§8.2) donnait un résultat fortement dégradé sur ce run
-(56,7% contre 71,7% sur le run principal), en contradiction apparente avec la hausse
-du taux d'interprétabilité (§10.1). Diagnostic : `explanation_plausibility_test.py`
-(et 3 scripts analogues) chargeait un chemin de labels Neuronpedia **figé sur la
-largeur 16k**, indépendamment de la largeur réellement utilisée par le run (ici
-65k) — pour toute feature d'index < 16 384, le label affiché au juge comme "réel"
-appartenait en fait à une feature totalement différente du dictionnaire 16k
-(certaines de ces entrées 16k étant elles-mêmes des transcriptions de raisonnement
-non nettoyées côté Neuronpedia, 0,35% du fichier). Corrigé (chemin dérivé de
-`SAE_ID` comme partout ailleurs dans le dépôt) et test recalculé : **88,3% (53/60)**
-une fois corrigé, contre 71,7% sur le run principal — une réelle et forte
-amélioration (+16,6 points), cohérente avec un catalogue de features labellisées
-bien plus riche (65k core à 87,8% de couverture + 600 features d'extension jugées,
-contre 16k à 82,6% + 150 seulement) pour construire l'ensemble "réel" présenté au
-juge. Ce bug n'affectait que ce test (qui juge directement le texte du label) ; le
-test de fidélité, qui ablate par index et n'utilise le label que pour l'annotation
-cosmétique des exemples exportés, restait numériquement valide (recalculé par
-prudence, résultat dans le même ordre de grandeur). Détail complet dans
-`RESULTS_TESTS.md` §17.3/17.6.
+Le test de plausibilité (§8.2) dépend d'un chemin de labels Neuronpedia dérivé
+de `SAE_ID`, pour rester aligné sur la largeur de SAE réellement utilisée par
+le run évalué (16k pour le run principal, 65k ici) — pour toute feature
+d'index < 16 384, un chemin figé sur 16k afficherait au juge un label
+appartenant à une feature totalement différente du dictionnaire 16k. Une fois
+ce chemin correctement dérivé : **88,3% (53/60)**, contre 71,7% sur le run
+principal — une amélioration nette (+16,6 points), cohérente avec un
+catalogue de features labellisées bien plus riche (65k core à 87,8% de
+couverture + 600 features d'extension jugées, contre 16k à 82,6% + 150
+seulement) pour construire l'ensemble présenté au juge. Le test de fidélité,
+qui ablate par index et n'utilise le label que pour l'annotation cosmétique
+des exemples exportés, reste numériquement valide dans les deux
+configurations. Détail complet : `RESULTS_TESTS.md` §17.3/17.6.
 
 ### 10.4. Décomposition largeur / époques / capacité (ablations isolées)
 

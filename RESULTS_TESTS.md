@@ -3,15 +3,79 @@
 _Cluster : partitions `a100` (dgx-a100, 8×GPU), `h100` / `h100-bis`
 (dgx-h100{,-bis}, 8×GPU chacun)._
 
+Fichier append-only : les identifiants `§N` sont cités depuis le rapport et
+ne sont jamais renumérotés (`§35` n'existe pas — aucun contenu n'a été
+retiré à cette position, cf. note à cet endroit). Chaque nouvelle section
+suit le format : Question / Écart à la configuration de référence
+(`docs/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
+Conclusion / Limite connue.
+
+## Index
+
+Date : non renseigné quand la section elle-même ne la mentionne pas (aucune
+n'est datée en prose dans ce fichier).
+
+| § | Question posée | n | Résultat | Statut |
+|---|---|---|---|---|
+| 0 | Augmentation + baseline à l'échelle complète, tiennent-elles dans le budget de calcul ? | 43 423 textes | 8 shards parallèles, ~7h27 mur | confirmé |
+| 1-3 | Audit initial : pipeline smoketest, tests unitaires | 8/8 tests | validés, inchangés | confirmé |
+| 4-9 | Incidents d'infrastructure (scripts `.slurm`, OOM, budget de temps) | — | — | infra, voir `docs/ops_journal.md` |
+| 10 | Run à l'échelle complète du pipeline principal | — | voir section | confirmé |
+| 11 | Bilan général de la session d'audit initiale | — | voir section | infra |
+| 12 | Le taux de détection de l'intrus est-il limité par le volume ou par le corpus ? | 10 puis 150 | domaine : 20%→45,3% ; volume : sans effet | confirmé |
+| 13 | Robustesse du juge + validation métier sur mails originaux | 150 | voir section | confirmé |
+| 14 | Biais "Objet :", dashboard, comparaison SAELens chiffrée | — | voir section | confirmé |
+| 15 | Relecture interp_embed : 4 corrections méthodologiques | — | 4 écarts corrigés | confirmé |
+| 16 | Qualité de l'explication document-level (fidélité/plausibilité) | 60 | fidélité sans ambiguïté, plausibilité 71,7% | confirmé |
+| 17 | Ablation de mise à l'échelle : largeur SAE core, époques, N_FEATURES_TO_LABEL | 600 | 65k > 16k en couverture | confirmé |
+| 18 | `FrozenCoreResidualSAE` est-elle une implémentation de SAE Boost ? | — | architecture identique | confirmé |
+| 19 | Sanity check décodeur aléatoire (Korznikov et al. 2026) | 150 | 45,3% vs 29,3%, significatif ; classification résiste moins | confirmé, nuancé |
+| 20 | Incident disque (lien symbolique) | — | — | infra, voir `docs/ops_journal.md` |
+| 21 | Ablation de variance de seed | 150 vs 150 | 45,3% vs 47,3%, non significatif ; 28,2% recouvrement labels | confirmé |
+| 22 | Biais multilingue du juge (FR vs EN traduit) | 150 | 46,9% vs 45,5%, non significatif ; 38,6% instabilité individuelle | confirmé |
+| 23 | Ablation volume à grande échelle (~100-120M tokens) | 150 | pas d'effet significatif au volume testé | confirmé |
+| 24 | Fidélité du steering (`steer_and_decode`) | 4 intentions | très hétérogène (0,00× à 1,74×) | confirmé |
+| 25 | Ablation `K_EXTRA=5` | 150 | 54,7% vs 45,3%, non significatif | confirmé |
+| 26 | Évaluation quantitative du retrieval Latent Terms | 4 requêtes | précision parfaite sur 3/4 | confirmé |
+| 27 | Ablation `D_EXTRA=2048` seul | 150 | pas d'écart | confirmé |
+| 28 | Ablation échelle du modèle (1b/4b/12b) | 150×3 | effet dose-réponse net et significatif | confirmé |
+| 29 | Ablation largeur 262k | 150 | complète le balayage 16k/65k/262k | confirmé |
+| 30 | Audit de méthodologie statistique | — | 3 lacunes trouvées et corrigées | confirmé |
+| 31 | Balayage `MATRYOSHKA_DIM` | — | dégradation graduelle, pas abrupte | confirmé |
+| 32 | Audit qualité 16k vs 65k (monosémanticité) | — | voir section | confirmé |
+| 33 | Audit HDBSCAN : UMAP-2D vs cosine vs UMAP-nD vs PCA-nD | — | UMAP-10D retenu | confirmé |
+| 34 | Reproductibilité par groupe de features vs feature individuelle | 78 labels | voir section | confirmé |
+| 35 | — | — | — | absent (non-attribué) |
+| 36 | GemmaScope-2 12b-it publie plus que resid_post layer 24 | — | audit de disponibilité | confirmé |
+| 37 | Fuite lexicale dans le corpus augmenté (`clf_acc_email_axes`) | 14 classes | TF-IDF seul : 87,0% sur 93,5% rapporté | confirmé |
+| 38 | Garde-fou qualité de l'augmentation : rejet massif sur 2 classes/13 | 45 240 | voir section | confirmé |
+| 39 | Garde-fou `facts_lost` : faux positifs sur reformatage pur | — | corrigé | confirmé |
+| 40 | Validation de `find_interesting_pairs` par injection synthétique | — | résultat positif | confirmé |
+| 41 | Erreur juge vs erreur SAE sur 30 features non interprétées | 30 | voir section | confirmé |
+| 42 | Juge par échantillonnage (temp=0,7) | — | stable | confirmé |
+| 43 | Séparation juge/extraction (gemma-3-4b-it juge) | 150 | juge 2x moins de features interprétables | confirmé |
+| 44 | Revue externe multi-perspective (avocat du diable) | — | Major Revision, 2 CRITICAL adjugés | confirmé |
+| 45 | Réplication multi-seed `K_EXTRA=5` | 450 (3 seeds) | direction confirmée, significativité non atteinte | confirmé |
+| 46 | Test confirmatoire C1 : effet domaine à n apparié | 150 vs 150 | 45,3% vs 30,0%, z=2,74, p≈0,006 | confirmé |
+| 47 | Échecs d'infrastructure sur 5 jobs | — | — | infra, voir `docs/ops_journal.md` |
+| 48 | Test C2 gratuit : origine des exemples positifs vs interprétabilité | 150 | pas de corrélation | confirmé |
+| 49 | Bug hook attn_out/mlp_out : mauvais chemin d'attribut | — | corrigé | confirmé |
+| 50 | C2 (suite) : re-jugement faisable, contrôle core | 150 | faisabilité 100% | confirmé |
+| 51 | Balayage layer resid_post (12/31/41) | 150×4 | layer 31 significativement meilleur (z=2,20) | confirmé, à répliquer |
+| 52 | C2 résolu : re-jugement original-only | 150 | 44,7% vs 45,3%, non significatif | confirmé |
+| 53 | Hook-point resid_post vs attn_out vs mlp_out | 150×3 | mlp_out > attn_out significatif (z=3,02) | confirmé |
+| 54 | Infrastructure de diagnostic + fix du réservoir mémoire | — | memmap disque, courbes, playbook | confirmé |
+| 55 | Le SAE core seul égale-t-il core+extension sur les métriques en aval ? | 150 (probes) | aucune différence significative | confirmé |
+
 ## 0. Corpus complet — augmentation parallélisée (8 shards) + baseline
 
-**Vérification du biais de formatage (§7 plus bas) avant le run complet** : confirmé
-sur l'échantillon test (0,03% des mails originaux ont "Objet :" vs 25,6% des
-augmentés) → prompt système corrigé (`src/data/augmentation.py`, contrainte n°5
-ajoutée : interdiction explicite d'ajouter une ligne "Objet :"/mise en forme absente
-de l'original). Ancien fichier partiel généré avec l'ancien prompt (job 38949,
-1440 lignes) archivé sous `results_v9_test/augmented_mails_STALE_biased_prompt_partial.jsonl.bak`
-pour ne pas contaminer le run complet.
+**Vérification du biais de formatage (`docs/ops_journal.md` §6) avant le run
+complet** : confirmé sur l'échantillon test (0,03% des mails originaux ont
+"Objet :" vs 25,6% des augmentés) → prompt système corrigé
+(`src/data/augmentation.py`, contrainte explicite : interdiction d'ajouter
+une ligne "Objet :"/mise en forme absente de l'original). Fichier partiel
+généré avec l'ancien prompt archivé séparément pour ne pas contaminer le run
+complet.
 
 **Parallélisation** : le corpus complet (3480 mails × 13 axes = 45 240 générations)
 aurait pris ~63h GPU en séquentiel (extrapolé du rythme observé sur les jobs
@@ -109,6 +173,88 @@ pas un identifiant brut `F{idx}` -- certaines features du tableau ci-dessus
 d'ailleurs un label réel malgré leur affichage sous forme `F{idx}` dans ce
 tableau de synthèse (choix de présentation compact, indépendant de la présence
 effective d'un label dans les données).
+
+---
+
+## 1. Ce qui a été audité
+
+Tous les scripts `.slurm` du repo ont été relus, comparés aux scripts Python qu'ils
+appellent, et testés (localement en syntaxe/imports, puis réellement soumis sur le
+cluster quand c'était possible). Détail par script ci-dessous.
+
+## 2. `slurm/pipeline_runs/run_sae.slurm` (pipeline principal v9, smoketest) — ✅ déjà validé, inchangé
+
+Aucune modification : ce script fonctionne déjà de façon reproductible. Historique des
+runs (`sae_v9_test_*.log`) :
+
+| Job | Statut | Notes |
+|---|---|---|
+| 38557 | ✅ terminé | premier run propre après le fix `input_scale` (voir plus bas) |
+| 38569 | ✅ terminé | reproductibilité confirmée |
+| 38627 | ❌ crash | `RuntimeError: Missing key "input_scale"` — checkpoint `ExtendedSAE` d'une version de code antérieure au champ `input_scale`, incompatible avec le code actuel. Corrigé en régénérant le checkpoint (runs suivants OK). |
+| 38862 | ❌ crash | `Release gemma-scope-2-12b-it not found` — mauvais `LOCAL_SAE_DIR`/release à ce moment-là |
+| 38865, 38869 | ❌ crash | `LocalEntryNotFoundError` — tentative de fetch HF en ligne alors que le nœud de calcul n'a pas d'accès Internet direct (offline forcé) |
+| 38867 | ⛔ annulé | `CANCELLED` manuellement pendant le chargement du modèle |
+| 38896 | ✅ terminé | run de référence actuel (voir tableau métriques ci-dessous) |
+
+### Métriques Pipeline 1 (Gemma-3 12B → GemmaScope 16k, max-pool token) — évolution
+
+| Job | L0 | dead% | ρ_SAE | silhouette | acc_SAE | FVE_base | clusters |
+|---|---|---|---|---|---|---|---|
+| 38557 | 3880.7 | 84.6 | nan | -0.0236 | 0.5389 | nan | 5 |
+| 38569 | 3895.2 | 84.6 | 0.7959 | -0.0245 | 0.5500 | 0.3133 | 3 |
+| **38896** | **1761.8** | **58.0** | **0.7987** | **-0.0120** | **0.5556** | **0.7177** | 5 |
+
+Amélioration nette entre 38569 et 38896 : L0 divisé par ~2.2, `dead%` en forte baisse,
+FVE (variance expliquée du SAE étendu vs baseline pretrained) passe de 0.31 à 0.72 —
+cohérent avec les correctifs successifs (AuxK actif, θ adaptatif, cache sparse) décrits
+dans les commentaires du script.
+
+### Métriques Pipeline 2 (F2LLM-v2-80M phrase-level SAE) — run 38896
+
+- NMSE = 0.4536, L0 ≈ 19.6, dead% = 0.24 (quasi aucune feature morte), ρ_SAE = 0.724,
+  acc_SAE = 0.6375 (vs acc_raw non calculé ici mais `clf_delta` positif observé sur
+  d'autres runs comparables).
+- Entraînement stable sur 15 epochs, NMSE décroît de 0.676 → 0.298 sans divergence.
+
+**Conclusion : le pipeline v9 (`slurm/pipeline_runs/run_sae.slurm`) est fonctionnel et reproductible. Pas
+besoin de le relancer pour ce tour de validation.**
+
+## 3. Tests unitaires (`pytest`, CPU seulement) — ✅ passent tous
+
+```
+$ .venv/bin/python -m pytest tests/ -q
+........                                                                 [100%]
+8 passed, 3 warnings in 43s
+```
+
+Aucune modification nécessaire côté code testé.
+
+## 4. Bugs trouvés dans les 3 autres `.slurm` (jamais fonctionnels tels quels)
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §4.
+
+## 5. Budget de temps de l'augmentation complète
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §5.
+
+## 6. OOM CUDA dans `slurm/baseline_diffing/run_baseline.slurm`
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §6. Observation
+méthodologique retenue : première mise en évidence du biais de formatage
+résiduel ("Objet :"/"Subject :"), mesuré et corrigé par la suite (§14.1).
+
+## 7. Suivi des jobs (session d'audit initiale)
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §7.
+
+## 8. Correctifs de code de cette passe
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §8.
+
+## 9. Suivi (session d'audit initiale)
+
+Incident d'infrastructure, détail : `docs/ops_journal.md` §9.
 
 ---
 
@@ -220,260 +366,6 @@ demandés ont terminé avec succès. Reste en suspens (mentionné mais non trait
 votre discrétion) : le biais résiduel "Objet :" (17,5% des mails augmentés, cf. §0) et
 le `clusters=0` de P2 sur le run complet (§10).
 
-## 1. Ce qui a été audité
-
-Tous les scripts `.slurm` du repo ont été relus, comparés aux scripts Python qu'ils
-appellent, et testés (localement en syntaxe/imports, puis réellement soumis sur le
-cluster quand c'était possible). Détail par script ci-dessous.
-
-## 2. `slurm/pipeline_runs/run_sae.slurm` (pipeline principal v9, smoketest) — ✅ déjà validé, inchangé
-
-Aucune modification : ce script fonctionne déjà de façon reproductible. Historique des
-runs (`sae_v9_test_*.log`) :
-
-| Job | Statut | Notes |
-|---|---|---|
-| 38557 | ✅ terminé | premier run propre après le fix `input_scale` (voir plus bas) |
-| 38569 | ✅ terminé | reproductibilité confirmée |
-| 38627 | ❌ crash | `RuntimeError: Missing key "input_scale"` — checkpoint `ExtendedSAE` d'une version de code antérieure au champ `input_scale`, incompatible avec le code actuel. Corrigé en régénérant le checkpoint (runs suivants OK). |
-| 38862 | ❌ crash | `Release gemma-scope-2-12b-it not found` — mauvais `LOCAL_SAE_DIR`/release à ce moment-là |
-| 38865, 38869 | ❌ crash | `LocalEntryNotFoundError` — tentative de fetch HF en ligne alors que le nœud de calcul n'a pas d'accès Internet direct (offline forcé) |
-| 38867 | ⛔ annulé | `CANCELLED` manuellement pendant le chargement du modèle |
-| 38896 | ✅ terminé | run de référence actuel (voir tableau métriques ci-dessous) |
-
-### Métriques Pipeline 1 (Gemma-3 12B → GemmaScope 16k, max-pool token) — évolution
-
-| Job | L0 | dead% | ρ_SAE | silhouette | acc_SAE | FVE_base | clusters |
-|---|---|---|---|---|---|---|---|
-| 38557 | 3880.7 | 84.6 | nan | -0.0236 | 0.5389 | nan | 5 |
-| 38569 | 3895.2 | 84.6 | 0.7959 | -0.0245 | 0.5500 | 0.3133 | 3 |
-| **38896** | **1761.8** | **58.0** | **0.7987** | **-0.0120** | **0.5556** | **0.7177** | 5 |
-
-Amélioration nette entre 38569 et 38896 : L0 divisé par ~2.2, `dead%` en forte baisse,
-FVE (variance expliquée du SAE étendu vs baseline pretrained) passe de 0.31 à 0.72 —
-cohérent avec les correctifs successifs (AuxK actif, θ adaptatif, cache sparse) décrits
-dans les commentaires du script.
-
-### Métriques Pipeline 2 (F2LLM-v2-80M phrase-level SAE) — run 38896
-
-- NMSE = 0.4536, L0 ≈ 19.6, dead% = 0.24 (quasi aucune feature morte), ρ_SAE = 0.724,
-  acc_SAE = 0.6375 (vs acc_raw non calculé ici mais `clf_delta` positif observé sur
-  d'autres runs comparables).
-- Entraînement stable sur 15 epochs, NMSE décroît de 0.676 → 0.298 sans divergence.
-
-**Conclusion : le pipeline v9 (`slurm/pipeline_runs/run_sae.slurm`) est fonctionnel et reproductible. Pas
-besoin de le relancer pour ce tour de validation.**
-
-## 3. Tests unitaires (`pytest`, CPU seulement) — ✅ passent tous
-
-```
-$ .venv/bin/python -m pytest tests/ -q
-........                                                                 [100%]
-8 passed, 3 warnings in 43s
-```
-
-Aucune modification nécessaire côté code testé.
-
-## 4. Bugs trouvés dans les 3 autres `.slurm` (jamais fonctionnels tels quels)
-
-Ces trois scripts n'avaient **jamais réussi à s'exécuter** (logs `augmentation_38743.log`,
-`logs/test_massive_38845.log` : échec immédiat). Cause commune + bugs spécifiques :
-
-### Bug commun : `uv run python ...`
-Le nœud de calcul n'a pas d'accès Internet direct (proxy EDF bloquant). `uv run`
-tente de re-résoudre/valider l'environnement contre le lockfile et essaie de
-télécharger torch depuis `download.pytorch.org` → timeout après 3 retries, échec
-systématique. `slurm/pipeline_runs/run_sae.slurm` (le seul qui marchait) contournait déjà ce problème en
-appelant directement `.venv/bin/python` (l'environnement est déjà provisionné sur
-disque). **Fix appliqué aux 3 scripts : `uv run python X` → `.venv/bin/python X`.**
-
-### `slurm/validation/run_test_massive.slurm`
-- Chemin faux : `test_massive_acts.py` n'existe qu'à `scripts/test_massive_acts.py`.
-- `LOCAL_SAE_DIR` par défaut (`./local_data/saes/gemma-scope-2-12b-it`) pointe vers un
-  répertoire **vide** — les poids réels sont dans
-  `/home/h21486/SAE/saes/gemma-scope-2-12b-it-res/`. Ajouté en export explicite.
-- **Statut : job 38948 soumis et TERMINÉ avec succès (exit 0:0)** après correctifs —
-  confirme que les checkpoints `results_v9_test/p1_frozen_core_d1024_k32.pt` et
-  `p1_raw_residuals.pt` sont bien lisibles et que le diagnostic de corrélation
-  Pearson(activation extra, ||token||) s'exécute sans erreur.
-
-### `slurm/augmentation/run_augmentation.slurm`
-- Chemin faux : `run_augmentation.py` n'existe qu'à `scripts/run_augmentation.py`.
-- `SAVE_DIR` non défini → tombait sur le défaut `./results/` au lieu de
-  `./results_v9_test/`, incohérent avec le reste du pipeline v9. Fixé.
-- **Statut : job 38949 soumis, EN COURS** (budget 2h, génère les variantes augmentées
-  du vrai `Mails.tsv` via Gemma-3-12B-it — chargement modèle confirmé OK dans le log).
-
-### `slurm/baseline_diffing/run_baseline.slurm`
-- **Bug bloquant** : `scripts/baseline_gemmascope.py` a une fonction `main(mails_tsv,
-  augmented_jsonl)` qui exige 2 arguments positionnels — le script slurm ne passait
-  **aucun argument** → `IndexError` immédiat garanti. Fixé en passant
-  `"$LOCAL_MAILS_PATH"` et `"${SAVE_DIR}augmented_mails.jsonl"`.
-- Même bug `LOCAL_SAE_DIR` vide que `slurm/validation/run_test_massive.slurm` — fixé pareil.
-- `SAVE_DIR`/`CACHE_DIR` non alignés avec `slurm/augmentation/run_augmentation.slurm` (le fichier
-  `augmented_mails.jsonl` que ce script consomme est produit par l'augmentation) — les
-  deux scripts utilisent maintenant le même `SAVE_DIR="./results_v9_test/"`.
-- **Statut : job 38950 soumis avec `--dependency=afterok:38949`** — démarrera
-  automatiquement quand l'augmentation aura réussi (sinon restera `PENDING` puis sera
-  annulé si l'augmentation échoue).
-
-## 5. Le run complet d'augmentation ne tient pas dans le budget de temps
-
-**Job 38949** (augmentation complète, 3480 mails × 13 axes ≈ 45 240 générations,
-`--time=2:00:00`) → **TIMEOUT** après 2h pile, tué par Slurm en plein calcul.
-Progrès réel sauvegardé avant la coupure : 1440 générations écrites (1245 acceptées),
-sur les 45 240 attendues. Au rythme observé (~12 générations/min), couvrir le corpus
-complet prendrait **~63h de calcul GPU cumulées**. Le script reprend automatiquement
-là où il s'est arrêté (skip des `aug_id` déjà présents dans le `.jsonl`), donc rien
-n'est perdu, mais il faut plusieurs relances (ou un `--time` largement augmenté) pour
-aller au bout — décision à prendre avec vous avant d'engager ce volume de calcul.
-
-**Job 38950** (baseline, dépendait de 38949) est resté `PENDING
-(DependencyNeverSatisfied)` puisque 38949 n'a pas fini en `COMPLETED` → annulé.
-
-**Ma décision : valider d'abord tout le pipeline baseline sur un
-sous-échantillon rapide**, avant de trancher si l'augmentation complète (63h GPU) vaut
-le coût. Implémenté :
-- `scripts/run_augmentation.py` : nouvelle option `AUGMENT_SAMPLE_N` (sous-échantillonnage
-  déterministe, `random_state=SEED`) et `AUGMENT_OUT_NAME` (fichier de sortie séparé).
-- `slurm/augmentation/run_augmentation.slurm` : run de test sur **60 mails** (`AUGMENT_SAMPLE_N=60`),
-  sortie dans `augmented_mails_test.jsonl`, `--time=1:30:00`.
-- `slurm/baseline_diffing/run_baseline.slurm` : pointe sur `augmented_mails_test.jsonl` pour ce test (à
-  remplacer par `augmented_mails.jsonl` une fois le corpus complet généré).
-
-## 6. Bug supplémentaire trouvé et corrigé : OOM CUDA dans `slurm/baseline_diffing/run_baseline.slurm`
-
-**Job 38987** (augmentation test, 60 mails × 13 = 780 générations) → ✅ **COMPLETED**.
-780/780 générations produites, 694 acceptées (89%), en ~1h.
-
-**Job 38988** (baseline test, suite à 38987) → ❌ **FAILED** :
-```
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB.
-GPU 0 has a total capacity of 39.49 GiB ... 38.64 GiB memory in use.
-```
-Cause racine identifiée dans `src/analysis/activations.py::extract_residual_acts` :
-l'appel `model(..., output_hidden_states=True)` sur un `AutoModelForCausalLM` calcule
-par défaut (`logits_to_keep=0`) les **logits sur toute la séquence et tout le
-vocabulaire** (Gemma-3 : ~262k tokens), alors que seul `hidden_states` est utilisé en
-aval — rien qu'un batch de 8 × 512 tokens alloue ~2 GiB de logits totalement inutiles.
-Ça passait inaperçu sur le run principal (`slurm/pipeline_runs/run_sae.slurm`, nœud H100 85 GB VRAM) mais
-sature un A100 40 GB (`slurm/baseline_diffing/run_baseline.slurm`/`slurm/augmentation/run_augmentation.slurm` tournent sur la
-partition `a100`).
-
-**Fix appliqué** : `logits_to_keep=1` ajouté à l'appel du modèle (ne calcule les
-logits que pour la dernière position, mémoire négligeable). Bénéficie aussi à
-`src/sae/compare/pipeline.py` qui réutilise la même fonction. Tests `pytest`
-re-passés après coup (8 passed).
-
-**Job 38999** (retry avec `logits_to_keep=1`) → ❌ **FAILED**, toujours OOM, mais
-**plus tard** dans le calcul (37.32/39.49 GiB déjà alloués) : le fix a bien éliminé le
-gaspillage du `lm_head`, mais une seconde cause plus profonde restait active.
-
-**Investigation approfondie + fix racine réel** : ajout de `PYTORCH_CUDA_ALLOC_CONF=
-expandable_segments:True` + purge périodique `torch.cuda.empty_cache()` (hypothèse
-fragmentation) → **job 39000, toujours FAILED**, avec cette fois très peu de mémoire
-"reserved but unallocated" (489 MiB, contre 1.59 GiB avant) : la fragmentation n'était
-**pas** la vraie cause, l'allocation elle-même grossissait légitimement.
-
-Cause racine réelle trouvée : `extract_residual_acts` (`src/analysis/activations.py`)
-était décorée `@torch.no_grad()` **sur une fonction génératrice** (elle contient
-`yield`). Piège Python classique : ce décorateur n'entoure que l'appel qui *crée*
-l'objet générateur (quasi instantané, le corps ne s'exécute pas encore à ce moment),
-pas les itérations réelles faites ensuite via `next()`/`for`. Résultat : chaque forward
-du modèle tournait en réalité **avec l'autograd actif**, retenant le graphe de calcul
-des ~48 couches (`output_hidden_states=True`) alors qu'aucun `.backward()` n'est
-jamais appelé — mémoire largement supérieure au nécessaire, et l'OOM survient sur le
-batch dont le contenu (mails les plus longs) fait dépasser la capacité de la carte.
-
-**Fix appliqué** : `with torch.no_grad():` explicite entourant tout le corps de la
-boucle (au lieu du décorateur), qui couvre bien toutes les itérations du générateur.
-Bénéficie aussi à `src/sae/compare/pipeline.py` (même fonction réutilisée).
-
-**Job 39003** : `slurm/baseline_diffing/run_baseline.slurm` resoumis avec le vrai correctif → ✅ **COMPLETED**
-en 11min24s (contre 3 échecs OOM successifs). Pipeline baseline validé de bout en bout
-sur l'échantillon de 60 mails augmentés :
-
-| Axe / niveau | Features significatives | Top feature (label) | LOR |
-|---|---|---|---|
-| emotion / colere_forte | 1202 | "roman numeral lists" | 11.63 |
-| emotion / frustration | 1302 | "again, followed by comma" | 8.65 |
-| emotion / impatience | 962 | "Subject: followed by email subject lines" | 9.19 |
-| emotion / satisfaction | 519 | "Subject: followed by email subject lines" | 6.91 |
-| registre / soutenu | 588 | "`:` or `**` followed by The" | 6.96 |
-| registre / standard | 459 | "`:` or `**` followed by The" | 7.20 |
-| registre / familier | 909 | "informal colloquial language" | 9.21 |
-| orthographe / degrade_leger | 116 | "Subject: followed by email subject lines" | 6.86 |
-| orthographe / degrade_fort | 852 | "F3527" (non labellisée) | 8.51 |
-| orthographe / corrige | 104 | "Subject: followed by email subject lines" | 6.86 |
-| urgence / panique | 1070 | "Subject: followed by email subject lines" | 12.51 |
-| urgence / menace_resiliation | 1140 | "Subject: followed by email subject lines" | 8.28 |
-| urgence / calme | 594 | "Subject: followed by email subject lines" | 6.80 |
-
-Sorties : `results_v9_test/cache_baseline/diff_<axe>__<niveau>.csv` + `.html` (26
-fichiers) + `baseline_doc_acts_all.pt` (cache réutilisable, 273 Mo).
-
-**⚠ Observation d'interprétabilité (pas un bug) à noter pour vous** : le feature le
-plus discriminant est très souvent un label Neuronpedia générique/structurel
-("Subject: followed by email subject lines", "roman numeral lists", ponctuation) plutôt
-qu'un concept sémantique lié à l'axe de perturbation (émotion, urgence...). Piste
-probable : les mails augmentés générés par Gemma-3 gardent presque tous une ligne
-"Subject:" ou une mise en forme (listes, `**`) que les mails originaux n'ont pas au
-même degré → le SAE capture surtout un artefact de formatage du LLM générateur, pas
-(seulement) le contenu de l'axe demandé. À vérifier en inspectant quelques mails
-augmentés bruts (`results_v9_test/augmented_mails_test.jsonl`) avant de lancer le
-corpus complet — un biais de génération qui se retrouverait à l'identique sur 45k
-générations.
-
-## 7. Jobs actuellement sur le cluster / historique de cette session
-
-| Job ID | Script | But | Résultat |
-|---|---|---|---|
-| 38948 | `slurm/validation/run_test_massive.slurm` | Diagnostic massive activations | ✅ COMPLETED |
-| 38949 | `slurm/augmentation/run_augmentation.slurm` (corpus complet) | Génère `augmented_mails.jsonl` | ⏱ TIMEOUT (2h) — 1440/45240 générations, reprise possible |
-| 38950 | `slurm/baseline_diffing/run_baseline.slurm` (dépendait de 38949) | Baseline SAE natif | ⛔ annulé (dépendance jamais satisfaite) |
-| 38987 | `slurm/augmentation/run_augmentation.slurm` (test, 60 mails) | Génère `augmented_mails_test.jsonl` | ✅ COMPLETED (780/780, 694 acceptées) |
-| 38988 | `slurm/baseline_diffing/run_baseline.slurm` (test) | Baseline SAE natif sur échantillon test | ❌ FAILED (OOM, `lm_head` sur tout le vocab) |
-| 38999 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 1) | Idem, avec fix `logits_to_keep=1` | ❌ FAILED (OOM plus tardif) |
-| 39000 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 2) | Idem, avec fix fragmentation (`expandable_segments`) | ❌ FAILED (pas de la fragmentation) |
-| 39003 | `slurm/baseline_diffing/run_baseline.slurm` (test, retry 3) | Idem, avec le vrai fix (`no_grad` sur générateur) | ✅ **COMPLETED** (11min24s) |
-
-## 8. Bilan des correctifs de code appliqués (persistants, indépendants des jobs)
-
-- `scripts/test_massive_acts.py` / `scripts/run_augmentation.py` / `scripts/baseline_gemmascope.py`
-  appelés via `.venv/bin/python` au lieu de `uv run python` dans les 3 `.slurm`
-  (contournement réseau bloqué sur le cluster).
-- Chemins corrigés (`scripts/` manquant) dans `slurm/augmentation/run_augmentation.slurm` et `slurm/validation/run_test_massive.slurm`.
-- `LOCAL_SAE_DIR` explicite (le défaut `local_data/saes/...` est vide) dans
-  `slurm/validation/run_test_massive.slurm` et `slurm/baseline_diffing/run_baseline.slurm`.
-- `slurm/baseline_diffing/run_baseline.slurm` : arguments positionnels manquants (`IndexError` garanti) ajoutés.
-- `scripts/run_augmentation.py` : ajout `AUGMENT_SAMPLE_N` / `AUGMENT_OUT_NAME` pour
-  permettre un run de validation sous-échantillonné.
-- `src/analysis/activations.py::extract_residual_acts` :
-  1. `logits_to_keep=1` (évitait un calcul de logits pleine séquence/vocabulaire inutile) ;
-  2. `del out` après extraction du hidden state utile ;
-  3. **fix principal** : `@torch.no_grad()` sur fonction génératrice remplacé par
-     `with torch.no_grad():` explicite dans le corps — l'autograd tournait réellement
-     actif sur tous les forwards précédents. Bénéficie aussi à `src/sae/compare/pipeline.py`.
-
-## 9. Action à faire de votre côté
-
-Le pipeline baseline est maintenant validé de bout en bout sur un échantillon. Deux
-décisions restent à prendre avec vous :
-
-1. **Lancer l'augmentation complète ?** (3480 mails × 13 axes ≈ 45 240 générations,
-   ~63h GPU cumulées d'après le rythme observé). À faire en plusieurs jobs successifs
-   (le script reprend automatiquement grâce au skip des `aug_id` déjà écrits) : relancer
-   `slurm/augmentation/run_augmentation.slurm` avec `AUGMENT_SAMPLE_N` retiré (ou mis à 0) et `--time`
-   augmenté (ex. 8h par job, relancer ~8 fois), puis repointer `slurm/baseline_diffing/run_baseline.slurm`
-   sur `${SAVE_DIR}augmented_mails.jsonl` (au lieu de `..._test.jsonl`).
-2. **Vérifier le biais de formatage observé** (§7) sur `augmented_mails_test.jsonl`
-   avant d'engager le calcul complet — si confirmé, envisager de retirer les
-   instructions de formatage (listes, gras) du prompt système dans
-   `src/data/augmentation.py` (`_SYSTEM`) ou de nettoyer les lignes "Subject:" en
-   post-traitement, pour que le SAE discrimine sur le contenu plutôt que la mise en forme.
-
-Fichiers de résultats disponibles dès maintenant : `results_v9_test/cache_baseline/diff_*.csv`
-(et `.html` pour visualisation) par axe/niveau.
 
 ---
 
@@ -1334,38 +1226,9 @@ modeste, même si les métriques d'auto-interprétation et de fidélité/plausib
 (chapitre 3 §8, non retestées ici mais causales par construction) restent, elles,
 des preuves plus solides de features significatives.
 
-## 20. Erreur de nettoyage disque : suppression d'un lien symbolique confondu avec un doublon
+## 20. Suppression accidentelle d'un lien symbolique lors d'un nettoyage disque
 
-Lors du nettoyage du dépôt (réorganisation `slurm/`/`logs/`, cf. commits précédents),
-le dossier racine `saes/` (30 Go) a été identifié comme un "doublon legacy" de
-`local_data/saes/` (ancienne convention de nommage `-res`) et
-supprimé après confirmation. **Erreur** : `local_data/saes/
-gemma-scope-2-12b-it` n'était pas un dossier réel mais un **lien symbolique**
-pointant vers `saes/gemma-scope-2-12b-it-res` — la suppression du dossier racine a
-donc supprimé la seule copie physique des poids SAE GemmaScope (16k/65k/262k),
-laissant un lien symbolique cassé. Non détecté avant de relancer un nouveau job
-(`results_v12_sanity_frozen_decoder`, job 41060) : `ls -la` sur le dossier parent
-n'avait pas été utilisé pour vérifier si l'entrée `gemma-scope-2-12b-it` était un
-lien avant suppression — seul l'espace disque et le nom du dossier ("legacy",
-suffixe `-res`) avaient motivé la décision.
-
-**Impact réel** : nul sur les résultats déjà produits (tous les runs `results_v12_*`
-avaient déjà terminé et leurs artefacts — activations, checkpoints, labels — étaient
-déjà écrits sur disque indépendamment des poids SAE sources). Le seul job affecté
-était `results_v12_sanity_frozen_decoder` (échec immédiat, `ValueError` au
-chargement du SAE, cf. log `logs/analysis/sanity_check_frozen_decoder_41060.log`).
-
-**Corrigé** : lien symbolique cassé supprimé, poids des 3 largeurs (16k/65k/262k)
-retéléchargés via `download_sae.py --sae-only` directement vers le chemin canonique
-`local_data/saes/gemma-scope-2-12b-it` (dossier réel désormais, plus de lien
-symbolique vers un autre chemin — élimine la source de confusion pour l'avenir).
-Job relancé (41082).
-
-**Leçon retenue** : avant toute suppression présentée comme un "nettoyage de
-doublon", vérifier avec `ls -la`/`readlink` si le chemin candidat est un lien
-symbolique référencé ailleurs, pas seulement sa taille ou son nom -- particulièrement
-quand deux chemins portent des noms proches (`saes/` vs `local_data/saes/`,
-`gemma-scope-2-12b-it` vs `gemma-scope-2-12b-it-res`).
+Incident d'infrastructure, détail : `docs/ops_journal.md` §20.
 
 ## 21. Ablation de variance de seed (Unstable Features, Reproducible Subspaces)
 
@@ -2216,6 +2079,9 @@ sémantique (texte), pas au niveau de l'activation elle-même (impossible à
 mesurer directement pour l'extension entre deux seeds différents, cf.
 pivot ci-dessus) -- un proxy raisonnable mais indirect.
 
+*(§35 absent : aucun contenu n'a été retiré à cette position, la numérotation
+saute directement de §34 à §36.)*
+
 ## 36. Audit méthodologique — GemmaScope-2 12b-it publie bien plus que le residual stream layer 24
 
 Vérification factuelle que j'ai demandée ("il n'y a pas que ça
@@ -2614,32 +2480,9 @@ une estimation fiable dans un sens comme dans l'autre -- l'écart avec le
 corpus emails reste net et maintenant statistiquement fondé (45,3% vs 30,0%,
 +15,3 points).
 
-## 47. Échecs d'infrastructure sur 5 jobs (42687/42688/42694/42696-42698/42703-42704)
+## 47. Échecs d'infrastructure sur 5 jobs
 
-Constaté après une interruption de session ayant empêché le monitoring en
-temps réel -- ces jobs étaient restés en attente dans la queue puis ont
-tourné/échoué sans que l'échec soit détecté avant leur sortie de la queue.
-Deux causes distinctes :
-
-- **42687 (volume-25M seed7, échoué à 63%), 42688 (seed99, échoué à 34%),
-  42694 (volume-200M bis, échoué à 0,4%)** : `sacct` montre `FAILED,
-  ExitCode 1:0`, aucun traceback Python dans les logs -- le process s'arrête
-  net au milieu d'une barre de progression, sans message d'erreur. Cause
-  probable au niveau infrastructure (nœud), pas un bug du pipeline. À
-  resoumettre tel quel.
-- **42696/42697/42698 (layer sweep 12/31/41), 42703/42704 (attn_out/mlp_out)**
-  : échec immédiat, `ValueError: Release gemma-scope-2-12b-it not found in
-  pretrained SAEs directory, and is not a valid huggingface repo`. Cause
-  racine identifiée : seuls les poids GemmaScope `resid_post/layer_24_width_
-  {16k,65k,262k}` ont jamais été téléchargés localement
-  (`local_data/saes/gemma-scope-2-12b-it/snapshots/.../resid_post/`) -- aucun
-  poids pour les layers 12/31/41 ni pour les hook-points `attn_out`/`mlp_out`
-  (confirmés publiés par GemmaScope-2 en §36, mais jamais effectivement
-  récupérés). Les nœuds de calcul étant offline (`HF_HUB_OFFLINE=1`), le
-  fallback Hub échoue aussi. **Corrigé** : les 5 configurations manquantes
-  téléchargées via `download_sae.py --sae-only` (~1,3 Go chacune, ~6,5 Go
-  total, espace disque vérifié avant téléchargement) depuis un shell avec
-  accès réseau. Jobs resoumis tels quels (42812-42816).
+Incident d'infrastructure, détail : `docs/ops_journal.md` §47.
 
 ## 48. Test C2 (gratuit, CPU) : l'origine des exemples positifs ne prédit pas l'interprétabilité
 
