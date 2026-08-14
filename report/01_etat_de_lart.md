@@ -41,6 +41,15 @@ features labellisées), devant 16k (82,6%, 13 535/16 384), très loin devant 262
 largeur 1m n'est pas hébergée par Neuronpedia pour ce modèle (aucune donnée
 disponible). 65k est donc retenue pour le run de mise à l'échelle final (chapitre 3).
 
+Ce critère (couverture de labels) diffère de celui utilisé par Formal et al.
+(SPLARE, 2026, `pdf/Naver.pdf`), qui balaient la largeur du SAE sur une tâche
+de retrieval en aval et observent une relation **log-linéaire** entre largeur
+et performance (16k à 1M de features) — un arbitrage direct entre coût et
+utilité mesurée, plutôt qu'un critère de couverture de labels externes. Les
+deux critères ne sont pas nécessairement alignés : une largeur qui maximise
+la couverture Neuronpedia ne maximise pas forcément l'utilité en aval du
+dictionnaire — question non tranchée par ce projet, cf. chapitre 4.
+
 ## Neuronpedia et l'auto-interprétation des features
 
 [Neuronpedia](https://www.neuronpedia.org) héberge des explications en langage naturel

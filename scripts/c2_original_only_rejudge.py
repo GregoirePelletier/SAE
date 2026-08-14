@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import sys
 
 import numpy as np
@@ -44,14 +45,22 @@ import re
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
+# SEED ajouté (audit 2026-08 round 2, §1, B.17) : ce script rebâtit ses
+# exemples via `build_feature_examples_with_control` (`random.shuffle` sur
+# le pool négatif), sans jamais poser de graine -- non reproductible d'un
+# run à l'autre avant ce correctif. SEED=42 par défaut = comportement le
+# plus proche du run historique non seedé (job 42878, §52) ; SEED!=42 sert
+# à mesurer la variance inter-graine demandée par le round 2.
+SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
 TOKEN_FRAGMENTS_DIR = os.path.join(CACHE_DIR, "p1_token_fragments")
-OUT_PATH = os.path.join(CACHE_DIR, "c2_original_only_rejudge.json")
+OUT_PATH = os.path.join(CACHE_DIR, f"c2_original_only_rejudge_seed{SEED}.json")
 
 
 def main() -> None:
+    random.seed(SEED)
     with open(JUDGE_CACHE, encoding="utf-8") as f:
         original = json.load(f)
     feature_indices = [int(k) for k in original.keys()]

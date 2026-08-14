@@ -62,14 +62,38 @@ def ce_loss_increase(
     """
     ΔCE = CE(patched) - CE(clean), patch x_t → x̂_t = SAE(x_t) à la couche `layer`
     via forward hook. Métrique standard SAEBench de fidélité fonctionnelle.
+
+    `layer` suit la convention `hidden_states[layer]` utilisée partout ailleurs
+    dans ce dépôt (`activations.py::extract_residual_acts`) : `hidden_states[0]`
+    est l'embedding, donc `hidden_states[layer]` = sortie de
+    `model.model.language_model.layers[layer-1]`. On hooke `layers[layer-1]`,
+    pas `layers[layer]` (cf. audit 2026-08, constat E.6 -- jamais appelée avant
+    cette correction, aucun résultat publié n'en dépendait).
+
+    Chemin d'attribut `model.model.language_model.layers`, PAS `model.model.
+    layers` : Gemma-3 enveloppe les blocs transformer dans un sous-module
+    `language_model` (architecture multimodale, même piège déjà rencontré et
+    corrigé pour les hooks attn_out/mlp_out, cf. `saev5.py` l.825/830 et
+    RESULTS_TESTS.md §49 -- `model.model.layers` lève
+    `AttributeError: 'Gemma3Model' object has no attribute 'layers'`, confirmé
+    à l'exécution (job SLURM 43257) avant ce correctif.
     """
     def hook(module, inputs, output):
         h = output[0] if isinstance(output, tuple) else output
-        rec = sae.decode(sae.encode(h.to(torch.bfloat16))).to(h.dtype)
+        # FrozenCoreResidualSAE.decode() indexe `acts[:, :d_core]` en dur (suppose
+        # un tenseur 2D [n, d]) -- `h` ici est 3D [batch, seq, d_model] (sortie
+        # d'un bloc transformer). Aplatit batch/seq avant encode/decode, reforme
+        # après (confirmé nécessaire à l'exécution, job SLURM 43268 :
+        # "mat1 and mat2 shapes cannot be multiplied (1024x17408 and 16384x3840)"
+        # -- 1024 = batch_size*max_length aplati par erreur dans le slicing 2D).
+        orig_shape = h.shape
+        h_flat = h.reshape(-1, orig_shape[-1])
+        rec_flat = sae.decode(sae.encode(h_flat.to(torch.bfloat16)))
+        rec = rec_flat.reshape(orig_shape).to(h.dtype)
         return (rec, *output[1:]) if isinstance(output, tuple) else rec
 
     ce_clean, ce_patch, n = 0.0, 0.0, 0
-    layer_module = model.model.layers[layer]
+    layer_module = model.model.language_model.layers[layer - 1]
     for s in range(0, len(texts), batch_size):
         enc = tokenizer(texts[s:s + batch_size], return_tensors="pt", padding=True,
                         truncation=True, max_length=max_length)

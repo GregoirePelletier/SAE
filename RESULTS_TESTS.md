@@ -2841,4 +2841,292 @@ au §23.4 comme un indice faible, pas une preuve combinée — cette réplicatio
 ne teste que le levier volume, pas `K_EXTRA=5` lui-même (déjà répliqué
 séparément sur 3 seeds au §45, résultat qui lui reste cohérent sur les 3
 seeds, contrairement à celui-ci).
-peu le run principal cœur+extension, 93,5%).
+
+## 57. Audit méthodologique 2026-08 : bug `INTENT_KEYWORDS_FR` sans impact mesuré, fuite de groupe `clf_acc_email_axes` d'ampleur faible, dictionnaire résiduel quasi-orthogonal
+
+**Question** : trois hypothèses indépendantes issues d'un audit méthodologique externe
+(`docs/AUDIT_2026-08.md`) — (a) le pattern regex `\b(radical)\b` de
+`INTENT_KEYWORDS_FR` (`src/data/dataset.py`) rate les formes fléchies, le taux
+`intent_urgency_probe.py` (§13.2) en est-il affecté ? (b) `clf_acc_email_axes`
+(`downstream_classification`, `StratifiedKFold` non group-aware) surestime-t-il la
+performance faute de group-awareness par mail source ? (c) le dictionnaire résiduel
+entraîné (`W_dec_extra`, D_EXTRA=1024) a-t-il développé une structure de superposition,
+ou est-il resté proche de son initialisation PCA orthonormale ?
+
+**Écart à la configuration de référence** : aucun — recalcul rétroactif sur les
+activations et checkpoints déjà en cache (`results_v10_emails_main/`), zéro rerun de
+pipeline, zéro GPU. `scripts/audit_2026_08_palier1_batch.py`,
+`slurm/validation/run_audit_palier1_batch.slurm` (job 43222, CPU-only, 32 cœurs —
+`--cpus-per-task=16` insuffisant en premier essai, job 43216 tué après 34 min sans
+progression mesurable, cf. `CLAUDE.md`).
+
+**Méthode statistique** : (a) comparaison directe des `n_pos`/accuracy avant/après
+correctif regex, mêmes activations, même sonde (`downstream_classification`) ; (b)
+`GroupKFold` (groupes = mail source, reconstruit par réplication déterministe de
+`build_email_train_test_corpus`) vs `StratifiedKFold` actuel, mêmes activations ; (c)
+distribution des cosinus hors diagonale de `W_dec_extra` normalisé (523 776 paires),
+comparée au cosinus moyen attendu pour des directions aléatoires en dimension 3840
+(√(2/(π·d)) ≈ 0,013).
+
+**n** : (a) 3300 mails originaux (train, hors variantes augmentées) ; (b) 41176 lignes
+train (14 classes, 3300 groupes/mails source) ; (c) 1024 directions, 523 776 paires.
+
+**Résultat (a)** — impact du correctif `\b(radical)\b`→`\b(radical\w*)\b` :
+
+| Intention | n_pos original | n_pos corrigé | acc_SAE original | acc_SAE corrigé | Δ vs baseline (orig / corrigé) |
+|---|---|---|---|---|---|
+| `intent_reclamation` | 1819 | 1819 | 97,7% | 97,73% | +42,6 / +42,6 pts |
+| `intent_remboursement` | 479 | 479 | 84,5% | 84,64% | −1,0 / −0,8 pt |
+| `intent_information` | 599 | 599 | 87,8% | 87,79% | +6,0 / +5,9 pts |
+| `intent_urgence` | 968 | 971 | 97,7% | 97,88% | +27,0 / +27,3 pts |
+| `intent_resiliation` | 1 | 1 | — | — | ignoré (classe dégénérée), les deux versions |
+
+**Résultat (b)** — `StratifiedKFold` (actuel) vs `GroupKFold` (parent-aware) :
+
+| Protocole | acc moyenne (5 plis) | folds |
+|---|---|---|
+| StratifiedKFold (actuel) | 93,65% | 0,939 / 0,939 / 0,937 / 0,933 / 0,936 |
+| GroupKFold (corrigé) | 93,28% | 0,931 / 0,933 / 0,932 / 0,937 / 0,930 |
+
+Écart : +0,38 pt. `ConvergenceWarning` (lbfgs, max_iter=1000) sur au moins un des dix
+ajustements — accuracies stables entre plis malgré l'avertissement (écart-type inter-plis
+≈0,003).
+
+**Résultat (c)** — cosinus hors diagonale de `W_dec_extra` (D_EXTRA=1024) :
+cosinus max 0,984 (≈1 paire sur 523 776), cosinus moyen 0,0248, fraction >0,5 : 1,7×10⁻⁵
+(≈9 paires), fraction >0,9 : 1,9×10⁻⁶ (≈1 paire).
+
+**Conclusion** :
+(a) Le bug regex est réel au niveau mot mais **n'a aucun effet mesurable sur le
+résultat déjà publié** (+27,0/+42,6 points inchangés à 0,3 point près) — les mails
+originaux du corpus sont assez longs et lexicalement redondants pour que le radical
+non fléchi apparaisse ailleurs dans le même document dans la quasi-totalité des cas.
+Correctif à appliquer (une ligne, aucune régression identifiée) mais sans conséquence
+sur les chiffres déjà rédigés.
+(b) La fuite de groupe dans `clf_acc_email_axes` est réelle et de sens attendu
+(le protocole actuel surestime légèrement) mais **d'ampleur faible** (+0,4 point,
+93,5%→93,3% recommandé) — pas la surestimation sévère qu'on associerait typiquement à
+une fuite de groupe non corrigée. Distinct et sans lien avec la question, séparée et
+toujours ouverte, du signal lexical/templating (`augmentation_lexical_leakage_audit.py`,
+qui utilise lui-même `StratifiedKFold` non corrigé pour son baseline TF-IDF).
+(c) Le dictionnaire résiduel entraîné est **quasi-orthogonal** (cosinus moyen à peine
+2× la valeur attendue pour des directions aléatoires, une seule paire quasi-colinéaire
+sur plus d'un demi-million) — cohérent avec l'hypothèse que le SAE d'extension
+(D_EXTRA=1024 pour d_model=3840) est resté proche de son initialisation PCA plutôt que
+de développer une structure de superposition riche, sans qu'on puisse en conclure que
+la taille du dictionnaire est la cause (nécessiterait le balayage D_EXTRA complet,
+non fait ici).
+
+**Limite connue** : (a)/(b) recalculés sur `results_v10_emails_main` uniquement (le run
+principal cité au chapitre 3), pas sur les runs d'ablation dérivés qui utilisent aussi
+`clf_acc_email_axes`/les labels `intent_*`. (c) mesure la géométrie finale du
+dictionnaire, pas sa dérive par rapport à l'init PCA (nécessiterait de conserver le
+checkpoint d'initialisation, non fait dans l'entraînement actuel) ni un lien causal
+avec le taux d'interprétabilité (répond à "le dictionnaire a-t-il développé une
+structure riche", pas à "une structure riche rendrait-elle les features plus
+interprétables"). Détail complet, preuve et code : `docs/AUDIT_2026-08.md`
+(constats B.26, B.6, B.1.1).
+
+## 58. Audit méthodologique 2026-08 (suite) : ΔCE intégrée (métrique standard SAEBench/SAE Boost), confond `input_scale` du sanity check Frozen Decoder corrigé
+
+**Question** : (a) `ce_loss_increase` (`src/sae/compare/crosslingual.py`) implémente
+déjà la métrique ΔCE standard du domaine (CE(patched) - CE(clean)) mais n'était jamais
+appelée — quel est le ΔCE du core seul vs core+extension, dans un référentiel comparable
+à GemmaScope/SAE Boost ? (b) `FrozenDecoderExtendedSAE` (sanity check Korznikov et al.,
+§19, 29,3%) hérite `input_scale=1,0` non calibré, contrairement à `ExtendedSAE`
+(45,3%, échelle calibrée ≈3993) — la comparaison publiée 45,3% vs 29,3% est-elle
+faussée par cette différence d'échelle, et dans quel sens ?
+
+**Écart à la configuration de référence** : (a) aucun — recalcul sur un échantillon de
+contrôle (60 mails originaux), même checkpoint d'extension déjà entraîné
+(`p1_frozen_core_d1024_k32.pt`). (b) retrain de l'encodeur seul (décodeur aléatoire
+figé inchangé, même principe que `FrozenDecoderExtendedSAE`), sur le réservoir de
+résidus déjà en cache (`p1_raw_residuals.pt`, 500k tokens, aucun forward LM
+supplémentaire pour l'entraînement), avec `input_scale` calibré sur la médiane des
+normes du résidu (même formule que `ExtendedSAE._init_from_residual_pca`, direction du
+décodeur non touchée).
+
+**Méthode** : (a) forward hook sur `model.model.language_model.layers[LAYER-1]` (aplati
+`[batch,seq,d]→[n,d]` avant `encode`/`decode`, trois bugs distincts corrigés en série —
+détail complet dans `docs/AUDIT_2026-08.md`, constat B.20/E.6), CE calculée par
+`AutoModelForCausalLM` avec labels décalés. (b) `ScaleCalibratedFrozenDecoderSAE`
+(sous-classe locale de `FrozenDecoderExtendedSAE`, script d'audit autonome, ne modifie
+pas `frozen_core.py`), 10 epochs, `lr=3e-4`, rejugée avec le protocole odd-one-out
+standard sur les mêmes 150 features que le run principal.
+
+**n** : (a) 60 documents. (b) 150 features (mêmes que le run principal et que
+`FrozenDecoderExtendedSAE` original).
+
+**Résultat (a)** :
+
+| Condition | CE clean | CE patchée | ΔCE |
+|---|---|---|---|
+| Core seul | 2,177 | 3,475 | 1,298 |
+| Core + extension | 2,177 | 2,582 | 0,404 |
+
+**Résultat (b)** :
+
+| Configuration | `input_scale` | Décodeur | Taux interp. |
+|---|---|---|---|
+| `ExtendedSAE` (référence, §12) | calibré (≈3993) | appris | 45,3% (68/150) |
+| `FrozenDecoderExtendedSAE` original (§19) | 1,0 (non calibré) | aléatoire figé | 29,3% |
+| `FrozenDecoderExtendedSAE`, échelle calibrée (ce test) | calibré (≈3993) | aléatoire figé | **16,0% (24/150)** |
+
+**Conclusion** :
+(a) L'extension réduit le ΔCE de 1,298 à 0,404 (−69%) — première mesure de fidélité
+fonctionnelle (pas seulement de reconstruction) de ce projet, dans un référentiel
+directement comparable à la littérature. Cohérent avec et renforce la lecture déjà
+tirée de la FVE (le résidu non capturé par le core seul reste fonctionnellement
+significatif pour le LLM).
+(b) Corriger le confond `input_scale` fait **chuter** le score du décodeur aléatoire
+(29,3%→16,0%), pas monter comme l'hypothèse de départ le craignait — l'écart avec le
+SAE entraîné se creuse (29,3 points) plutôt que de se resserrer une fois l'échelle
+égalisée. Le sanity check Korznikov et al. en ressort **renforcé**, pas affaibli : le
+chiffre 45,3% n'était pas favorisé par un confond de comparaison.
+
+**Limite connue** : (a) n=60, une seule couche, pas de comparaison chiffrée directe aux
+ΔCE publiés de GemmaScope/SAE Boost (échelles différentes). (b) mécanisme non élucidé
+de la chute 29,3%→16,0% — en principe la calibration d'un scalaire d'échelle devrait
+être absorbée par l'entraînement de l'encodeur (biais, seuil BatchTopK appris) sans
+changer le score final ; qu'elle le fasse chuter suggère soit un effet d'entraînement à
+budget d'epochs fixe (10 epochs, peut-être insuffisant dans le nouveau régime
+d'échelle), soit un effet réel non trivial — non tranché dans cette passe, à
+recreuser avant de citer l'écart exact (16,0% vs 29,3%) comme autre chose qu'indicatif.
+Détail complet, preuve et code : `docs/AUDIT_2026-08.md` (constats B.20, A.3.3, E.6).
+
+## 59. Audit méthodologique 2026-08 (suite) : biais de longueur du max-pooling très fort (ρ=0,906), McNemar odd-one-out/contrastif non interprétable
+
+**Question** : (a) le pooling documentaire max sur les codes SAE (`doc_vec[f] =
+max_t enc(x_t)[f]`) dépend-il mécaniquement de la longueur du document, comme le
+prédit sa nature de statistique d'ordre ? (b) le gate odd-one-out et la labellisation
+contrastive directe (`p1_contrastive_labels.json`, §15.4) sont-ils en désaccord
+structuré sur les mêmes features, une fois testé formellement par McNemar ?
+
+**Écart à la configuration de référence** : aucun — recalcul CPU-only sur les
+activations et labels déjà en cache, zéro GPU.
+
+**Méthode statistique** : (a) corrélation de Spearman entre longueur du document
+(caractères) et deux quantités dérivées de `doc_vec` (nombre de features actives,
+norme du vecteur). (b) McNemar apparié (`src/analysis/stats.py::paired_mcnemar_test`)
+sur les features en commun entre les deux caches de labels.
+
+**n** : (a) 41 176 documents train. (b) 150 features en commun.
+
+**Résultat (a)** :
+
+| Paire | ρ (Spearman) | p |
+|---|---|---|
+| Longueur ↔ nombre de features actives | **0,906** | ≈0 |
+| Longueur ↔ norme du vecteur document | **0,755** | ≈0 |
+
+**Résultat (b)** : `confident=True` pour 150/150 features du protocole contrastif
+(`rate_contrastive_confident=1,0`, aucune exception) ; taux odd-one-out 45,3% (68/150)
+sur les mêmes features. McNemar : statistique=80,0, p=3,7×10⁻¹⁹.
+
+**Conclusion** :
+(a) Corrélation très forte, confirmant sans ambiguïté l'hypothèse du biais de longueur.
+Le nombre de features actives par document (moyenne 2454/17408) suit majoritairement
+la longueur du texte, pas uniquement son contenu. Tout ce qui est calculé sur `doc_vec`
+(`clf_acc_email_axes`, silhouette, diffing) hérite potentiellement de ce confond dans
+une mesure non encore quantifiée précisément métrique par métrique.
+(b) Le test McNemar est calculable mais **non interprétable en l'état** : une des deux
+conditions comparées (le gate `confident` du protocole contrastif) n'a aucune variance
+sur cet échantillon — le rejeter systématiquement à `True` rend toute comparaison
+structurée avec l'odd-one-out vide de sens statistique, même si le p formel est
+extrême. N'ajoute rien à ce que §15.4 avait déjà établi qualitativement (biais de
+complaisance du juge contrastif).
+
+**Limite connue** : (a) mesure la corrélation, pas l'effet causal sur une métrique
+particulière une fois contrôlé — un pooling alternatif (moyenne, max normalisé) reste
+à tester pour quantifier l'ampleur réelle de la contamination sur `clf_acc_email_axes`.
+(b) tant que le gate `confident` du protocole contrastif reste dégénéré, aucune
+comparaison formelle à l'odd-one-out ne sera informative — corriger le gate
+(seuil de cohérence inter-labels, cf. §15.4) est un préalable, pas cette comparaison
+elle-même. Détail complet, preuve et code : `docs/AUDIT_2026-08.md` (constats B.9,
+A.2/F.2).
+
+## 60. CORRECTIF MAJEUR — le premier correctif de B.26 (§57) était lui-même cassé ; une fois réellement corrigé, l'impact est massif, pas négligeable
+
+**§57 est caduc sur ce point précis et ne doit plus être cité comme concluant sur
+l'ampleur de B.26.** Le correctif appliqué dans `audit_2026_08_palier1_batch.py`
+(`v[:-3] + r"\w*)\b"`) n'ajoutait `\w*` qu'à la **toute dernière** alternative de
+chaque groupe `(a|b|c)`, jamais aux précédentes — un artefact de découpage de chaîne,
+pas une erreur de conception. Les radicaux réellement cassés identifiés en §57
+(`contest`, `r[ée]clamation`, `r[ée]sili`, `clôtur`, `rembours`, `renseign`,
+`imm[ée]diat`) restaient donc non corrigés dans le "correctif", ce qui explique les
+flips quasi nuls (0-3 documents) observés — ils ne mesuraient l'effet que sur la
+dernière alternative de chaque groupe, presque toujours déjà un mot complet ou une
+expression peu affectée.
+
+**Question** : quel est l'impact réel une fois `\w*` appliqué à CHAQUE alternative
+concernée (pas seulement la dernière) ?
+
+**Méthode** : patterns réécrits à la main, alternative par alternative (pas de
+transformation générique — leçon tirée de l'échec du premier correctif) :
+`\b(radical\w*|...)\b` pour chaque radical à un seul mot, alternatives-phrases (avec
+espaces) laissées inchangées. Vérification préalable par échantillonnage manuel : 40
+occurrences de « résili » tirées au hasard avec contexte, lues directement — **40/40
+sont des mentions authentiques d'intention de résiliation**, aucun faux positif de
+bruit détecté (répond à l'hypothèse concurrente posée par le round d'audit qui a
+signalé ce problème : le sous-comptage d'origine était bien aussi sévère que redouté,
+pas un radical qui capterait du bruit).
+
+**n** : 3480 mails originaux (impact corpus), 3300 mails train (rejugement).
+
+**Résultat — impact corpus (documents concernés)** :
+
+| Intention | n_pos original (buggé) | n_pos corrigé (v2, réel) | Facteur |
+|---|---|---|---|
+| Réclamation | 1905 | 1906 | ×1,00 |
+| **Résiliation** | **1** | **864** | **×864** |
+| Remboursement | 499 | 796 | ×1,60 |
+| Information | 627 | 2111 | ×3,37 |
+| Urgence | 1022 | 1177 | ×1,15 |
+
+**Résultat — sonde de classification (n=3300, mêmes activations en cache)** :
+
+| Intention | n_pos (corrigé) | Précision sonde | Baseline | Écart | vs référence buguée (z, p) |
+|---|---|---|---|---|---|
+| Réclamation | 1820/3300 | 97,6% | 55,2% | +42,4 pts | z=0,02, p=0,98 (ns — inchangé) |
+| **Résiliation** | **813/3300** | **97,8%** | **75,4%** | **+22,4 pts** | *(n/a — précédemment exclue, n_pos=1)* |
+| Remboursement | 761/3300 | 80,4% | 76,9% | **+3,5 pts** | z=8,89, p=6,3×10⁻¹⁹ (n_pos change massivement) |
+| Information | 2005/3300 | 90,2% | 60,8% | **+29,4 pts** | z=35,4, p≈0 (changement massif) |
+| Urgence | 1117/3300 | 95,2% | 66,2% | +29,1 pts | z=3,95, p=8×10⁻⁵ (significatif mais modéré) |
+
+**Conclusion, sans atténuation** :
+1. **Réclamation reste quasi inchangée** (+42,4 vs +42,6 pts) — cohérent avec le fait
+   que ses radicaux dominants (« inadmissible », « scandaleux ») étaient déjà des mots
+   complets échappant au bug d'origine.
+2. **Résiliation passe d'exclue (n_pos=1, "classe dégénérée") à un résultat fort et
+   testable (+22,4 pts)** — un résultat entièrement absent du rapport jusqu'ici,
+   maintenant disponible.
+3. **Remboursement change de signe** : de −1,0 pt (le SAE ne bat pas la baseline,
+   lu comme un échec ou une limite du label) à +3,5 pts (signal réel, modeste mais
+   positif). La lecture "remboursement n'est pas capté par le SAE" du rapport actuel
+   n'est plus soutenable telle quelle.
+4. **Information change radicalement** : de +6,0 pts (résultat faible) à **+29,4 pts**
+   (un des résultats les plus forts du tableau) — l'intention la plus sous-évaluée par
+   le bug d'origine.
+5. **Urgence** reste dans le même ordre de grandeur (+29,1 vs +27,0 pts) mais avec un
+   changement de composition significatif (z=3,95) — la prévalence corrigée (33,8% vs
+   29,3%) reste dans la plage où la conclusion qualitative ne change pas.
+
+**Le tableau §13.2 (et sa reprise en `03_experiences_et_resultats.md` §5.1, présenté
+dans le rapport comme la preuve la plus fiable des objectifs urgence/intention) doit
+être intégralement remplacé par les chiffres ci-dessus, avec une nouvelle ligne
+Résiliation.** Mis à jour dans le rapport (`03_experiences_et_resultats.md` §5.1) suite
+à ce constat.
+
+**Ce que ce correctif ne règle pas encore** : `src/data/dataset.py::INTENT_KEYWORDS_FR`
+en production contient toujours le pattern buggé d'origine — seul le script d'audit
+autonome (`audit_2026_08_b26_round2_fix.py`) utilise les patterns corrigés, par
+monkey-patch, sans toucher le fichier de production. Appliquer le correctif en
+production reste **en attente de confirmation explicite** avant modification (fichier
+partagé, `load_mails_tsv` consommé par de nombreux scripts et par le cache
+`intent_urgency_probe_results.json` déjà publié).
+
+**Limite connue** : vérification manuelle faite uniquement pour « résili » (le plus
+gros facteur de changement, ×864) — les trois autres intentions dont `n_pos` change
+significativement (remboursement ×1,60, information ×3,37) n'ont pas reçu le même
+contrôle qualité manuel, à faire avant de publier ces chiffres sans réserve. Détail
+complet, preuve et code : `docs/AUDIT_2026-08.md` (B.26, section réouverte).

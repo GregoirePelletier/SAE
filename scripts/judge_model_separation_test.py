@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import sys
 
 import torch
@@ -30,14 +31,18 @@ from src.data.preparation import build_email_train_test_corpus
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "/home/h21486/SAE/models/gemma-3-4b-it")
+# SEED ajouté (audit 2026-08 round 2, §1, B.17) : cf. c2_original_only_rejudge.py
+# pour la justification -- ce script n'était jamais seedé avant ce correctif.
+SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
 TOKEN_FRAGMENTS_DIR = os.path.join(CACHE_DIR, "p1_token_fragments")
-OUT_PATH = os.path.join(CACHE_DIR, "p1_judge_model_separation.json")
+OUT_PATH = os.path.join(CACHE_DIR, f"p1_judge_model_separation_seed{SEED}.json")
 
 
 def main() -> None:
+    random.seed(SEED)
     with open(JUDGE_CACHE, encoding="utf-8") as f:
         original = json.load(f)
     feature_indices = [int(k) for k in original.keys()]

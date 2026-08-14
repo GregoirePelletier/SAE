@@ -203,7 +203,14 @@ def load_or_train_sae(d_in: int, d_sae: int, k: int, embeddings: torch.Tensor,
 
     print(f"  [Phrase] Entraînement du Phrase-Level SAE sur {embeddings.shape[0]} phrases...")
     optimizer = torch.optim.Adam(sae.parameters(), lr=lr)
-    batch_size = 256
+    # BATCH_TRAIN (config.py), pas une constante locale -- même valeur par défaut
+    # (256), mais respecte désormais une éventuelle surcharge par variable
+    # d'environnement plutôt que de l'ignorer silencieusement (audit 2026-08
+    # round 3, §6.8).
+    try:
+        from src.config import BATCH_TRAIN as batch_size
+    except ImportError:
+        from config import BATCH_TRAIN as batch_size
     history = {"epoch": [], "loss": [], "l0": [], "dead_frac": [], "aux_loss": [], "step": []}
     step = 0
 

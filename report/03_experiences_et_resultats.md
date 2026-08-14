@@ -156,6 +156,27 @@ ne peut donc pas, seul, être lu comme une preuve de compréhension sémantique 
 sur labels faibles indépendants du corpus augmenté (5.1) reste la preuve la plus
 fiable des objectifs urgence/intention.
 
+**Réserve méthodologique additionnelle** (`RESULTS_TESTS.md` §57) : la validation
+croisée à 5 plis de cette sonde n'était, jusqu'à cet audit, pas consciente du mail
+source (`StratifiedKFold` plutôt que `GroupKFold` sur l'identifiant du mail d'origine)
+— les variantes augmentées d'un même mail pouvaient donc se répartir entre plis
+d'entraînement et de test. Recalculé avec `GroupKFold` (parent-aware) : 93,3% contre
+93,5% cité ci-dessus, un écart de 0,4 point — la fuite de groupe est réelle mais son
+ampleur mesurée reste faible, elle ne change pas la lecture de la réserve précédente.
+
+**Réserve méthodologique supplémentaire, plus sérieuse** (`RESULTS_TESTS.md` §58) : le
+pooling documentaire (`doc_vec[f] = max_t enc(x_t)[f]`) est une statistique d'ordre qui
+croît mécaniquement avec le nombre de tokens du document. Mesuré directement sur les
+41 176 documents du corpus train : corrélation de Spearman **ρ=0,906** entre la
+longueur du document et son nombre de features actives, ρ=0,755 avec la norme du
+vecteur document — une corrélation très forte, pas un artefact marginal. Les axes
+d'augmentation ne préservant pas nécessairement la longueur à l'identique (colère/
+panique tendent à produire des textes plus longs que calme/standard), une partie de la
+séparabilité mesurée par cette sonde pourrait refléter la longueur du texte plutôt que
+son contenu sémantique — hypothèse plausible, pas encore quantifiée précisément pour
+cette sonde en particulier (à faire : contrôler par la longueur ou tester un pooling
+alternatif moins sensible, par exemple une moyenne ou un maximum normalisé).
+
 ### 1.6. Protocole d'évaluation complet du dépôt
 
 Les tests ci-dessus s'inscrivent dans un protocole plus large couvrant l'ensemble des
@@ -610,6 +631,19 @@ acquis — mais c'est la première fois que le choix du layer 24 apparaît
 potentiellement sous-optimal sur le critère qui compte réellement pour ce
 projet. Détail complet : `RESULTS_TESTS.md` §51.
 
+Ce résultat converge avec une observation indépendante de la littérature :
+Formal et al. (SPLARE, NAVER Labs Europe, 2026, `pdf/Naver.pdf`) balaient les
+couches de Llama-3.1-8B et Gemma-2-2B pour une tâche de retrieval fondée sur
+un SAE, et trouvent un optimum systématique aux **deux tiers de la
+profondeur du modèle** (couche ~20/32 et ~16/26). Layer 31 sur un modèle à
+48 couches se situe à ~0,65 de la profondeur — dans la même zone. La
+convergence est notable dans la mesure où la tâche diffère (retrieval vs
+auto-interprétabilité par juge) et où l'architecture d'adaptation est
+inversée (SPLARE gèle le SAE et adapte le LLM par LoRA ; ce projet gèle le
+core et entraîne une extension) — un effet de profondeur qui survit à ces
+deux changements est un indice plus solide qu'un résultat isolé sur un seul
+projet.
+
 ### 4.3. Point d'extraction
 
 Dernier volet du balayage : à layer fixe (24), comparer le residual stream
@@ -665,21 +699,40 @@ information, urgence), appliqués aux 3 300 mails originaux du split d'entraîne
 (`scripts/intent_urgency_probe.py`, zéro calcul GPU — réutilise
 `p1_all_doc_acts_ext_d1024.pt` déjà en cache).
 
+**Correctif méthodologique appliqué (`RESULTS_TESTS.md` §57/§60)** : les patterns
+regex de `INTENT_KEYWORDS_FR` utilisaient `\b(radical)\b`, qui ne capte que la forme
+non fléchie exacte du radical (`\b` exige un mot complet des deux côtés) — ratant
+systématiquement les formulations conjuguées/dérivées les plus naturelles (« je
+conteste », « résilier », « remboursement », « renseignement »). Un premier correctif
+partiel s'est révélé lui-même défectueux (n'affectait que la dernière alternative de
+chaque groupe) ; les chiffres ci-dessous utilisent le correctif complet, vérifié
+alternative par alternative et contrôlé manuellement par échantillonnage (40
+occurrences de « résili » lues directement, 0 faux positif). Le fichier de production
+(`src/data/dataset.py`) reste à mettre à jour avec ce pattern corrigé ; les chiffres
+ci-dessous sont recalculés sur les activations déjà en cache avec les labels corrigés.
+
 | Intention | Prévalence | Précision sonde | Baseline (classe majoritaire) | Écart |
 |---|---|---|---|---|
-| Urgence | 29,3% | 97,7% | 70,7% | **+27,0 pts** |
-| Réclamation | 55,1% | 97,7% | 55,1% | **+42,6 pts** |
-| Information | 18,2% | 87,8% | 81,8% | +6,0 pts |
-| Remboursement | 14,5% | 84,5% | 85,5% | −1,0 pt |
+| Réclamation | 55,2% | 97,6% | 55,2% | **+42,4 pts** |
+| **Résiliation** | 24,6% | 97,8% | 75,4% | **+22,4 pts** |
+| Information | 60,8% | 90,2% | 60,8% | **+29,4 pts** |
+| Urgence | 33,8% | 95,2% | 66,2% | **+29,1 pts** |
+| Remboursement | 23,1% | 80,4% | 76,9% | +3,5 pts |
 
 Ce résultat répond directement aux deux objectifs "détection d'urgence" et
-"détection d'intentions" énoncés dans le cadrage initial du projet : les codes
-latents du SAE séparent très nettement l'urgence et la réclamation, sur des mails
-originaux non augmentés, avec un gain net important sur la baseline naïve. Le
-remboursement ne bat pas sa baseline (déjà forte du fait du déséquilibre de classe,
-85,5% de négatifs) — à interpréter comme une limite du label faible par regex pour
-cette catégorie plutôt que comme un échec du SAE, sans donnée annotée manuellement
-pour trancher entre les deux hypothèses.
+"détection d'intentions" énoncés dans le cadrage initial du projet : les codes latents
+du SAE séparent nettement les cinq intentions testées sur des mails originaux non
+augmentés, avec un gain net sur la baseline naïve dans tous les cas. **Résiliation**,
+totalement invisible avant le correctif (un seul document positif détecté sur tout le
+corpus, catégorie exclue de l'analyse), apparaît comme un résultat fort une fois
+correctement labellisée. **Information** passe d'un résultat faible (+6,0 pts avant
+correctif) à l'un des plus nets du tableau (+29,4 pts) — l'intention la plus affectée
+par le sous-comptage d'origine. Le remboursement reste la classe la plus difficile,
+mais bat désormais sa baseline (+3,5 pts, contre −1,0 pt avant correctif) — la lecture
+"le SAE ne capte pas le remboursement" n'est plus soutenable ; le signal est réel,
+seulement plus modeste que pour les quatre autres intentions, cohérent avec un
+vocabulaire intrinsèquement plus diffus pour cette catégorie (montants, références
+numériques) plutôt qu'un échec du SAE ou un artefact du label.
 
 ### 5.2. Fidélité de l'explication document-level
 
@@ -773,6 +826,19 @@ nulles, mais un seul document sur 3480 dans tout le corpus partage une
 intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
 latent très parcimonieux (k=16), pas un raté sémantique. Détail
 complet : `RESULTS_TESTS.md` §26.
+
+**Réserve méthodologique sur la comparaison à TF-IDF (§5.1 et §5.5)** : la vérité
+terrain utilisée dans les deux cas (`INTENT_KEYWORDS_FR`) est elle-même construite par
+détection de mots-clés. Comparer un système sémantique (SAE ou Latent Terms) à un
+système lexical (TF-IDF) sur une étiquette **définie par la présence de mots-clés**
+favorise structurellement le système lexical — le cas où TF-IDF bat nettement Latent
+Terms (urgence, 0,80 vs 0,00 ci-dessus) est cohérent avec cette hypothèse, pas
+seulement avec la limite du BM25 parcimonieux diagnostiquée séparément. Ce n'est pas un
+test totalement loyal de la valeur sémantique ajoutée face à une baseline lexicale ; une
+vérité terrain indépendante du regex (annotation manuelle sur un petit échantillon)
+serait nécessaire pour trancher si l'écart mesuré reflète un apport sémantique réel ou
+un artefact de la définition de l'étiquette. Non tranché à ce stade — perspective pour
+la suite (chapitre 4).
 
 ### 5.6. Le core seul égale-t-il core+extension sur les métriques en aval ?
 

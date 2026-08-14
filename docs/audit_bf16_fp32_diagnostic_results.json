@@ -1,0 +1,27 @@
+{
+  "n_tokens": 14235,
+  "mu_norm_x_bf16": 49737.78515625,
+  "sd_norm_x_bf16": 9930.3017578125,
+  "strata": {
+    "sous_2sigma": {
+      "n": 14151,
+      "mean_abs_delta_x": 171.24749755859375,
+      "mean_rel_delta_x": 0.0034965998493134975,
+      "mean_residual_norm_asis": 4212.26611328125,
+      "mean_abs_delta_residual": 278.1866760253906,
+      "mean_rel_delta_residual_vs_residual_norm": 0.06920342147350311,
+      "median_rel_delta_residual_vs_residual_norm": 0.05420081317424774,
+      "frac_delta_residual_gt_half_residual_norm": 0.0028266552835702896
+    },
+    "entre_2_4sigma": {
+      "n": 84,
+      "mean_abs_delta_x": 230.99032592773438,
+      "mean_rel_delta_x": 0.0032427189871668816,
+      "mean_residual_norm_asis": 3960.56396484375,
+      "mean_abs_delta_residual": 258.39044189453125,
+      "mean_rel_delta_residual_vs_residual_norm": 0.06626583635807037,
+      "median_rel_delta_residual_vs_residual_norm": 0.05906441807746887,
+      "frac_delta_residual_gt_half_residual_norm": 0.0
+    }
+  }
+}

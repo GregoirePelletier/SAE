@@ -103,6 +103,20 @@ plutôt que de choisir arbitrairement entre les trois formules existantes.
   `src/analysis/cooccurrence.py::corpus_diff_stats`, remplace un diffing naïf par
   écarts de fréquence sans contrôle du taux de faux positifs.
 
+## Réutilisations envisageables et non retenues — verdict par brique
+
+Instruit dans le cadre de l'audit `docs/AUDIT_2026-08.md` (Axe A.6) : pour chaque
+capacité qu'un dépôt tiers aurait pu fournir, un verdict explicite plutôt qu'une simple
+absence de mention.
+
+| Brique | Existant | Ce projet fait | Verdict |
+|---|---|---|---|
+| Auto-interprétation | `EleutherAI/delphi` (ex-`sae-auto-interp`) : scorers *detection*/*fuzzing*/*simulation*, prompts et protocoles publiés, comparables à la littérature | protocole odd-one-out maison (`src/sae/judge.py`), prompts maison, ρ_interp maison | **Pas clairement défendable.** L'audit a trouvé plusieurs défauts propres au protocole maison (biais de sélection du contrôle négatif — B.3 ; ρ_interp non conforme à Bills et al. — B.5 ; reconstruction non-déterministe des exemples entre scripts — B.28) qu'un harnais mature et déjà validé par la communauté aurait probablement évités. Aucun essai de `delphi` n'a jamais été tenté pour trancher si son adaptation est réellement plus coûteuse que ces correctifs cumulés. |
+| Entraînement de SAE | `SAELens` (`SAETrainingRunner`), `saprmarks/dictionary_learning` | harnais maison (`sae_shared.py`, `phrase_sae.py`), `FrozenCoreResidualSAE`/`ExtendedSAE` | **Défendable.** L'architecture centrale du projet (core gelé + résidu entraîné à part, cf. identification a posteriori comme SAE Boost) n'a pas d'équivalent direct dans `SAETrainingRunner`, conçu pour entraîner un SAE unique de bout en bout. SAELens reste utilisé là où c'est pertinent (chargement/encodage du core GemmaScope-2 préentraîné, `gemma_scope_loader.py`) — pas une réimplémentation par principe, un harnais complémentaire pour un besoin que l'existant ne couvre pas. |
+| Évaluation de SAE | `SAEBench` (sparse probing, absorption, unlearning, RAVEL) | métriques maison (`src/analysis/metrics.py`) + odd-one-out maison | **Pas défendable en l'état, coût d'adoption inconnu.** Les taux publiés dans ce rapport ne sont comparables à aucun chiffre de la littérature faute d'un harnais commun — signalé explicitement dans le rapport (chapitre 4) mais jamais quantifié : combien de temps adopter `SAEBench` prendrait-il, et quels chiffres actuels resteraient valides après migration ? Non instruit. |
+| Latent Terms | `x-tabdeveloping/latent_terms` (dépôt JAX tiers) | réimplémentation ~40 lignes (`src/sae/retrieval/latent_terms.py`) | **Défendable.** Algorithme petit et self-contained (BM25 sur un vocabulaire latent SAE) ; le dépôt tiers est en JAX, ajouterait une dépendance lourde pour ~40 lignes de logique. À vérifier comme oracle de test si F.1 (audit) est entrepris, mais la réimplémentation elle-même n'est pas le problème — les écarts protocolaires listés en A.4 (SAE entraîné en domaine, phrase-level plutôt que token-level) le sont. |
+| interp_embed | dépôt officiel (Jiang, Sun et al.) | jamais installé (`external/interp_embed` submodule vide) ; comparaison faite par lecture du papier uniquement | **Non défendable tel quel — c'est l'écart le plus net des cinq.** La règle de ce projet (`CLAUDE.md`, "ne pas réimplémenter une fonctionnalité déjà présente... sans comparaison documentée") est respectée pour la partie "documentée" (comparaison détaillée ci-dessus) mais pas pour la partie "sans réimplémenter sans avoir vérifié l'existant" : la comparaison n'a jamais été validée par une exécution réelle du code de référence sur son propre cas jouet. Correctif peu coûteux déjà identifié (F.2 de l'audit) : cloner le dépôt, faire tourner leur exemple, vérifier la cohérence — pas encore fait. |
+
 ## Modèles
 
 | Modèle | Rôle | Taille |

@@ -1,0 +1,95 @@
+{
+  "corpus_level_impact_v2": {
+    "reclamation": {
+      "n_pos_original": 1905,
+      "n_pos_corrige_v2": 1906,
+      "flip_on_document_level": 1,
+      "flip_off_document_level": 0
+    },
+    "resiliation": {
+      "n_pos_original": 1,
+      "n_pos_corrige_v2": 864,
+      "flip_on_document_level": 863,
+      "flip_off_document_level": 0
+    },
+    "remboursement": {
+      "n_pos_original": 499,
+      "n_pos_corrige_v2": 796,
+      "flip_on_document_level": 297,
+      "flip_off_document_level": 0
+    },
+    "information": {
+      "n_pos_original": 627,
+      "n_pos_corrige_v2": 2111,
+      "flip_on_document_level": 1484,
+      "flip_off_document_level": 0
+    },
+    "urgence": {
+      "n_pos_original": 1022,
+      "n_pos_corrige_v2": 1177,
+      "flip_on_document_level": 155,
+      "flip_off_document_level": 0
+    }
+  },
+  "probe_results_v2": {
+    "intent_reclamation": {
+      "n_pos": 1820,
+      "n_total": 3300,
+      "acc_sae": 0.9757575757575756,
+      "majority_baseline": 0.5515151515151515,
+      "delta_pts": 42.42424242424241,
+      "n_pos_vs_reference": {
+        "n_pos_reference": 1819,
+        "diff": 0.00030303030303024947,
+        "z": 0.024749232542060753,
+        "p": 0.980254985201135
+      }
+    },
+    "intent_resiliation": {
+      "n_pos": 813,
+      "n_total": 3300,
+      "acc_sae": 0.9778787878787879,
+      "majority_baseline": 0.7536363636363637,
+      "delta_pts": 22.424242424242426
+    },
+    "intent_remboursement": {
+      "n_pos": 761,
+      "n_total": 3300,
+      "acc_sae": 0.803939393939394,
+      "majority_baseline": 0.7693939393939394,
+      "delta_pts": 3.4545454545454546,
+      "n_pos_vs_reference": {
+        "n_pos_reference": 479,
+        "diff": 0.08545454545454545,
+        "z": 8.886440526369105,
+        "p": 6.309780443965967e-19
+      }
+    },
+    "intent_information": {
+      "n_pos": 2005,
+      "n_total": 3300,
+      "acc_sae": 0.9015151515151516,
+      "majority_baseline": 0.6075757575757575,
+      "delta_pts": 29.393939393939405,
+      "n_pos_vs_reference": {
+        "n_pos_reference": 599,
+        "diff": 0.42606060606060603,
+        "z": 35.409847691493006,
+        "p": 1.2045203531999527e-274
+      }
+    },
+    "intent_urgence": {
+      "n_pos": 1117,
+      "n_total": 3300,
+      "acc_sae": 0.9524242424242425,
+      "majority_baseline": 0.6615151515151515,
+      "delta_pts": 29.0909090909091,
+      "n_pos_vs_reference": {
+        "n_pos_reference": 968,
+        "diff": 0.045151515151515165,
+        "z": 3.945266358084401,
+        "p": 7.971132225997251e-05
+      }
+    }
+  }
+}

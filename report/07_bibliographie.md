@@ -69,6 +69,19 @@
   Retrievers Contain Trivially Extractable BM25-ready Zipfian Vocabularies*.
   arXiv:2605.29384. Méthode de retrieval BM25 sur le vocabulaire latent d'un
   SAE, implémentée dans `src/sae/retrieval/latent_terms.py`.
+- Formal, T., Louis, M., Déjean, H., Clinchant, S. (2026). *Learning Retrieval
+  Models with Sparse Autoencoders*. NAVER LABS Europe. arXiv:2603.13277.
+  Introduit SPLARE : insère un SAE gelé (Llama Scope/Gemma Scope) à une couche
+  intermédiaire du LLM, puis adapte le LLM par LoRA + distillation KL — paradigme
+  inverse de ce projet (ici, le core est gelé, l'extension entraînée). Deux
+  résultats directement recoupés par ce stage : l'optimum de performance se
+  situe systématiquement aux deux tiers de la profondeur du modèle (couche ~20/32
+  sur Llama-3.1-8B, ~16/26 sur Gemma-2-2B, Fig. 2 gauche) — à comparer à la
+  couche 31/48 (~0,65 de profondeur) retenue empiriquement ici (chapitre 3) ;
+  et une relation log-linéaire entre largeur du SAE et performance en aval
+  (Fig. 2 droite), à mettre en regard du choix de largeur de ce projet (guidé
+  par la couverture des labels Neuronpedia, pas par une métrique d'utilité en
+  aval — chapitre 4).
 - Beckmann, P., Queloz, M. (2026). *Mechanistic Indicators of Understanding
   in Large Language Models*. arXiv:2507.08017. Cadrage philosophique cité en
   introduction.
