@@ -7,6 +7,12 @@ nœuds de calcul n'ont pas d'accès réseau direct (`HF_HUB_OFFLINE=1`
 systématique dans les scripts `.slurm`, `.venv/bin/python` plutôt que `uv run`
 qui tenterait de re-résoudre l'environnement).
 
+Si un job reste `PD` avec la raison `ReqNodeNotAvail, UnavailableNodes:...`,
+ce n'est pas de la congestion (un simple changement de partition ne résout
+rien) : le nœud lui-même est down. Vérifier avec `sinfo -p <partition> -N -l`
+avant de basculer vers une autre partition — un `STATE` à `down*`/raison
+`Not responding` confirme la panne.
+
 ### Arborescence des scripts de soumission
 
 `slurm/<catégorie>/*.slurm`, sortie (`--output`) configurée vers

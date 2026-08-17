@@ -229,6 +229,19 @@ def page_email_comparison() -> None:
         return
     mails, augmented = corpus
 
+    with st.expander("Taux de rejet par axe/niveau (contrôle qualité de la génération)"):
+        # Remonte en métrique visible ce qui n'était lisible qu'en commentaire de code
+        # (audit 2026-08 round 3, §6.3) -- déséquilibre marqué par classe, pas seulement
+        # une moyenne globale rassurante.
+        rej = augmented.assign(is_rejected=augmented["rejected"].notna())
+        rate_by_class = (
+            rej.groupby(["axis", "level"])["is_rejected"].mean().mul(100).round(1)
+            .sort_values(ascending=False).rename("taux_rejet_%")
+        )
+        st.dataframe(rate_by_class.reset_index(), width='stretch', height=300)
+        st.caption(f"Taux de rejet global : {100*rej['is_rejected'].mean():.1f}% "
+                    f"({int(rej['is_rejected'].sum())}/{len(rej)})")
+
     parent_id = st.selectbox(
         "Mail original (parent_id)",
         options=mails.index.astype(str).tolist(),
@@ -422,6 +435,39 @@ def page_consolidated_report(run_dir: str) -> None:
                     f"`python scripts/consolidate_evaluation_report.py {run_dir}`")
 
 
+def page_audit_2026_08() -> None:
+    """Agrège les sorties JSON produites par l'audit 2026-08 (docs/AUDIT_2026-08.md) --
+    jusqu'ici dispersées sous docs/ et cache/, lisibles seulement en ouvrant chaque
+    fichier à la main (audit round 3, §6.4). Recherche par motif plutôt que liste en
+    dur : reste à jour sans édition à chaque nouveau script d'audit."""
+    st.header("Audit 2026-08 — validité des résultats")
+    st.caption("cf. `docs/AUDIT_2026-08.md` (constats détaillés) et `RESULTS_TESTS.md` §57-62. "
+               "Indépendant du run sélectionné dans la barre latérale.")
+
+    patterns = [
+        os.path.join(REPO_ROOT, "docs", "audit_*_results.json"),
+        os.path.join(REPO_ROOT, "results_v10_emails_main", "cache", "audit_2026_08_*.json"),
+        os.path.join(REPO_ROOT, "results_v10_emails_main", "cache", "c2_original_only_rejudge*.json"),
+    ]
+    files = sorted({f for p in patterns for f in glob.glob(p)})
+    if not files:
+        st.info("Aucune sortie d'audit trouvée sous docs/ ou cache/.")
+        return
+
+    rel_files = [os.path.relpath(f, REPO_ROOT) for f in files]
+    chosen = st.selectbox("Fichier de résultat", rel_files)
+    data = load_json(os.path.join(REPO_ROOT, chosen)) or {}
+
+    summary = data.get("summary", data)
+    if isinstance(summary, dict):
+        flat = {k: v for k, v in summary.items() if not isinstance(v, (dict, list))}
+        if flat:
+            st.subheader("Résumé")
+            st.dataframe(pd.DataFrame([flat]).T.rename(columns={0: "valeur"}), width='stretch')
+    with st.expander("JSON complet"):
+        st.json(data)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -442,7 +488,7 @@ def main() -> None:
         "Page",
         ["Vue d'ensemble", "UMAP", "Features", "Diagnostics d'entraînement", "Diffing",
          "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
-         "Rapport consolidé", "Comparaison mail original / augmenté"],
+         "Rapport consolidé", "Comparaison mail original / augmenté", "Audit 2026-08"],
     )
 
     if page == "Vue d'ensemble":
@@ -465,6 +511,8 @@ def main() -> None:
         page_urgence_robustesse(run_dir)
     elif page == "Comparaison mail original / augmenté":
         page_email_comparison()
+    elif page == "Audit 2026-08":
+        page_audit_2026_08()
 
 
 if __name__ == "__main__":

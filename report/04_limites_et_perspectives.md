@@ -173,10 +173,11 @@ Question distincte de tout ce qui précède (qui évalue une feature isolée ou
 une capacité globale) : pour UN document donné, l'explication produite
 (features actives + labels) est-elle bonne ?
 - **Fidélité** (`scripts/explanation_fidelity_test.py`, ablation) : chute de
-  58 à 100 points de probabilité en ablatant les 10 features "explicatives",
+  53 à 100 points de probabilité en ablatant les 10 features "explicatives",
   chute quasi nulle (<0,4 point) en ablatant des features aléatoires ou peu
-  contributives (ratios de 250× à 576 000× selon l'intention) — l'explication
-  porte réellement la décision.
+  contributives (ratios de 450× à 52 600× selon l'intention) — l'explication
+  porte réellement la décision, résultat robuste au correctif des labels
+  d'intention (B.26, cf. `RESULTS_TESTS.md` §68).
 - **Plausibilité** (`scripts/explanation_plausibility_test.py`, choix forcé,
   juge Gemma-3-12B-it) : 71,7% (43/60) de choix corrects contre 50% au hasard
   (p < 0,001) — significativement au-dessus du hasard, mais loin d'être

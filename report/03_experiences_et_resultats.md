@@ -745,15 +745,20 @@ sonde logistique, ablation des 10 features les plus contributives à la décisio
 
 | Intention | Chute top-10 | Chute random-10 | Ratio top/random |
 |---|---|---|---|
-| Réclamation | 0,576 | ~0,000 | 576 225× |
-| Remboursement | 0,9997 | 0,0009 | 1 058× |
-| Information | 0,9998 | 0,0040 | 251× |
-| Urgence | 0,612 | ~0,000 | 42 837× |
+| Réclamation | 0,535 | ~0,000 | 3 421× |
+| Résiliation | 0,983 | ~0,000 | 25 450× |
+| Remboursement | 0,995 | 0,0022 | 451× |
+| Information | 0,996 | ~0,000 | 28 169× |
+| Urgence | 0,883 | ~0,000 | 52 641× |
 
-Résultat sans ambiguïté : les features désignées comme explication portent
-réellement la décision (leur ablation fait s'effondrer la prédiction), contrairement
-à des features actives choisies au hasard (effet quasi nul). L'explication n'est pas
-une justification a posteriori déconnectée du mécanisme réel.
+(Labels d'intention corrigés — cf. 5.1 — l'ajout de la résiliation et le changement
+d'ampleur des ratios reflètent le correctif, pas un nouveau protocole.)
+
+Résultat sans ambiguïté, et robuste au correctif des labels : les features désignées
+comme explication portent réellement la décision (leur ablation fait s'effondrer la
+prédiction), contrairement à des features actives choisies au hasard (effet quasi
+nul). L'explication n'est pas une justification a posteriori déconnectée du mécanisme
+réel.
 
 ### 5.3. Fidélité du steering
 
@@ -773,19 +778,27 @@ top-10 features explicatives d'une intention) tient-elle à travers cet aller-re
 
 | Intention | Chute en place (témoin) | Chute steer_and_decode | Ratio |
 |---|---|---|---|
-| réclamation | 0,576 | 1,000 | 1,74× |
-| remboursement | 1,000 | 0,016 | 0,02× |
-| information | 1,000 | 0,004 | 0,00× |
-| urgence | 0,646 | 0,584 | 0,90× |
+| réclamation | 0,535 | 1,000 | 1,87× |
+| résiliation | 0,988 | 0,808 | 0,82× |
+| remboursement | 1,000 | 0,373 | 0,37× |
+| information | 0,993 | 0,980 | 0,99× |
+| urgence | 0,882 | 0,100 | 0,11× |
 
-Résultat hétérogène et contre-intuitif : le round-trip decode/encode neutralise
-quasi entièrement l'intervention pour deux intentions sur quatre (remboursement,
-information), la préserve pour urgence, et l'amplifie même pour réclamation.
-`steer_and_decode` n'est pas un mécanisme d'intervention causale fiable et
-prévisible à partir du simple test d'ablation en place — son effet dépend fortement
-de la structure de corrélation entre features propre à chaque intention. Détail
-complet (protocole, limite méthodologique du pooling par document, fuite résiduelle
-mesurée) : `RESULTS_TESTS.md` §24.
+(Labels d'intention corrigés — cf. 5.1.)
+
+Résultat hétérogène et contre-intuitif, mais **la répartition par intention n'est
+pas stable au correctif des labels** : avant correction, l'intervention semblait
+neutralisée pour remboursement/information et préservée pour urgence ; une fois les
+labels corrigés, c'est l'inverse pour deux des quatre intentions — l'urgence bascule
+vers "neutralisée" (0,90× → 0,11×) et l'information vers "préservée" (0,00× → 0,99×).
+Seule la conclusion générale résiste : `steer_and_decode` n'est pas un mécanisme
+d'intervention causale fiable et prévisible à partir du simple test d'ablation en
+place, son effet dépend de la structure de corrélation entre features — mais les
+affirmations spécifiques par intention (quelle intention est "préservée" ou
+"neutralisée") ne doivent pas être citées comme stables, la mesure elle-même
+s'avère sensible à la composition exacte de l'échantillon positif. Détail complet
+(protocole, limite méthodologique du pooling par document, fuite résiduelle
+mesurée) : `RESULTS_TESTS.md` §24, §68.
 
 ### 5.4. Plausibilité de l'explication document-level
 
@@ -811,21 +824,31 @@ inspection visuelle sur données de substitution. Protocole quantitatif
 contre les labels faibles d'intention (5.1), sur 4 requêtes en paraphrase, comparé
 à une baseline TF-IDF, sur les 3480 mails originaux.
 
-| Intention | P@10 Latent Terms | P@10 TF-IDF |
-|---|---|---|
-| réclamation | 1,00 | 1,00 |
-| remboursement | 1,00 | 0,00 |
-| information | 1,00 | 0,20 |
-| urgence | 0,00 | 0,80 |
+| Intention | Taux de base | P@10 Latent Terms | P@10 TF-IDF |
+|---|---|---|---|
+| réclamation | 54,8% | 1,00 | 1,00 |
+| remboursement | 22,9% | 1,00 | 0,30 |
+| information | 60,7% | 1,00 | 0,70 |
+| urgence | 33,8% | 0,00 | 0,80 |
 
-Précision parfaite et nette supériorité sur TF-IDF pour 2 intentions sur 4
-(remboursement, information) malgré des requêtes ne reprenant pas les mots exacts
-du label — généralisation sémantique réelle. Échec complet sur urgence (0,00),
-diagnostiqué précisément : la requête active bien des features latentes non
+(Labels d'intention corrigés — cf. 5.1 ; taux de base ajouté car il change fortement
+pour "information", 18,0%→60,7% — le correctif touche surtout ce label, cf. 5.1.)
+
+Précision parfaite et robuste au correctif des labels pour Latent Terms sur 3
+intentions sur 4 (réclamation, remboursement, information), malgré des requêtes ne
+reprenant pas les mots exacts du label — généralisation sémantique réelle. TF-IDF
+reste net­tement en retrait sur remboursement (0,30) et information (0,70), mais ces
+deux chiffres remontent par rapport aux labels originaux (0,00→0,30, 0,20→0,70) —
+en partie parce que le taux de base d'"information" a lui-même presque triplé
+(18,0%→60,7%), ce qui relève mécaniquement la probabilité qu'un tirage TF-IDF
+touche juste. **La lecture "généralisation sémantique réelle" pour information tient
+moins fort qu'avant le correctif** : à un taux de base de 60,7%, P@10=1,00 pour
+Latent Terms est moins surprenant qu'à 18,0%. Échec complet et inchangé sur urgence
+(0,00), diagnostiqué précisément : la requête active bien des features latentes non
 nulles, mais un seul document sur 3480 dans tout le corpus partage une
 intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
 latent très parcimonieux (k=16), pas un raté sémantique. Détail
-complet : `RESULTS_TESTS.md` §26.
+complet : `RESULTS_TESTS.md` §26, §68.
 
 **Réserve méthodologique sur la comparaison à TF-IDF (§5.1 et §5.5)** : la vérité
 terrain utilisée dans les deux cas (`INTENT_KEYWORDS_FR`) est elle-même construite par
@@ -867,16 +890,48 @@ features (45,3% au test odd-one-out, sections 1.2-1.5) et à la couverture de
 concepts absents du core, pas à un gain de séparabilité linéaire en aval que
 le core seul n'atteignait pas déjà. Détail complet : `RESULTS_TESTS.md` §55.
 
+**Ce résultat n'est pas en tension avec la mesure de fidélité fonctionnelle (ΔCE)
+présentée ci-dessous — ce sont deux propriétés différentes.** L'extension n'ajoute rien
+à la séparabilité linéaire pour des tâches de classification externes, mais elle réduit
+fortement la dégradation de la cross-entropy du LLM d'origine sous substitution
+`x → SAE(x)` : la fidélité au modèle source et l'utilité pour une tâche en aval
+indépendante ne mesurent pas la même chose, et un résultat négatif sur l'une n'implique
+pas un résultat négatif sur l'autre.
+
+### 5.7. Fidélité fonctionnelle (ΔCE) : l'extension préserve mieux ce que le LLM utilise réellement
+
+Métrique standard du domaine (SAEBench/SAE Boost/GemmaScope), jamais mesurée dans ce
+projet jusqu'ici bien qu'implémentée (`src/sae/compare/crosslingual.py::ce_loss_increase`) :
+ΔCE = augmentation de la cross-entropy du LLM quand `x` est remplacé par sa
+reconstruction SAE, via un hook au point d'extraction (layer 24). Sur 60 mails
+originaux, core seul vs core+extension :
+
+| Condition | CE propre | CE patchée | ΔCE |
+|---|---|---|---|
+| Core seul | 2,177 | 3,475 | 1,298 |
+| Core + extension | 2,177 | 2,582 | **0,404** |
+
+**L'extension réduit la dégradation fonctionnelle de 69%** (1,298→0,404 nats).
+Confirmé par un test apparié par document (Wilcoxon signed-rank, p=8,2×10⁻¹²) :
+l'extension fait mieux sur les **60 documents sur 60**, sans exception — un effet
+systématique, pas porté par quelques cas extrêmes. Un sanity check indépendant (patch
+par un SAE identité, qui ne doit rien changer) donne ΔCE=0 exactement, validant le
+mécanisme de mesure lui-même avant d'en tirer cette conclusion.
+
 ### Ce qui reste ouvert
 
-La détection d'urgence/réclamation sur mails réels est solide (+27 à +43 points sur
-la baseline) ; le remboursement reste indéterminé (label faible probablement
-imparfait, pas de vérité terrain annotée manuellement). L'explication produite est
-causalement fidèle (5.2) et perçue comme plus convaincante qu'un hasard (5.4), mais
-le steering par décodage/réencodage n'est pas un mécanisme d'intervention fiable
-(5.3) — à ne pas utiliser comme preuve causale sans validation au cas par cas. Le
+La détection d'intention sur mails réels est solide pour quatre intentions sur cinq
+(+22 à +42 points sur la baseline : réclamation, résiliation, information, urgence) ;
+le remboursement reste la classe la plus difficile mais bat désormais sa baseline
+(+3,5 points, cf. 5.1) — un signal réel, plus modeste, cohérent avec un vocabulaire
+intrinsèquement plus diffus pour cette catégorie plutôt qu'un échec du SAE. L'explication
+produite est causalement fidèle (5.2) et perçue comme plus convaincante qu'un hasard
+(5.4), mais le steering par décodage/réencodage n'est pas un mécanisme d'intervention
+fiable (5.3) — à ne pas utiliser comme preuve causale sans validation au cas par cas. Le
 retrieval échoue spécifiquement sur l'urgence pour une raison structurelle (BM25 sur
 vocabulaire latent trop parcimonieux), pas pour une raison sémantique. L'extension
-`FrozenCoreResidualSAE` n'apporte aucun gain mesurable sur les sondes linéaires en
-aval testées (5.6) : sa valeur documentée dans ce rapport tient à l'interprétabilité
-et à la couverture de concepts, pas à la séparabilité linéaire.
+`FrozenCoreResidualSAE` n'apporte aucun gain mesurable sur les sondes linéaires en aval
+testées (5.6) mais réduit nettement et significativement la dégradation fonctionnelle du
+LLM sous substitution (5.7, ΔCE) : sa valeur documentée dans ce rapport tient à
+l'interprétabilité, à la couverture de concepts et à la fidélité fonctionnelle, pas à la
+séparabilité linéaire pour des tâches externes.

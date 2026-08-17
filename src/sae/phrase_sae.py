@@ -141,9 +141,8 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
             # EMB_POOLING="last_token" (défaut, préserve tout run existant F2LLM) :
             # dernier token non-padding, adapté à un backbone décodeur causal comme
             # F2LLM. EMB_POOLING="cls" : premier token, requis pour un backbone
-            # encodeur bidirectionnel entraîné avec cet objectif (bge-m3 -- cf.
-            # RESULTS_TESTS.md §15.2, déjà établi pour la similarité de labels, jamais
-            # câblé ici pour le backbone Pipeline 2 avant ce fix).
+            # encodeur bidirectionnel entraîné avec cet objectif (bge-m3, cf.
+            # RESULTS_TESTS.md §15.2 pour la similarité de labels).
             if EMB_POOLING == "cls":
                 pooled = outputs.last_hidden_state[:, 0]
             else:

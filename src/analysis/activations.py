@@ -74,10 +74,9 @@ def extract_residual_acts(
     model.eval()
     # @torch.no_grad() sur une fonction génératrice ne protège QUE l'appel qui crée
     # l'objet générateur (quasi instantané, le corps ne s'exécute pas encore) — pas les
-    # itérations réelles faites via next()/for. Chaque forward tournait donc avec
-    # l'autograd actif (graphe retenu pour les ~48 couches, output_hidden_states=True),
-    # d'où l'OOM CUDA constaté sur A100 40GB bien avant la fin du corpus (jobs
-    # 38988/38999/39000). `with torch.no_grad()` explicite ici couvre bien tout le corps.
+    # itérations réelles faites via next()/for. Sans le `with` explicite ci-dessous,
+    # chaque forward tourne avec l'autograd actif (graphe retenu pour les ~48 couches,
+    # output_hidden_states=True) → OOM CUDA avant la fin du corpus sur A100 40GB.
     with torch.no_grad():
         for start in range(0, len(texts), batch_size):
             batch = texts[start:start + batch_size]

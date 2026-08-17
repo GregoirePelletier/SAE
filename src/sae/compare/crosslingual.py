@@ -58,6 +58,7 @@ def downstream_report(
 def ce_loss_increase(
     texts: list[str], model, tokenizer, sae, layer: int,
     device: str = "cuda", max_length: int = 256, batch_size: int = 4,
+    return_per_doc: bool = False,
 ) -> dict:
     """
     ΔCE = CE(patched) - CE(clean), patch x_t → x̂_t = SAE(x_t) à la couche `layer`
@@ -93,20 +94,38 @@ def ce_loss_increase(
         return (rec, *output[1:]) if isinstance(output, tuple) else rec
 
     ce_clean, ce_patch, n = 0.0, 0.0, 0
+    per_doc = []
     layer_module = model.model.language_model.layers[layer - 1]
-    for s in range(0, len(texts), batch_size):
-        enc = tokenizer(texts[s:s + batch_size], return_tensors="pt", padding=True,
+    # return_per_doc=True force un document par forward (round 2026-08 audit
+    # round 3, §2 : le ".loss" de HF est une moyenne PAR TOKEN sur tout le
+    # batch, pas par document -- l'agréger via `* len(ids)` donne un total
+    # correct mais ne permet aucun test apparié par document. Un seul
+    # document par passe donne directement le CE par document, au prix
+    # d'un throughput plus faible (acceptable, n petit dans tous les usages
+    # actuels de cette fonction).
+    step = 1 if return_per_doc else batch_size
+    for s in range(0, len(texts), step):
+        enc = tokenizer(texts[s:s + step], return_tensors="pt", padding=True,
                         truncation=True, max_length=max_length)
         ids = enc["input_ids"].to(device)
         attn = enc["attention_mask"].to(device)
         labels = ids.masked_fill(attn == 0, -100)
 
-        ce_clean += float(model(input_ids=ids, attention_mask=attn, labels=labels).loss) * len(ids)
+        doc_ce_clean = float(model(input_ids=ids, attention_mask=attn, labels=labels).loss)
         h = layer_module.register_forward_hook(hook)
         try:
-            ce_patch += float(model(input_ids=ids, attention_mask=attn, labels=labels).loss) * len(ids)
+            doc_ce_patch = float(model(input_ids=ids, attention_mask=attn, labels=labels).loss)
         finally:
             h.remove()
+        ce_clean += doc_ce_clean * len(ids)
+        ce_patch += doc_ce_patch * len(ids)
         n += len(ids)
-    return {"ce_clean": ce_clean / n, "ce_patched": ce_patch / n,
-            "delta_ce": (ce_patch - ce_clean) / n}
+        if return_per_doc:
+            per_doc.append({"ce_clean": doc_ce_clean, "ce_patched": doc_ce_patch,
+                             "delta_ce": doc_ce_patch - doc_ce_clean})
+
+    result = {"ce_clean": ce_clean / n, "ce_patched": ce_patch / n,
+              "delta_ce": (ce_patch - ce_clean) / n}
+    if return_per_doc:
+        result["per_doc"] = per_doc
+    return result

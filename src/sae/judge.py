@@ -1,18 +1,8 @@
 """
-judge_patch.py — Remplace les fonctions de labellisation dans saev5.py.
-
-Changements :
-  1. extract_causal_context : gestion ▁ SentencePiece + marquage au niveau mot (pas subtoken)
-  2. build_feature_examples_with_control : retourne (pos_examples, neg_example)
-  3. _apply_chat_and_extract : fix BatchEncoding bug apply_chat_template (4 sites)
-  4. odd_one_out_judge : protocole SAEBench feature-detection + ρ_interp (Bills 2023)
-  5. feature_selection_by_magnitude : sélection par magnitude token-level (pas fréquence doc-level)
-
-Intégration dans saev5.py :
-  - Copier ces fonctions à la place des anciennes (extract_causal_context, build_causal_highlighted_examples,
-    local_gemma_judge, le bloc judge Expert+Critique lignes 907-1025)
-  - Remplacer les 4 appels apply_chat_template par _apply_chat_and_extract
-  - Remplacer freq_core_acts par feature_selection_by_magnitude (ligne 904)
+judge.py — Fonctions de labellisation des features SAE par juge LLM, importées
+par `saev5.py` (protocole odd-one-out, ρ_interp de Bills 2023) et par les
+scripts d'audit de robustesse du juge (`scripts/*judge*.py`,
+`scripts/*rejudge*.py`).
 """
 
 import re

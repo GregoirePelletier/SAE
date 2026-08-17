@@ -3130,3 +3130,418 @@ gros facteur de changement, ×864) — les trois autres intentions dont `n_pos` 
 significativement (remboursement ×1,60, information ×3,37) n'ont pas reçu le même
 contrôle qualité manuel, à faire avant de publier ces chiffres sans réserve. Détail
 complet, preuve et code : `docs/AUDIT_2026-08.md` (B.26, section réouverte).
+
+## 61. Audit méthodologique 2026-08, round 3 : baseline décodeur entraîné/init aléatoire, resserrement statistique de B.20/B.21
+
+**Question** : (a) A.1 -- une fois le décodeur ENTRAÎNÉ (pas figé) mais parti d'une
+init aléatoire (pas PCA), l'écart 29,3%→45,3% se referme-t-il ? Isole l'effet de
+l'entraînement du décodeur de celui de l'initialisation. (b) B.20/B.21 -- les résultats
+ΔCE et bf16/fp32 résistent-ils à un contrôle de significativité formel et à un
+échantillonnage ciblant spécifiquement leur population critique ?
+
+**Écart à la configuration de référence** : (a) `ExtendedSAE` standard mais
+`domain_residuals=None` (décodeur reste à l'init aléatoire de
+`FrozenCoreResidualSAE.__init__`, `input_scale` reste 1,0), entraînement complet
+(décodeur + encodeur), même réservoir de résidus, même protocole de jugement que le
+run principal. (b) mêmes conditions que §58, avec `return_per_doc=True` sur
+`ce_loss_increase` et un échantillon élargi (150 vs 40 documents) incluant
+explicitement le 1er token de contenu pour le diagnostic bf16/fp32.
+
+**Méthode** : (a) entraînement + rejugement complet sur les mêmes 150 features que le
+run principal. (b) test de Wilcoxon signed-rank apparié (ΔCE par document) + sanity
+check indépendant (SAE identité, doit donner ΔCE=0) ; intervalle de confiance bootstrap
+(2000 tirages) sur les moyennes par strate de norme.
+
+**n** : (a) 150 features. (b) 60 documents appariés (ΔCE), 54 982 tokens (bf16/fp32).
+
+**Résultat (a)** :
+
+| Configuration | Décodeur | Init | `input_scale` | Taux interp. |
+|---|---|---|---|---|
+| `ExtendedSAE` (référence) | entraîné | PCA | calibré | 45,3% (68/150) |
+| `FrozenDecoderExtendedSAE` (§19) | figé | aléatoire | 1,0 | 29,3% |
+| `FrozenDecoderExtendedSAE`, scale calibrée (§58) | figé | aléatoire | calibré | 16,0% |
+| **Décodeur entraîné, init aléatoire (ce test)** | **entraîné** | **aléatoire** | **1,0** | **30,7% (46/150)** |
+
+**Résultat (b1) — ΔCE, test apparié** : Wilcoxon signed-rank (H1 : ΔCE core seul > ΔCE
+core+extension), statistique=1830, **p=8,15×10⁻¹²** ; extension meilleure sur 60/60
+documents. Sanity check SAE identité : ΔCE=0,000000 exactement.
+
+**Résultat (b2) — bf16/fp32, échantillon élargi + 1er token inclus** :
+
+| Strate | n | \|Δrésidu\|/\|résidu\| | IC95% bootstrap |
+|---|---|---|---|
+| < 2σ | 54 710 | 6,86% | [6,80%, 6,91%] |
+| 2-4σ | 271 | 7,00% | [6,45%, 7,55%] |
+| > 4σ | 1 | 18,88% | *(n=1, non concluant)* |
+
+**Conclusion** :
+(a) Entraîner le décodeur à partir d'un point aléatoire ne récupère que **1,4 point**
+sur la baseline figée (29,3%→30,7%), très loin des 45,3% obtenus avec l'init PCA —
+**l'essentiel de l'écart vient de l'initialisation, pas de l'entraînement du décodeur
+en tant que tel**. Reconstruction nettement meilleure (`val_loss` 0,273 vs 1,51) sans
+gain d'interprétabilité correspondant : la qualité de reconstruction ne prédit pas le
+taux d'interprétabilité, cohérent avec Korznikov et al.
+(b1) Le résultat ΔCE (§58) est confirmé avec une preuve statistique forte et un effet
+unanime (60/60 documents), pas seulement un effet moyen. Le mécanisme de mesure
+lui-même est validé indépendamment (sanity check exact).
+(b2) La strate >4σ n'est plus vide (contrairement à §58, où `skip_first_content_token`
+l'excluait par construction) mais reste extrêmement rare (1/54982 tokens, 0,0018%)
+même avec un échantillonnage délibérément ciblé sur le site le plus à risque.
+L'unique observation (18,9% d'erreur relative, contre ~7% pour les strates normales)
+est cohérente avec l'hypothèse d'amplification à mesure que la norme croît, mais n=1
+ne permet aucune conclusion statistique.
+
+**Limite connue** : (a) `input_scale=1,0` non calibrée dans ce test (pour rester
+comparable au sanity check original) -- la case "décodeur entraîné + init aléatoire +
+échelle calibrée" reste non testée. (b2) capturer davantage d'observations >4σ
+demanderait un échantillonnage encore plus ciblé (documents pré-identifiés comme
+contenant des activations massives connues), pas seulement un tirage aléatoire élargi.
+Détail complet, preuve et code : `docs/AUDIT_2026-08.md` (A.1, B.20, B.21).
+
+## 62. Audit méthodologique 2026-08, round 2 (suite) : variance inter-graine de C2 mesurée directement (B.17)
+
+**Question** : `c2_original_only_rejudge.py` (§52, "C2 RÉSOLU", 44,7% vs 45,3%) ne
+posait jamais de graine avant cet audit — l'écart avec la référence reflète-t-il le
+protocole lui-même, ou en partie le bruit d'un négatif/ordre reconstruit
+différemment à chaque exécution ? Round 2 demandait une mesure directe plutôt qu'une
+estimation par analogie avec l'instabilité de réordonnancement déjà connue (§13.1).
+
+**Écart à la configuration de référence** : seeding ajouté au script (`random.seed`,
+`SEED` env var, sortie dépendante du seed pour ne pas écraser le fichier original),
+aucun autre changement de protocole.
+
+**Méthode** : rejeu complet à seed=7 et seed=99, mêmes 150 features, même juge, même
+SAE d'extension déjà entraîné.
+
+**n** : 150 features par run (3 runs seedés/non-seedés au total avec la référence).
+
+**Résultat** :
+
+| Run | n_interp/150 | Taux |
+|---|---|---|
+| Original (non seedé, job 42878) | 67 | 44,7% |
+| Seed=7 | 73 | 48,7% |
+| Seed=99 | 73 | 48,7% |
+| Référence (run principal, exemples mixtes) | 68 | 45,3% |
+
+**Conclusion** : les deux graines donnent le même total agrégé (73/150) mais des
+fichiers de sortie distincts (vérifié par `diff`/`md5sum`, 1394 lignes de différence)
+— coïncidence sur le total, pas sur les décisions individuelles. L'amplitude observée
+sur les 4 runs (44,7-48,7%, 4 points) est cohérente avec le bruit d'échantillonnage
+binomial attendu à n=150 (écart-type théorique ≈4,1 points) — pas besoin d'invoquer un
+effet supplémentaire pour l'expliquer. La conclusion "C2 résolu" (§52) tient sur les
+4 runs : aucun ne s'approche du niveau qui suggérerait un effondrement de l'effet.
+
+**Limite connue** : `judge_model_separation_test.py` a reçu le même correctif de
+seeding mais n'a pas encore été rejoué à plusieurs graines — la même vérification
+reste à faire pour le résultat §43 (dépendance au juge, 45,3% vs 24,7%). Détail
+complet : `docs/AUDIT_2026-08.md` (B.17).
+
+## 63. Audit méthodologique 2026-08, round 2 (suite) : variance inter-graine de la dépendance au juge mesurée directement (B.17)
+
+**Question** : `judge_model_separation_test.py` (§43, "dépendance au juge confirmée",
+45,3% juge 12b vs 24,7% juge 4b, accord 56,7%) ne posait pas de graine avant cet
+audit — écart identique au précédent §62 pour `c2_original_only_rejudge.py`, cette
+fois pour le script qui compare deux modèles de juge distincts plutôt que deux runs
+du même juge.
+
+**Écart à la configuration de référence** : seeding ajouté au script (`random.seed`,
+`SEED` env var, sortie dépendante du seed pour ne pas écraser le fichier original),
+aucun autre changement de protocole.
+
+**Méthode** : rejeu complet à seed=7, mêmes 150 features, mêmes deux juges
+(gemma-3-12b-it, gemma-3-4b-it), même SAE d'extension déjà entraîné.
+
+**n** : 150 features.
+
+**Résultat** (job SLURM 43472, `p1_judge_model_separation_seed7.json`) :
+
+| Run | `interp_rate_original` (12b) | `interp_rate_alternative` (4b) | Accord | Bascules 0→1 / 1→0 |
+|---|---|---|---|---|
+| Référence (non seedé, §43) | 45,3% | 24,7% | 56,7% (85/150) | — |
+| Seed=7 | 45,3% | 24,7% | 55,3% (83/150) | 18 / 49 |
+
+**Conclusion** : les deux taux marginaux par juge sont quasi identiques à la
+référence (écart <0,1 point sur les deux), contrairement à §62 où le total agrégé
+variait de plusieurs points — ce script ne re-tire pas le négatif à chaque rejeu, seul
+l'ordre de présentation dépend du seed, et l'effet sur le total par juge est ici
+négligeable. L'accord inter-juges varie un peu plus (56,7%→55,3%, -1,4 point) mais
+reste du même ordre. **L'écart de ~21 points entre juges 12b et 4b (§43) est donc
+robuste au choix de graine** — pas un artefact du tirage aléatoire non contrôlé à
+l'origine.
+
+**Limite connue** : une seule graine alternative testée (seed=7, pas de seed=99 comme
+pour §62) — suffisant pour confirmer l'ordre de grandeur de l'écart entre juges, pas
+pour caractériser précisément la distribution du taux d'accord lui-même. Détail
+complet : `docs/AUDIT_2026-08.md` (B.17).
+
+## 64. Audit méthodologique 2026-08 (suite) : Soft-Frozen Decoder (Korznikov et al.) implémenté, ne reproduit pas la quasi-parité rapportée avec le SAE entraîné (A.3.2)
+
+**Question** : le Soft-Frozen Decoder (décodeur entraînable mais contraint à
+cosinus≥0,8 de son init aléatoire) est la baseline la plus informative de Korznikov
+et al. (0,88, quasi égale au SAE entraîné 0,90) mais n'avait jamais été implémentée
+dans ce dépôt, qui ne compare qu'au Frozen Decoder pur (strictement figé). Le
+reproduire ici confirme-t-il la quasi-parité rapportée par les auteurs ?
+
+**Écart à la configuration de référence** : `SoftFrozenDecoderSAE` (sous-classe locale
+de `FrozenCoreResidualSAE`, `scripts/audit_2026_08_soft_frozen_decoder.py`) — décodeur
+entraîné puis reprojeté après chaque step sur le bord exact de la calotte sphérique à
+cosinus=0,8 de son init aléatoire s'il en sort (projection exacte, pas une
+interpolation linéaire) ; encodeur libre ; `input_scale` calibrée dès le départ (même
+protocole que A.3.3, comparaison à échelle égale avec `ExtendedSAE`).
+
+**Méthode** : entraînement complet (10 epochs, même config que le run principal),
+puis jugement odd-one-out sur les mêmes 150 features de référence.
+
+**n** : 150 features.
+
+**Résultat** (job SLURM 43473) :
+
+| Configuration | Décodeur | `input_scale` | Taux interp. |
+|---|---|---|---|
+| `ExtendedSAE` (référence) | libre, init PCA | calibré | 45,3% (68/150) |
+| Décodeur entraîné, init aléatoire (§61) | libre | 1,0 | 30,7% (46/150) |
+| Frozen Decoder pur (§19) | figé | 1,0 | 29,3% |
+| Frozen Decoder pur, scale calibrée (§58) | figé | calibré | 16,0% |
+| **Soft-Frozen (cos≥0,8), scale calibrée** | **contraint au cône** | **calibré** | **26,0% (39/150)** |
+
+Contrainte vérifiée activement à l'exécution : cosinus final min=0,8000 (exactement à
+la borne), moyenne=0,8037. `val_loss` final=0,3652, entre le Frozen Decoder pur
+(1,51) et le décodeur totalement libre (0,273), comme attendu pour une contrainte
+intermédiaire.
+
+**Conclusion** : **désaccord net avec Korznikov et al.** Leur écart Soft-Frozen/SAE
+entraîné est de 2 points (0,88 vs 0,90) ; ici il est de 19,3 points (26,0% vs 45,3%).
+Le Soft-Frozen se comporte plus comme une variante dégradée du Frozen Decoder pur
+que comme une approximation du SAE librement entraîné sur ce domaine. Comme pour A.1
+(§61), la reconstruction intermédiaire (`val_loss`) ne se traduit pas par une
+interprétabilité proportionnellement intermédiaire.
+
+**Limite connue** : un seul seuil de cosinus testé (0,8, valeur de Korznikov et al.),
+pas de balayage ; comparaison uniquement à échelle calibrée, pas de variante scale=1
+pour vérifier si la calibration dégrade ce résultat comme elle l'a fait pour le Frozen
+Decoder pur (A.3.3, 29,3%→16,0%). Détail complet : `docs/AUDIT_2026-08.md` (A.3.2).
+
+## 65. Audit méthodologique 2026-08, round 2 (suite) : B.17 clos — 2e graine pour la dépendance au juge (§63)
+
+**Question** : compléter §63 (une seule graine, seed=7) avec une deuxième graine pour
+`judge_model_separation_test.py`, au même niveau de rigueur que C2 (§62, 2 graines).
+
+**Écart à la configuration de référence** : identique à §63, `SEED=99` au lieu de 7.
+
+**Méthode** : identique à §63.
+
+**n** : 150 features.
+
+**Résultat** (job SLURM 43735, `p1_judge_model_separation_seed99.json`) :
+
+| Run | `interp_rate_original` (12b) | `interp_rate_alternative` (4b) | Accord |
+|---|---|---|---|
+| Référence (non seedé, §43) | 45,3% | 24,7% | 56,7% (85/150) |
+| Seed=7 (§63) | 45,3% | 24,7% | 55,3% (83/150) |
+| Seed=99 | 45,3% | 28,0% | 61,3% (92/150) |
+
+**Nuance méthodologique** : `interp_rate_original` est chargé depuis un cache fixe
+(`p1_judge_labels_extended.json`, `judge_model_separation_test.py:39,46,88`), pas
+recalculé — identique à 45,3% sur les 3 runs par construction, pas parce que le juge
+12b serait insensible au seed. Seul le juge 4b est réellement rejugé à chaque graine ;
+la variance mesurée (24,7%→28,0%, amplitude 3,3 points sur le taux marginal ;
+55,3%→61,3%, amplitude 6 points sur l'accord) porte donc sur ce rejeu seul.
+
+**Conclusion** : amplitude cohérente avec le bruit d'échantillonnage binomial attendu
+à n=150 (écart-type théorique ≈4,1 points), du même ordre que celle observée pour C2
+(§62, amplitude 4 points sur 4 runs). L'écart entre juges 12b et 4b reste large sur les
+3 runs (17 à 21 points), jamais proche de 0 — **la conclusion "dépendance au juge
+confirmée" (§43) est robuste au choix de graine**. B.17 est maintenant vérifié au même
+niveau pour les deux scripts qui en manquaient (C2 et dépendance-au-juge).
+
+**Limite connue** : seules 2 graines testées pour ce script (comme pour C2) — une
+caractérisation complète de la distribution demanderait davantage de graines, non fait
+ici. Détail complet : `docs/AUDIT_2026-08.md` (B.17).
+
+## 66. Audit méthodologique 2026-08 (suite) : témoin aléatoire pour le test de regroupement de features (B.27), qui complète §34
+
+**Question** : §34 comparait la reproductibilité inter-seed au niveau feature-à-feature
+(0,820) vs groupe-à-groupe Louvain (0,948), Mann-Whitney p=0,269 non significatif,
+conclusion « hypothèse plausible mais non confirmée, test sous-dimensionné (n=3-5
+groupes) ». L'audit round 2 (B.27) fait remarquer que moyenner des vecteurs avant de
+comparer leur similarité cosinus augmente mécaniquement la similarité par réduction de
+variance — un effet géométrique pur, indépendant de toute structure sémantique — et
+qu'aucun témoin ne permet de l'écarter dans le test original. Ce témoin manquant
+apporte-t-il un éclairage différent malgré la non-significativité déjà honnêtement
+rapportée en §34 ?
+
+**Écart à la configuration de référence** : mêmes labels interprétables (deux seeds,
+`p1_top_extended_features.json`), mêmes embeddings bge-m3 (aucun recalcul) — ajoute un
+troisième niveau, groupe-à-groupe ALÉATOIRE : 200 tirages de partitions aléatoires de
+même distribution de tailles que les communautés Louvain réelles (`np.random.default_rng(42).permutation`).
+
+**Méthode** : Mann-Whitney unilatéral (scipy) sur 3 comparaisons : groupe réel >
+feature (réplique §34), groupe réel > groupe aléatoire, groupe aléatoire > feature.
+
+**n** : 68 paires feature-à-feature, 3 groupes réels (seed 42, tailles [19,13,36]) × 5
+groupes réels (seed 123, tailles [26,3,18,11,13]), 600 paires groupe-aléatoire (200
+tirages × 3 groupes assignés par tirage, appariement hongrois).
+
+**Résultat** (job SLURM 43736) :
+
+| Niveau | Similarité moyenne | n |
+|---|---|---|
+| Feature-à-feature | 0,820 | 68 |
+| Groupe-à-groupe réel (Louvain) | 0,948 | 3 |
+| Groupe-à-groupe aléatoire (200 tirages) | 0,964 | 600 |
+
+| Comparaison | U | p |
+|---|---|---|
+| Groupe réel > Feature | 124,0 | 0,269 (identique à §34, déterministe) |
+| Groupe réel > Groupe aléatoire | 756,0 | 0,675 — non significatif |
+| Groupe aléatoire > Feature | 24938,0 | **0,0013 — significatif** |
+
+**Conclusion** : un regroupement **purement aléatoire**, sans structure sémantique,
+bat déjà significativement le niveau feature-à-feature (p=0,0013) — confirme que
+l'essentiel de l'écart observé en §34 est l'artefact de moyennage, pas un signal
+sémantique. Le regroupement Louvain réel n'est **pas distinguable** du regroupement
+aléatoire (p=0,675), malgré n=600 contre n=3 côté aléatoire (puissance nettement
+supérieure). **§34 doit être requalifié** : pas seulement « non confirmé faute de
+puissance » mais « l'effet mesurable, même avec bien plus de puissance via le témoin,
+n'est pas distinguable de l'artefact géométrique pur ».
+
+**Limite connue** : n=3/5 groupes réels reste la limite fondamentale — aucun nouveau
+run avec plus de features labellisées n'a été fait ici, seul le témoin manquant a été
+ajouté sur les données déjà en cache. Détail complet : `docs/AUDIT_2026-08.md` (B.27).
+
+## 67. Audit méthodologique 2026-08 (suite) : Soft-Frozen Decoder à scale=1, qui complète §64 (A.3.2)
+
+**Question** : §64 testait le Soft-Frozen Decoder (Korznikov et al.) uniquement à
+échelle calibrée (26,0%, écart 19,3 points avec la référence 45,3%). La calibration de
+l'échelle dégrade systématiquement les décodeurs contraints/figés dans ce dépôt (Frozen
+Decoder pur : 29,3%→16,0%, A.3.3) — la variante scale=1 du Soft-Frozen referme-t-elle
+davantage l'écart avec Korznikov et al. (0,88 vs 0,90, 2 points) ?
+
+**Écart à la configuration de référence** : identique à §64
+(`SoftFrozenDecoderSAE`, cos≥0,8, projection exacte sur calotte sphérique), sauf
+`input_scale` qui reste à 1,0 (défaut de `FrozenCoreResidualSAE.__init__`, pas de
+`calibrate_scale()`) — `scripts/audit_2026_08_soft_frozen_decoder_scale1.py`.
+
+**Méthode** : entraînement complet (10 epochs) + jugement odd-one-out sur les mêmes 150
+features de référence.
+
+**n** : 150 features.
+
+**Résultat** (job SLURM 43734) :
+
+| Configuration | `input_scale` | Taux interp. |
+|---|---|---|
+| `ExtendedSAE` (référence) | calibré | 45,3% (68/150) |
+| Décodeur entraîné, init aléatoire (§61) | 1,0 | 30,7% (46/150) |
+| **Soft-Frozen (cos≥0,8), scale=1 (ce test)** | **1,0** | **30,7% (46/150)** |
+| Frozen Decoder pur (§19) | 1,0 | 29,3% |
+| Soft-Frozen (cos≥0,8), scale calibrée (§64) | calibré | 26,0% (39/150) |
+| Frozen Decoder pur, scale calibrée (§58) | calibré | 16,0% |
+
+Contrainte de cône vérifiée active : cosinus final min=0,8000, moyenne=0,8022.
+
+**Vérification supplémentaire (pas seulement le taux agrégé)** : le taux à scale=1 est
+strictement identique à celui du décodeur libre/init aléatoire (§61, 30,7%=30,7%,
+46/150 dans les deux cas). Comparaison des ensembles de features jugées interprétables
+entre les deux runs (`jq`+`comm`, aucun calcul) : **16/46 features en commun**, proche
+du chevauchement attendu par pur hasard sous indépendance (46×46/150≈14,1 attendu).
+L'identité du taux est donc une coïncidence numérique — les deux décodeurs convergent
+vers des solutions largement différentes, pas la même solution.
+
+**Conclusion** : à scale=1 comme à échelle calibrée, le Soft-Frozen Decoder ne referme
+pas l'écart avec le SAE librement entraîné (écart 14,6 points à scale=1, 19,3 points à
+échelle calibrée — vs 2 points chez Korznikov et al.). La calibration de l'échelle
+dégrade le résultat pour le Soft-Frozen comme pour le Frozen Decoder pur (même sens
+dans les deux cas), donc n'explique pas le désaccord avec Korznikov et al. Le
+Soft-Frozen se comporte, à scale=1, plus comme une variante indépendante du décodeur
+libre/init aléatoire que comme une approximation du SAE entraîné à init PCA — la
+contrainte de cône (cos≥0,8) ne semble pas capturer, sur ce domaine, le bénéfice
+rapporté par les auteurs.
+
+**Limite connue** : un seul seuil de cosinus testé (0,8) ; pas de balayage de
+`COS_THRESHOLD` pour situer où (ou si) une transition frozen→libre plus informative se
+produirait. Détail complet : `docs/AUDIT_2026-08.md` (A.3.2).
+
+## 68. Audit méthodologique 2026-08 (suite) : B.26 point 4 — propagation du correctif d'intention aux 3 derniers consommateurs
+
+**Question** : les patterns `INTENT_KEYWORDS_FR` V2 (correctif réel, §60) ont déjà été
+appliqués à `intent_urgency_probe.py`. Trois autres scripts cités par B.26 comme
+consommateurs en aval (`explanation_fidelity_test.py`, `steering_fidelity_test.py`,
+`latent_retrieval_precision_eval.py`, tous déjà cités dans le rapport,
+`03_experiences_et_resultats.md` §5.2/5.3/5.5) restent à revalider.
+
+**Écart à la configuration de référence** : monkey-patch identique à §60/§67
+(`src.data.dataset.INTENT_KEYWORDS_FR` remplacé en mémoire par les patterns V2, fichier
+de production non touché) — `scripts/audit_2026_08_b26_propagate_fidelity.py`, qui
+appelle les trois `main()` originaux sans les modifier, sauvegarde l'original avant
+écrasement, restaure après.
+
+**Méthode** : identique aux trois scripts originaux (protocoles inchangés), seule la
+source des colonnes `intent_*` change.
+
+**n** : identique aux runs originaux (200 documents/intention pour les deux tests de
+fidélité, 3480 mails pour le retrieval).
+
+**Résultat** (job SLURM 43957) :
+
+**(a) `explanation_fidelity_test.py` — conclusion robuste** :
+
+| Intention | Chute top-10 (orig → V2) | Ratio top/random (orig → V2) |
+|---|---|---|
+| Réclamation | 0,576 → 0,535 | 576 225× → 3 421× |
+| **Résiliation** | *(absente, n_pos insuffisant)* → 0,983 | *(n/a)* → **25 450×** |
+| Remboursement | 0,9997 → 0,995 | 1 058× → 451× |
+| Information | 0,9998 → 0,996 | 251× → 28 169× |
+| Urgence | 0,612 → 0,883 | 42 837× → 52 641× |
+
+Tous les ratios restent écrasants dans les deux régimes de labels (au minimum 451×) —
+la conclusion "l'explication porte réellement la décision" ne dépend pas du bug B.26.
+
+**(b) `steering_fidelity_test.py` — conclusion NON robuste, 2 intentions basculent** :
+
+| Intention | Ratio roundtrip/inplace (orig → V2) |
+|---|---|
+| Réclamation | 1,74× → 1,87× |
+| **Résiliation** | *(absente)* → 0,82× |
+| Remboursement | 0,02× → 0,37× |
+| **Information** | **0,00× (neutralisé) → 0,99× (préservé)** |
+| **Urgence** | **0,90× (préservé) → 0,11× (neutralisé)** |
+
+Information et urgence échangent leur catégorie qualitative ("neutralisé" ↔
+"préservé") entre les deux régimes de labels. Seule la conclusion générale (effet
+hétérogène, dépendant de l'intention, pas de mécanisme causal uniforme) tient dans les
+deux cas — les affirmations spécifiques par intention du tableau original ne sont pas
+fiables telles quelles.
+
+**(c) `latent_retrieval_precision_eval.py` — conclusion robuste, taux de base
+d'information change fortement** :
+
+| Intention | Taux de base (orig → V2) | P@10 Latent Terms (orig → V2) | P@10 TF-IDF (orig → V2) |
+|---|---|---|---|
+| Réclamation | 54,7% → 54,8% | 1,00 → 1,00 | 1,00 → 1,00 |
+| Remboursement | 14,3% → 22,9% | 1,00 → 1,00 | 0,00 → 0,30 |
+| **Information** | **18,0% → 60,7%** | 1,00 → 1,00 | 0,20 → 0,70 |
+| Urgence | 29,4% → 33,8% | 0,00 → 0,00 | 0,80 → 0,80 |
+
+Le taux de base d'"information" quasi triple (18,0%→60,7%), cohérent avec le ×3,37 déjà
+mesuré sur `n_pos` en §60. Le classement qualitatif (Latent Terms parfait sur 3/4
+intentions, échec total sur urgence, TF-IDF compétitif seulement sur urgence) est
+inchangé, mais P@10=1,00 pour Latent Terms sur "information" est moins remarquable à un
+taux de base de 60,7% qu'à 18,0% — la lecture "généralisation sémantique" pour cette
+intention spécifique est affaiblie, pas invalidée.
+
+**Conclusion générale** : sur 3 scripts revalidés, 1 conclusion se renforce
+(explanation_fidelity), 1 reste qualitativement inchangée mais avec un chiffre annexe à
+nuancer (latent_retrieval), et 1 s'avère NON robuste avec inversion de catégorie pour 2
+intentions sur 4 (steering_fidelity). B.26 illustre une seconde fois (après le §60
+initial) qu'un résultat "vérifié" sur des labels faibles n'est pas automatiquement
+fiable une fois le label corrigé — ici dans les deux sens (renforcement ET
+affaiblissement selon le script). Rapport mis à jour :
+`report/03_experiences_et_resultats.md` §5.2/5.3/5.5, `report/04_limites_et_perspectives.md`.
+
+**Limite connue** : `src/data/dataset.py::INTENT_KEYWORDS_FR` en production reste non
+corrigé (décision utilisateur en attente) — ces trois résultats V2 restent, comme §60,
+des rejeux par monkey-patch, pas le comportement par défaut du dépôt. Détail complet :
+`docs/AUDIT_2026-08.md` (B.26).
