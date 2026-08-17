@@ -67,16 +67,61 @@ diagnostic qui a motivé cette séparation) :
   train/test, pour éviter toute fuite de quasi-duplicata.
 - **Corpus secondaire** (`prepare_domain_dataset`, energy/sports/support depuis
   FineWeb-2/Wikipedia FR) : encodé **post-hoc** par le SAE déjà entraîné, jamais utilisé
-  pour l'entraînement. Sert uniquement à la démonstration préexistante de diffing
-  cross-domaine (`corpus_diff_stats` energy vs sports).
+  pour l'entraînement. Dans `saev5.py`, sert uniquement à la démonstration préexistante
+  de diffing cross-domaine (`corpus_diff_stats` energy vs sports).
+  Fallback FineWeb-2 → Wikipedia : `use_fineweb2=True` **et** le chemin local du
+  parquet FineWeb-2 doivent exister pour tenter cette source ; dans tous les cas
+  (source désactivée, absente, ou insuffisante), Wikipedia FR comble le reliquat dès
+  que le nombre de chunks collectés est `< n_target` — c'est un complément par
+  volume, pas un fallback déclenché uniquement par une erreur.
+- Le diffing **réel vs augmenté** (pas domaine vs domaine) existe toujours, mais
+  ailleurs que dans `saev5.py` : `scripts/baseline_gemmascope.py` appelle
+  `corpus_diff_stats` par axe/niveau d'augmentation (mails originaux vs augmentés,
+  `group="original"`/`"augmented"`), sur le SAE GemmaScope natif sans extension. C'est
+  un script séparé, pas le pipeline principal.
 
 ## Stockage des activations (`src/storage/`)
 
-- `fragment_store.py` : CSR fait-maison en tenseurs torch pour les activations
-  token-level (un mail encodé en 16k+1024 dimensions par token serait ~400 Mo dense/doc
-  à la largeur 262k historique — le format CSR ramène ça à quelques centaines de Ko).
-- `shards.py` : sharding/mmap pour les gros tenseurs d'activations denses (embeddings
-  de phrase P2, activations doc-level).
+- `fragment_store.py` : CSR fait-maison (`rowptr`/`cols`/`vals` construits directement
+  via `mask.nonzero()`/`cumsum`, pas `torch.sparse` ni `scipy.sparse`) en tenseurs torch
+  pour les activations token-level (un mail encodé en 16k+1024 dimensions par token
+  serait ~400 Mo dense/doc à la largeur 262k historique — le format CSR ramène ça à
+  quelques centaines de Ko). Activement utilisé (`saev5.py`, `judge.py`,
+  `baseline_gemmascope.py`, `tests/test_sparse_storage.py`). Aucune bibliothèque de
+  stockage existante (HDF5, zarr, safetensors, parquet, `scipy.sparse` sur disque) n'a
+  été évaluée comme alternative, et le compromis mémoire/temps d'inférence de ce format
+  maison n'a jamais été mesuré — seul l'argument volumétrique (Mo/doc) est documenté.
+- `shards.py` : sharding/mmap (`torch.load(..., mmap=True)`) pour de gros tenseurs
+  d'activations denses — **code mort** : aucun appelant ailleurs dans le dépôt
+  (`src/`, `scripts/`, `tests/`), seulement ses propres définitions. À supprimer ou à
+  documenter comme non utilisé, pas comme faisant partie du chemin actif.
+
+## Retrieval (Latent Terms) et cooccurrence
+
+- **Latent Terms** (`src/sae/retrieval/latent_terms.py`) : réimplémentation from-scratch
+  (BM25 sur le vocabulaire latent d'un SAE de phrases, Clavié et al. 2026,
+  arXiv:2605.29384) — il n'existe **aucun dépôt officiel** publié par les auteurs ; la
+  seule réimplémentation tierce (`x-tabdeveloping/latent_terms`, JAX) n'est pas
+  vendorisée et n'a jamais servi d'oracle de comparaison (cf. `docs/references.md`).
+  Testé à échelle de production sur les 3480 mails originaux
+  (`scripts/latent_retrieval_precision_eval.py`, `RESULTS_TESTS.md` §26/§68/§69) :
+  P@10/P@20 parfaits sur 3 intentions sur 4 (réclamation, remboursement, information),
+  mais **P@10=0.00 sur "urgence"** (contre 0.80 pour TF-IDF) — mode d'échec structurel
+  de BM25 sur un vocabulaire latent creux, pas un artefact du run. Fiabilité non
+  uniforme, à garder à l'esprit avant tout usage en aval de ce module au-delà des 3
+  intentions validées.
+- **Cooccurrence** (`src/analysis/cooccurrence.py`) : NPMI (`compute_npmi`) et
+  clustering Louvain (`nx.community.louvain_communities`, pondéré par NPMI) sont
+  implémentés et exercés en production (`cooccurrence_graph`, appelé depuis
+  `saev5.py` et `scripts/feature_group_reproducibility_test.py`). Résultats empiriques
+  peu concluants sur corpus réel : NPMI ne retient que 3 paires sur 26 579 arêtes comme
+  "intéressantes" sur `results_v10_emails_main` (`RESULTS_TESTS.md` §16.3, contre un
+  rappel parfait sur signal synthétique injecté, §40) ; le regroupement Louvain réel
+  n'est **pas distinguable statistiquement** d'un regroupement aléatoire de même taille
+  (similarité 0.948 vs 0.964, p=0.675, `RESULTS_TESTS.md` §66/B.27) — un résultat négatif
+  qui remet en cause la valeur interprétative du clustering Louvain tel qu'utilisé
+  aujourd'hui, pas seulement sa reproductibilité (déjà signalée non significative en
+  §34).
 
 ## Précision numérique
 
@@ -128,12 +173,18 @@ src/
     keywords.py               # Listes de mots-clés par domaine
   storage/
     fragment_store.py       # Stockage CSR (torch) des activations token-level
-    shards.py                # Sharding/mmap d'activations denses
+    shards.py                # Sharding/mmap d'activations denses -- CODE MORT, aucun appelant
   visualization/
     dashboard.py             # Dashboard interactif Streamlit
 scripts/                   # Points d'entrée secondaires (cf. section Scripts)
 tests/                     # Suite pytest
-external/sae-lens/         # Submodule SAELens (comparaison d'implémentation)
+external/sae-lens/         # Submodule SAELens (chargement du SAE core en production,
+                            #   pas seulement comparaison — cf. docs/references.md)
+external/interp_embed/     # Submodule interp_embed (Jiang/Sun et al. 2025), initialisé
+                            #   et peuplé (28 fichiers .py) -- inspiration méthodologique
+                            #   comparée par relecture du papier (RESULTS_TESTS.md §15),
+                            #   jamais exécuté sur son propre cas jouet pour valider la
+                            #   comparaison (cf. docs/references.md)
 local_data/
   emails/                  # Corpus EDF : Mails.tsv + augmented_mails.jsonl
   neuronpedia_labels/      # Cache labels Neuronpedia, partagé par tous les runs
@@ -174,6 +225,13 @@ Doit être lancé depuis la racine du dépôt avec `PYTHONPATH=.` (le script
 mélange imports absolus, `from src.analysis...`, et imports relatifs "à
 plat", `from sae_shared import ...`, résolus car son propre dossier est ajouté
 à `sys.path`).
+
+Chronométrage des étapes de haut niveau (`stage_timer`, contextmanager en tête de
+`saev5.py`) : chargement du corpus principal, préparation du corpus de diffing,
+Pipeline 1 total, Pipeline 2 total — imprimés dans les logs (`[timing] ... terminé en
+Xs`), pour repérer un temps de run anormal d'une soumission à l'autre. Granularité
+volontairement grossière : pas de chronométrage des sous-étapes internes
+(extraction/entraînement/labellisation à l'intérieur de P1/P2).
 
 Variables utiles : `EMAIL_TEST_SPLIT`, `MAX_AUGMENTED_PER_MAIL`,
 `N_TOTAL_ENERGY`/`N_TOTAL_SPORTS`/`N_TOTAL_SUPPORT` (taille du corpus

@@ -1,0 +1,314 @@
+{
+  "urgence réclamation client": {
+    "bge_m3": [
+      {
+        "f_id": 13915,
+        "label": "urgent requests and invoices",
+        "sim": 0.7450315356254578
+      },
+      {
+        "f_id": 17015,
+        "label": "[EXT] Réclamation Urgente",
+        "sim": 0.7426669001579285
+      },
+      {
+        "f_id": 17079,
+        "label": "[EXT] Réclamation Urgente",
+        "sim": 0.7426669001579285
+      },
+      {
+        "f_id": 16399,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7052865624427795
+      },
+      {
+        "f_id": 16763,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7052865624427795
+      },
+      {
+        "f_id": 16421,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7052865624427795
+      },
+      {
+        "f_id": 16849,
+        "label": "[EXT] Réclamation",
+        "sim": 0.700226902961731
+      },
+      {
+        "f_id": 16408,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.6956819295883179
+      },
+      {
+        "f_id": 16402,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.6956819295883179
+      },
+      {
+        "f_id": 16485,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.6956818699836731
+      },
+      {
+        "f_id": 16550,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.6956818699836731
+      },
+      {
+        "f_id": 10371,
+        "label": "client asks for assistance",
+        "sim": 0.6938071250915527
+      },
+      {
+        "f_id": 5096,
+        "label": "urgent matters needed",
+        "sim": 0.6889975666999817
+      },
+      {
+        "f_id": 14931,
+        "label": "emergency call 911",
+        "sim": 0.6771910786628723
+      },
+      {
+        "f_id": 17202,
+        "label": "[EXT] Réclamation coupure",
+        "sim": 0.668000340461731
+      }
+    ],
+    "f2llm_v2_330m": [
+      {
+        "f_id": 16402,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.7654338479042053
+      },
+      {
+        "f_id": 16485,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.7654338479042053
+      },
+      {
+        "f_id": 16550,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.7654338479042053
+      },
+      {
+        "f_id": 16408,
+        "label": "[EXT] Réclamations Clients",
+        "sim": 0.7654338479042053
+      },
+      {
+        "f_id": 16763,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7382983565330505
+      },
+      {
+        "f_id": 16399,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7382983565330505
+      },
+      {
+        "f_id": 16421,
+        "label": "[EXT] Réclamation Client",
+        "sim": 0.7382983565330505
+      },
+      {
+        "f_id": 16955,
+        "label": "[EXT] Requête client",
+        "sim": 0.7361128330230713
+      },
+      {
+        "f_id": 17015,
+        "label": "[EXT] Réclamation Urgente",
+        "sim": 0.7358648777008057
+      },
+      {
+        "f_id": 17079,
+        "label": "[EXT] Réclamation Urgente",
+        "sim": 0.7358648777008057
+      },
+      {
+        "f_id": 13915,
+        "label": "urgent requests and invoices",
+        "sim": 0.7294148802757263
+      },
+      {
+        "f_id": 1232,
+        "label": "surge in demand",
+        "sim": 0.7256609201431274
+      },
+      {
+        "f_id": 15011,
+        "label": "urging or compelling action",
+        "sim": 0.7186216711997986
+      },
+      {
+        "f_id": 16972,
+        "label": "[EXT] Réclamations Factures",
+        "sim": 0.7170571088790894
+      },
+      {
+        "f_id": 14085,
+        "label": "anger revenge punishment",
+        "sim": 0.7075849771499634
+      }
+    ]
+  },
+  "facturation résiliation panne": {
+    "bge_m3": [
+      {
+        "f_id": 16655,
+        "label": "[EXT] Facture contestée",
+        "sim": 0.6048383116722107
+      },
+      {
+        "f_id": 17213,
+        "label": "[EXT] Facture contestée",
+        "sim": 0.6048383116722107
+      },
+      {
+        "f_id": 17390,
+        "label": "[EXT] Résiliation contrat",
+        "sim": 0.6044979095458984
+      },
+      {
+        "f_id": 16972,
+        "label": "[EXT] Réclamations Factures",
+        "sim": 0.5854595303535461
+      },
+      {
+        "f_id": 1294,
+        "label": "recharge or cost calculation",
+        "sim": 0.5741296410560608
+      },
+      {
+        "f_id": 11691,
+        "label": "recoup back rent or clearance",
+        "sim": 0.5734924674034119
+      },
+      {
+        "f_id": 16547,
+        "label": "[EXT] Contestation Facture",
+        "sim": 0.5724539756774902
+      },
+      {
+        "f_id": 17279,
+        "label": "[EXT] Contestation Facture",
+        "sim": 0.5724539756774902
+      },
+      {
+        "f_id": 16849,
+        "label": "[EXT] Réclamation",
+        "sim": 0.5709807872772217
+      },
+      {
+        "f_id": 16992,
+        "label": "[EXT] Litige Facture",
+        "sim": 0.5680254697799683
+      },
+      {
+        "f_id": 17270,
+        "label": "[EXT] Colère Facture",
+        "sim": 0.567221999168396
+      },
+      {
+        "f_id": 17202,
+        "label": "[EXT] Réclamation coupure",
+        "sim": 0.56488436460495
+      },
+      {
+        "f_id": 16459,
+        "label": "[EXT] Résiliation",
+        "sim": 0.559420108795166
+      },
+      {
+        "f_id": 17011,
+        "label": "[EXT] Résiliation",
+        "sim": 0.559420108795166
+      },
+      {
+        "f_id": 17079,
+        "label": "[EXT] Réclamation Urgente",
+        "sim": 0.5532044172286987
+      }
+    ],
+    "f2llm_v2_330m": [
+      {
+        "f_id": 16655,
+        "label": "[EXT] Facture contestée",
+        "sim": 0.7136256694793701
+      },
+      {
+        "f_id": 17213,
+        "label": "[EXT] Facture contestée",
+        "sim": 0.7136256694793701
+      },
+      {
+        "f_id": 5223,
+        "label": "paid / unpaid categorisation",
+        "sim": 0.710854172706604
+      },
+      {
+        "f_id": 13642,
+        "label": "taxable income, house down payment, demands",
+        "sim": 0.6921932101249695
+      },
+      {
+        "f_id": 3599,
+        "label": "danger catastrophe death rape fines",
+        "sim": 0.6867271065711975
+      },
+      {
+        "f_id": 2380,
+        "label": "mounting debts / conflicts",
+        "sim": 0.6856932640075684
+      },
+      {
+        "f_id": 9676,
+        "label": "disclaimermodelexplicitcontentrapediscriminationstorylanguagesignincapable",
+        "sim": 0.6842588782310486
+      },
+      {
+        "f_id": 9897,
+        "label": "sales and payment information calculation",
+        "sim": 0.683891236782074
+      },
+      {
+        "f_id": 8054,
+        "label": "Navigating deferring destructing ranges",
+        "sim": 0.682004988193512
+      },
+      {
+        "f_id": 16396,
+        "label": "[EXT] Facture énergie",
+        "sim": 0.6812463998794556
+      },
+      {
+        "f_id": 16385,
+        "label": "[EXT] Facture énergie",
+        "sim": 0.6812463998794556
+      },
+      {
+        "f_id": 1517,
+        "label": "punctuations implying pause",
+        "sim": 0.6801629662513733
+      },
+      {
+        "f_id": 16547,
+        "label": "[EXT] Contestation Facture",
+        "sim": 0.6776306629180908
+      },
+      {
+        "f_id": 17279,
+        "label": "[EXT] Contestation Facture",
+        "sim": 0.6776306629180908
+      },
+      {
+        "f_id": 11691,
+        "label": "recoup back rent or clearance",
+        "sim": 0.6768167614936829
+      }
+    ]
+  }
+}

@@ -11,41 +11,54 @@ pour l'audit méthodologique. Complète `docs/AUDIT_2026-08.md` (constats) et
 détail. Les résultats atterrissent dans `results_v10_emails_main/cache/*.json`
 ou `docs/*.json`.
 
+**Balayage exhaustif fait (`RESULTS_TESTS.md` §70)** : tous les scripts déjà écrits
+et référencés par un `.slurm` existant ont été exécutés au moins une fois. Un seul
+écart trouvé — `embedding_model_comparison_test.py`, déjà exécuté (job 40730, session
+antérieure à cet audit) mais jamais transcrit — comblé sans recalcul. **Priorité 1
+ci-dessous est donc entièrement close** ; tout ce qui reste (Priorités 2-3) nécessite
+un script à écrire, pas seulement une commande à relancer.
+
 ---
 
-## Priorité 1 — prêts à lancer, script déjà écrit et testé cette session
+## Priorité 1 — clos cette session (commandes conservées pour relance future)
 
-### 1. B.26 point 4 — propager le correctif d'intention aux 3 derniers consommateurs
+### 1. B.26 — correctif appliqué en production, propagation + sanity checks faits
 
-```
-sbatch slurm/validation/run_audit_b26_propagate_fidelity.slurm
-```
-
-Rejoue `explanation_fidelity_test.py`, `steering_fidelity_test.py` et
-`latent_retrieval_precision_eval.py` avec les patterns `INTENT_KEYWORDS_FR`
-réellement corrigés (déjà fait pour `intent_urgency_probe.py`, RESULTS_TESTS.md
-§60). Écrit `<nom>_v2_labels_corriges.json` à côté de l'original (préservé).
-Coût : CPU + GPU léger, ~10-20 min. **Déjà lancé une fois cette session (job
-43947, en cours au moment de l'écriture de ce fichier) — relancer seulement
-si les résultats semblent incomplets ou si les labels sont modifiés à nouveau.**
-
-### 2. B.24 — premier essai du module de comparaison inter-modèles (jamais exécuté)
+`src/data/dataset.py::INTENT_KEYWORDS_FR` corrige désormais les patterns en
+production (autorisation explicite donnée). Les 4 consommateurs
+(`intent_urgency_probe.py`, `explanation_fidelity_test.py`,
+`steering_fidelity_test.py`, `latent_retrieval_precision_eval.py`) ont été
+rejoués SANS patch et reproduisent les chiffres audités (match exact ou
+quasi-exact, RESULTS_TESTS.md §69). Une source de non-déterminisme distincte
+a été trouvée et corrigée au passage (`LogisticRegression(solver="liblinear")`
+non seedée dans 2 scripts). Plus rien à relancer sur ce point sauf si
+`INTENT_KEYWORDS_FR` change à nouveau :
 
 ```
-sbatch slurm/validation/run_audit_b24_compare_pipeline.slurm
+sbatch slurm/validation/run_audit_b26_propagate_fidelity.slurm   # rejeu par monkey-patch (comparaison)
+sbatch slurm/analysis/run_intent_urgency_probe_main.slurm         # rejeu direct (production)
+sbatch slurm/analysis/run_explanation_fidelity_test_main.slurm
+sbatch slurm/analysis/run_steering_fidelity_test_main.slurm
+sbatch slurm/analysis/run_latent_retrieval_precision_eval.slurm
 ```
 
-`src/sae/compare/pipeline.py --mode compare` (point d'entrée déjà existant,
-jamais lancé avant cette session) : compare F2LLM-v2-80M (backbone Pipeline 2
-en production) à bge-m3 via détection de pollution + alignement
-(`model_compare.py`). **Attention à l'interprétation** : entraîne DEUX
-nouveaux SAE from-scratch (pas les checkpoints existants), pooling mean pour
-les deux modèles (bge-m3 est normalement utilisé en pooling CLS ailleurs dans
-ce dépôt) — ce n'est pas une comparaison directe Pipeline 1 vs Pipeline 2.
-Coût : GPU, ~1-2h (embedding du corpus complet + 2 entraînements SAE). Le
-chemin de sortie (`COMPARE_PIPELINE_OUT`, corrigé cette session — était
-`results_v9` en dur) évite toute collision de cache. **Déjà lancé une fois
-cette session (job 43952).**
+### 2. B.24 — premier essai du module de comparaison inter-modèles : fait
+
+```
+sbatch slurm/validation/run_audit_b24_compare_pipeline.slurm      # rerun complet (~1-2h GPU)
+sbatch slurm/validation/run_audit_b24_inspect_pollution.slurm     # inspection seule (~1 min, sur cache existant)
+```
+
+Verdict "comparable" (F2LLM-v2-80M vs bge-m3), 0 feature flaggée dans les deux
+modèles — `docs/AUDIT_2026-08.md` (B.24/E.7). **Rappel d'interprétation** :
+entraîne DEUX nouveaux SAE from-scratch (pas les checkpoints existants),
+pooling mean pour les deux modèles (bge-m3 est normalement utilisé en pooling
+CLS ailleurs dans ce dépôt) — ce n'est pas une comparaison directe Pipeline 1
+vs Pipeline 2. **Piste ouverte, non tranchée** : tester `--model-b` avec un
+backbone attendu comme nettement moins adapté au domaine (EN générique) pour
+vérifier que le détecteur de pollution peut au moins détecter un cas connu,
+avant de faire confiance à un verdict "comparable" sur une paire dont le
+comportement attendu est inconnu.
 
 ---
 
@@ -140,11 +153,3 @@ Chacun de ces items est un projet en soi (plusieurs heures GPU, conception
 d'expérience non triviale) — à ne pas lancer sans re-préciser la question de
 recherche exacte au moment de s'y attaquer.
 
----
-
-## Rappel — décision utilisateur toujours en attente
-
-`src/data/dataset.py::INTENT_KEYWORDS_FR` en production contient toujours le
-pattern buggé d'origine (impact mesuré et documenté, §60/B.26) — patch non
-appliqué, en attente de confirmation explicite avant modification du fichier
-partagé.

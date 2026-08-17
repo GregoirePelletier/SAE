@@ -13,9 +13,9 @@ critères de décision plus bas).
 | Paramètre | Valeur | Justification |
 |---|---|---|
 | LLM (extraction + juge) | `google/gemma-3-12b-it` | Cible de production du projet, seul LLM utilisé dans toutes les expériences validées à ce jour. |
-| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (`report/01_etat_de_lart.md`). |
+| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (`report/01_etat_de_lart.md`) — **mais le balayage de couche fait après ce choix (`RESULTS_TESTS.md` §51) trouve la couche 31 significativement supérieure à la couche 24 (z=2.20) ; le choix de couche n'a pas été révisé depuis.** |
 | Extension SAE (Pipeline 1) | `D_EXTRA=1024`, `K_EXTRA=32` | Valeurs par défaut, non ré-optimisées dans cette passe (piste de suite, `report/04`). |
-| Budget de tokens extension | `N_TOKENS_EXTRA_TRAIN=500000` | Validé non-limitant par ablation (100k/500k/2M statistiquement indistinguables, `RESULTS_TESTS.md` §12). |
+| Budget de tokens extension | `N_TOKENS_EXTRA_TRAIN=500000` | Validé non-limitant par ablation (100k/500k/2M statistiquement indistinguables, `RESULTS_TESTS.md` §12) — **mais cette ablation reste elle-même 50 à 100× en dessous du seuil de convergence documenté par la littérature (SAE Boost, `RESULTS_TESTS.md` §18.3) : sa conclusion ne s'extrapole pas au régime production sans le tester directement. Confirmation à 200M tokens (§23.5) toujours `PENDING`.** |
 | Corpus principal (entraînement) | Emails originaux + augmentés (`local_data/emails/`), corpus generic energy/sports/support réduit à un rôle secondaire post-hoc | `RESULTS_TESTS.md` §12 : c'est le facteur qui a le plus d'effet sur l'interprétabilité. |
 | Embedding Pipeline 2 (backbone `PhraseLevelSAE`) | `F2LLM-v2-330M` (au lieu de -80M) | Cf. §"Comparaison des embeddings" ci-dessous. |
 | Embedding pour similarité de labels (retrieval/clustering/corrélations) | `bge-m3` | Seul modèle validé fiable sur les deux requêtes de test (`RESULTS_TESTS.md` §15.2) -- F2LLM y donnait des résultats sans rapport sur une des deux. |
@@ -50,6 +50,47 @@ quoi la comparer.
 | 14 | **Embedding backbone Pipeline 2 : F2LLM-80M vs F2LLM-330M (nouveau)** | `slurm/pipeline_runs/run_sae_v10_p2_f2llm330m.slurm` | `results_v10_p2_f2llm330m/results.json` | comparer NMSE/L0/`clf_acc_email_axes` contre `results_v10_emails_main/results.json` (section P2) |
 | 15 | Retrieval BM25 sur vocabulaire latent (Latent Terms) | `scripts/retrieval_demo.py` / `src/sae/retrieval/latent_terms.py --mails ...` | résultats console | non comparé formellement à ce jour à `select_latents_by_similarity` (piste de suite) |
 | 16 | Robustesse au biais de formatage du corpus augmenté | *(déjà produit)* fix `load_augmented` + rerun #13 | cf. §14.1 | avant/après, par axe/niveau |
+
+## Limites connues de l'extrapolation à 500K tokens
+
+Toutes les ablations méthodologiques listées ci-dessus (et la quasi-totalité de
+`RESULTS_TESTS.md`) sont produites au budget `N_TOKENS_EXTRA_TRAIN=500000`. C'est une
+contrainte matérielle/temps assumée, pas un choix neutre : `RESULTS_TESTS.md` §18.3
+situe ce régime 50 à 100× en dessous du seuil où la littérature (SAE Boost) observe un
+effet de volume sur la performance en domaine général. Les conclusions qui en dépendent
+ne sont valables que dans ce régime réduit, jusqu'à confirmation à plus grande échelle :
+
+- **§12/§18.3** — budget de tokens non-limitant : conclusion directement citée en
+  "Conditions fixées" ci-dessus, non extrapolable sans la confirmation à 200M tokens
+  (§23.5, job 41658, toujours `PENDING`, bloqué par un incident de maintenance
+  cluster). Le seul signal positif observé en cours de route (+8,7 pt à 25M tokens,
+  §23.4) ne réplique pas sur deux graines supplémentaires (§56) — traité comme du
+  bruit d'échantillonnage, pas comme un effet de volume confirmé.
+- **§28** — dose-réponse taille de modèle (1b/4b/12b, n=150×3) : facteur limitant à
+  petite échelle explicitement signalé par la section elle-même, charge la décision
+  d'architecture (Gemma-3-12b) sur seulement 3 points de mesure.
+- **§33** — un seul jeu de labels connus (14 axes), un seul corpus, un seul SAE :
+  conclusion non généralisée au-delà de cette configuration précise.
+- **§51** — le balayage de couche qui trouve la couche 31 meilleure que la couche 24
+  (configuration actuelle, cf. tableau ci-dessus) n'a pas été suivi d'un rerun de
+  référence à la couche 31 pour vérifier si l'écart tient à plus grande échelle.
+
+Prioriser un rerun à plus grande échelle sur la chaîne §12→§18.3→§23 (c'est la
+décision la plus citée ailleurs dans le projet) avant §28 ou §33.
+
+## Décalage avec `RESULTS_TESTS.md`
+
+Ce document n'a pas été mis à jour en substance depuis sa création (liée à §16) — un
+seul commit ultérieur, purement rédactionnel. Tout `RESULTS_TESTS.md` §17 à §72
+(largement la série `docs/AUDIT_2026-08.md`, §57-72) est donc absent d'ici, y compris
+des résultats qui contredisent ou nuancent des lignes déjà présentes dans les tableaux
+ci-dessus : le balayage de couche (§51, ci-dessus), le point de hook mlp_out > attn_out
+(§53), et surtout §60 (`INTENT_KEYWORDS_FR` sous-comptait sévèrement les labels réels
+d'intention — "résiliation" passe de 1 à 864 mails détectés une fois le bug de regex
+réellement corrigé, ×1,15 à ×3,37 sur les autres intentions). Ce correctif touche
+directement la ligne #8 "Détection d'urgence/intention (réelle)" de l'inventaire
+ci-dessus : toute lecture de `intent_urgency_probe_results.json` produite avant ce
+correctif utilise des labels de référence faux, pas seulement bruités.
 
 ## Comment lire les résultats consolidés
 

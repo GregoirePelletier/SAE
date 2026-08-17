@@ -37,3 +37,10 @@ print(f"  pollution_score : min={pol_b['pollution_score'].min():.3f} "
       f"std={pol_b['pollution_score'].std():.3f}")
 thr_b = pol_b["pollution_score"].mean() + 2 * pol_b["pollution_score"].std()
 print(f"  seuil (mean+2*std) = {thr_b:.3f} ; {(pol_b['pollution_score'] > thr_b).sum()} au-dessus")
+
+# E.7 (deja confirme par lecture) : q_null_npmi95 est calcule par permutation
+# mais jamais utilise pour flagger -- verifie ici sur la premiere execution
+# reelle du module si ca aurait change quelque chose.
+print(f"\nE.7 -- seuil par permutation jamais utilise pour flagger :")
+print(f"  A: q_null_npmi95={pol_a['q_null_npmi95'].iloc[0]:.4f} (colonne calculee, non exploitee)")
+print(f"  B: q_null_npmi95={pol_b['q_null_npmi95'].iloc[0]:.4f} (colonne calculee, non exploitee)")

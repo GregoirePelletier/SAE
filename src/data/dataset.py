@@ -24,12 +24,18 @@ EKMAN_MAP = {  # GoEmotions 27 -> Ekman 6 + neutral (mapping officiel du repo Go
 }
 _GO2EKMAN = {g: e for e, gs in EKMAN_MAP.items() for g in gs}
 
+
+# `\b` encadre une FRONTIÈRE DE MOT : un radical seul (`r[ée]sili`) ne matche
+# que la forme non fléchie exacte, jamais "résilier"/"résiliation". Chaque
+# radical à un seul mot porte donc `\w*` pour matcher ses formes fléchies ;
+# les alternatives-phrases (avec espaces, déjà spécifiques) n'en ont pas
+# besoin.
 INTENT_KEYWORDS_FR = {
-    "reclamation": r"\b(r[ée]clamation|contest|inadmissible|scandaleux|erreur de facturation)\b",
-    "resiliation": r"\b(r[ée]sili|clôtur|mettre fin au contrat)\b",
-    "remboursement": r"\b(rembours|trop[- ]perçu|avoir)\b",
-    "information": r"\b(renseign|information|pourriez[- ]vous m'indiquer|comment (faire|proc[ée]der))\b",
-    "urgence": r"\b(urgent|imm[ée]diat|sans d[ée]lai|coupure)\b",
+    "reclamation": r"\b(r[ée]clamation\w*|contest\w*|inadmissible\w*|scandaleux\w*|erreur de facturation)\b",
+    "resiliation": r"\b(r[ée]sili\w*|clôtur\w*|mettre fin au contrat)\b",
+    "remboursement": r"\b(rembours\w*|trop[- ]perçu|avoir\w*)\b",
+    "information": r"\b(renseign\w*|information\w*|pourriez[- ]vous m'indiquer|comment (faire|proc[ée]der))\b",
+    "urgence": r"\b(urgent\w*|imm[ée]diat\w*|sans d[ée]lai|coupure\w*)\b",
 }
 
 

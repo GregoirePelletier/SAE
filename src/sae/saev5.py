@@ -8,6 +8,7 @@ embeddings de phrase.
 """
 
 import os
+import time
 import urllib3
 import requests
 import glob
@@ -16,9 +17,22 @@ import json
 import math
 import random
 import re
+from contextlib import contextmanager
 from requests.sessions import Session
 from sae_lens.registry import SAE_CLASS_REGISTRY
 import gc
+
+
+@contextmanager
+def stage_timer(name: str):
+    """Chronomètre une étape de haut niveau du pipeline (corpus, P1, P2, ...)
+    et affiche sa durée -- pour repérer un temps anormal d'un run à l'autre."""
+    t0 = time.perf_counter()
+    print(f"  [timing] {name}...")
+    try:
+        yield
+    finally:
+        print(f"  [timing] {name} terminé en {time.perf_counter() - t0:.1f}s")
 
 try:
     from src.analysis.activations import valid_token_mask, norm_outlier_mask
@@ -1668,11 +1682,12 @@ if __name__ == "__main__":
               f"Test : {len(test_texts)} chunks")
         diff_texts, diff_labels = [], []
     else:
-        train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
-            LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
-            test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
-            seed=CORPUS_SPLIT_SEED,
-        )
+        with stage_timer("Chargement corpus principal (emails+augmentés)"):
+            train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
+                LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+                test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
+                seed=CORPUS_SPLIT_SEED,
+            )
         if not train_texts:
             print("  Fallback emails synthétiques (Mails.tsv introuvable).")
             train_texts = [
@@ -1689,21 +1704,22 @@ if __name__ == "__main__":
         # diffing cross-domaine (p1_diff_energy_sports.csv) : encodé post-hoc par le
         # SAE déjà entraîné sur les emails (comme les emails l'étaient avant cette
         # bascule), jamais utilisé pour l'entraînement lui-même.
-        energy_texts = prepare_domain_dataset(
-            ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
-            chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
-            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-        )
-        sports_texts = prepare_domain_dataset(
-            SPORTS_KEYWORDS, "sports", N_TOTAL_SPORTS,
-            chunk_length=1024, max_chunks=20, url_patterns=SPORTS_URL_PATTERNS,
-            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-        )
-        support_texts = prepare_domain_dataset(
-            SUPPORT_KEYWORDS, "support", N_TOTAL_SUPPORT,
-            chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
-            local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
-        )
+        with stage_timer("Préparation corpus diffing (energy/sports/support)"):
+            energy_texts = prepare_domain_dataset(
+                ENERGY_KEYWORDS, "energy", N_TOTAL_ENERGY,
+                chunk_length=1024, max_chunks=20, url_patterns=ENERGY_URL_PATTERNS,
+                local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+            )
+            sports_texts = prepare_domain_dataset(
+                SPORTS_KEYWORDS, "sports", N_TOTAL_SPORTS,
+                chunk_length=1024, max_chunks=20, url_patterns=SPORTS_URL_PATTERNS,
+                local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+            )
+            support_texts = prepare_domain_dataset(
+                SUPPORT_KEYWORDS, "support", N_TOTAL_SUPPORT,
+                chunk_length=1024, max_chunks=20, url_patterns=SUPPORT_URL_PATTERNS,
+                local_dataset_path=LOCAL_DATASET_PATH, use_fineweb2=USE_FINEWEB2,
+            )
         diff_texts  = energy_texts + sports_texts + support_texts
         diff_labels = ["energy"] * len(energy_texts) + ["sports"] * len(sports_texts) + ["support"] * len(support_texts)
         print(f"Corpus diffing (energy/sports/support, post-hoc uniquement) : {len(diff_texts)} chunks")
@@ -1740,20 +1756,22 @@ if __name__ == "__main__":
     RUN = set(os.environ.get("PIPELINES", "p1,p2").split(","))
     results_p1 = {}
     if "p1" in RUN:
-        results_p1 = run_llm_max_pool_pipeline(
-            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels,
-            volume_filler_texts=volume_filler_texts,
-        )
-        run_steering_demo(results_p1)
+        with stage_timer("Pipeline 1 (Gemma-3 + GemmaScope-2)"):
+            results_p1 = run_llm_max_pool_pipeline(
+                train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels,
+                volume_filler_texts=volume_filler_texts,
+            )
+            run_steering_demo(results_p1)
     # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).
     results_p1.pop("_test_doc_acts", None)
     _trim_host_memory()
 
     results_p2 = {}
     if "p2" in RUN:
-        results_p2 = run_f2llm_pipeline(
-            train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
-        )
+        with stage_timer("Pipeline 2 (F2LLM + PhraseLevelSAE)"):
+            results_p2 = run_f2llm_pipeline(
+                train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
+            )
 
     print("\n" + "=" * 70)
     print(" BILAN COMPARATIF")

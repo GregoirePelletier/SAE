@@ -3545,3 +3545,248 @@ affaiblissement selon le script). Rapport mis à jour :
 corrigé (décision utilisateur en attente) — ces trois résultats V2 restent, comme §60,
 des rejeux par monkey-patch, pas le comportement par défaut du dépôt. Détail complet :
 `docs/AUDIT_2026-08.md` (B.26).
+
+## 69. B.26 — correctif appliqué en production, sanity checks de non-régression, découverte et correction d'une source de non-déterminisme distincte (LogisticRegression liblinear non seedée)
+
+**Question** : sur autorisation explicite de l'utilisateur, `INTENT_KEYWORDS_FR` V2
+(§60) remplace les patterns buggés directement dans `src/data/dataset.py`. Les scripts
+consommateurs, non modifiés, reproduisent-ils exactement les chiffres déjà obtenus par
+monkey-patch (§60, §68) une fois rejoués sans patch ?
+
+**Écart à la configuration de référence** : aucun — c'est le point du test. Rejeu
+direct de `intent_urgency_probe.py`, `explanation_fidelity_test.py`,
+`steering_fidelity_test.py`, `latent_retrieval_precision_eval.py`, tous inchangés
+(hors le fix `random_state` ci-dessous), contre le `dataset.py` désormais corrigé.
+Originaux à labels buggés sauvegardés (`*.orig_bug_backup.json`) avant écrasement.
+
+**Résultat (a) — `intent_urgency_probe.py` (job 44106) : match EXACT, à la décimale**,
+sur les 5 intentions (n_pos, accuracy SAE, baseline, delta) contre §60. Le correctif de
+production se comporte identiquement au monkey-patch qui l'a validé.
+
+**Résultat (b) — `explanation_fidelity_test.py`/`steering_fidelity_test.py`
+(jobs 44107/44108) : match QUALITATIF mais pas bit-exact contre §68.** Exemple
+(`explanation_fidelity`, réclamation) : ratio top/random 50 558× (ce rerun) vs
+28 169× (§68, monkey-patch) — même ordre de grandeur écrasant, chiffre exact différent.
+**Cause identifiée** : les deux scripts appellent `LogisticRegression(solver="liblinear")`
+sans fixer `random_state` — contrairement à `lbfgs` (déterministe, utilisé par
+`downstream_classification`/`src/analysis/metrics.py` pour toute tâche multi-classe et
+la plupart des tâches binaires de ce dépôt), `liblinear` a un chemin d'optimisation
+non-déterministe sans seed. Le mécanisme concret ici : `explanation_fidelity_test.py`
+sélectionne son échantillon de documents via un seuil dur (`probs > 0.7`) sur la sortie
+`predict_proba` du classifieur — une différence numérique infime près de ce seuil peut
+faire basculer un document dans ou hors de l'échantillon, cascadant vers un ensemble de
+documents testés différent et donc un chiffre final différent, même si les coefficients
+du classifieur convergent presque au même optimum (problème convexe, solution unique en
+théorie, mais chemin d'optimisation différent en pratique sans seed).
+**Corrigé** (`random_state=SEED` ajouté aux deux appels, une ligne chacun, même
+principe que le seeding déjà appliqué pour B.17). **La conclusion qualitative de §68
+est renforcée, pas affaiblie** : `steering_fidelity_test.py` rejoué (seed classifieur
+différent de facto avant ce fix, labels identiques) reproduit la même catégorisation
+par intention que le monkey-patch (réclamation amplifiée ~1,87×, résiliation
+partiellement préservée ~0,64-0,82×, remboursement partiellement préservé ~0,28-0,37×,
+information quasi totalement préservée ~0,97-0,99×, urgence fortement neutralisée
+~0,11-0,13×) — deux runs indépendants avec labels corrigés mais seeds classifieur
+différents convergent vers la même lecture qualitative, ce qui renforce la confiance
+dans le changement de catégorie observé par rapport aux labels buggés (§68), pas
+seulement un artefact d'un seul rerun.
+
+**Résultat (c) — `latent_retrieval_precision_eval.py` (job 44109) : match quasi
+parfait.** Taux de base identiques aux 4 décimales près (confirme le même jeu de
+labels sous-jacent) ; Precision@10/@20 Latent Terms strictement identiques sur les 4
+intentions. Seul écart : P@10/P@20 TF-IDF sur "information" (0,6/0,75 ici vs 0,7/0,7
+en §68) — un seul document qui bascule dans/hors du top-10, sans lien apparent avec
+`LogisticRegression` (ce script n'en utilise pas ; le baseline TF-IDF est un calcul
+cosinus déterministe sur texte brut). Cause non identifiée dans cette passe (candidat
+le plus probable : ordre non figé d'un tri à égalité stricte de score cosinus sur des
+textes très templatés) — écart d'un seul document, ne change aucune conclusion.
+
+**Conclusion** : le correctif de production se comporte comme attendu. Une source de
+non-déterminisme non liée à B.26 (LogisticRegression liblinear non seedée) a été
+découverte à l'occasion de cette vérification et corrigée dans les deux scripts
+concernés — une leçon distincte de B.17 (qui portait sur `random`/`numpy` global, pas
+sur le solveur scikit-learn) mais de même nature méthodologique.
+
+**Limite connue** : la correction `random_state` n'a pas été vérifiée sur d'autres
+appels `LogisticRegression` du dépôt au-delà des deux scripts concernés — les autres
+sites (`src/analysis/metrics.py`, `core_vs_extension_ablation.py`) utilisent
+`solver="lbfgs"` pour les tâches multi-classe (déterministe, pas concerné) et
+`solver="liblinear"` uniquement pour les tâches binaires simples sans ré-échantillonnage
+en aval dépendant d'un seuil dur — le mécanisme de cascade identifié ici ne s'y
+applique probablement pas, mais ceci n'a pas été vérifié empiriquement par un rerun
+répété. Détail complet : `docs/AUDIT_2026-08.md` (B.26).
+
+## 70. Audit méthodologique 2026-08 (suite) : `embedding_model_comparison_test.py` — résultat déjà obtenu (job 40730, session antérieure) jamais écrit, comble un renvoi de commentaire sans preuve en production
+
+**Question** : `select_latents_by_similarity`/le bloc "Corrélations intéressantes"
+(`saev5.py:1240`) utilise bge-m3 plutôt que F2LLM, avec un commentaire renvoyant à
+« la note ci-dessus » et affirmant que bge-m3 est « plus fiable que F2LLM sur des
+labels courts » — sans qu'aucune section de ce fichier ne documente le test ayant
+justifié ce choix. Recherche exhaustive (balayage systématique des scripts référencés
+par `slurm/*/*.slurm` contre leurs mentions dans ce fichier) : `logs/analysis/embed_cmp_40730.log`
+existe et contient un run complet et réussi de `embedding_model_comparison_test.py`,
+jamais transcrit ici.
+
+**Écart à la configuration de référence** : aucun — retranscription d'un résultat déjà
+produit, aucun rerun nécessaire.
+
+**Méthode** : `embedding_model_comparison_test.py` (diagnostic ponctuel, motivé par un
+échec observé de F2LLM sur la requête "facturation résiliation panne" avec `select_latents_by_similarity`
+en production) — embeddings bge-m3 des 13 685 labels de features disponibles
+(Neuronpedia 16k + extension jugée), similarité cosinus contre 2 requêtes tests
+("urgence réclamation client", "facturation résiliation panne"), top-15 affiché.
+
+**n** : 2 requêtes, 13 685 labels comparés.
+
+**Résultat (job 40730)** :
+
+| Requête | Top match bge-m3 (sim) |
+|---|---|
+| "urgence réclamation client" | "urgent requests and invoices" (0,745), "[EXT] Réclamation Urgente" (0,743 ×2) |
+| "facturation résiliation panne" | "[EXT] Facture contestée" (0,605 ×2), "[EXT] Résiliation contrat" (0,604) |
+
+Les 15 premiers résultats des deux requêtes sont sémantiquement cohérents avec la
+requête dans les deux cas (aucun résultat hors-sujet dans le top-15) — contrairement au
+comportement dégradé de F2LLM sur la seconde requête qui avait motivé ce diagnostic
+(docstring du script).
+
+**Conclusion révisée — pas une comparaison à taille égale, confondue par la taille du
+modèle.** Le script ne précise pas quelle variante F2LLM-v2 avait produit le mauvais
+résultat qui motive ce diagnostic, mais `src/config.py::EMB_MODEL` par défaut est
+`codefuse-ai/F2LLM-v2-80M` — probablement celle en cause. Taille sur disque comparée
+directement (`du -sh`, pas de calcul, juste une lecture du système de fichiers) :
+
+| Modèle | Taille sur disque | Paramètres (config) |
+|---|---|---|
+| bge-m3 | 4,3 Go | hidden=1024, 24 couches (XLM-R-large, ≈568M) |
+| F2LLM-v2-80M | 166 Mo | ≈80M |
+| F2LLM-v2-160M | 318 Mo | ≈160M |
+| F2LLM-v2-330M | 653 Mo | ≈330M |
+
+**bge-m3 est ≈26× plus gros que F2LLM-v2-80M sur disque**, et encore ≈6,6× plus gros
+que F2LLM-v2-330M — la variante que le projet a par ailleurs jugée « assez grande »
+pour servir de backbone Pipeline 2 (§16.4). Le résultat de job 40730 ne permet donc
+pas de distinguer « bge-m3 est architecturalement mieux adapté au matching de labels
+courts multilingues » de « un modèle ≈6-26× plus gros gagne, sans rapport avec le
+choix d'architecture ». **Le commentaire de production (`saev5.py:1240`, "plus fiable
+que F2LLM sur des labels courts") affirme une explication architecturale que ce test
+ne peut pas trancher** — la conclusion initialement écrite ici (« empiriquement
+justifié ») était trop forte, corrigée.
+
+**Limite connue** : comparaison qualitative (inspection visuelle du top-15), pas de
+métrique chiffrée (precision@k, ou score de cohérence formalisé comme dans B.29) ; F2LLM
+lui-même n'a pas été rejoué en parallèle dans ce job pour une comparaison directe
+chiffrée, seule la sortie bge-m3 est capturée ; **confond de taille de modèle non
+contrôlé** (ci-dessus) — un test à refaire avec F2LLM-v2-330M (déjà disponible en
+local, même échelle que la décision §16.4) donnerait une comparaison beaucoup plus
+informative que F2LLM-v2-80M. Détail complet : `docs/AUDIT_2026-08.md`.
+
+## 71. E.9 (suite) — comparaison à taille réduite (F2LLM-v2-330M au lieu de 80M) : le confond de taille explique une partie de l'écart, pas tout
+
+**Question** : §70 identifie que job 40730 comparait bge-m3 (≈568M) à F2LLM-v2-80M
+(≈80M, écart ≈26×) — un confond de taille non contrôlé. À taille bien plus proche
+(F2LLM-v2-330M, ≈330M, écart réduit à ≈6,6×), l'avantage de bge-m3 observé en job
+40730 se maintient-il ?
+
+**Écart à la configuration de référence** : identique à job 40730 (mêmes 2 requêtes,
+même jeu de 13 685 labels, même corpus de comparaison), F2LLM-v2-330M ajouté en
+embedding parallèle (mean-pooling masqué, convention `phrase_sae.py::_mean_pool`, pas
+le CLS pooling de bge-m3) — `scripts/audit_2026_08_e9_size_matched_embedding_compare.py`.
+
+**Méthode** : identique à job 40730 (similarité cosinus, top-15 par requête et par
+modèle), les deux modèles tournés dans le même job pour garantir un jeu de labels et
+un encodage strictement identiques entre les deux conditions.
+
+**n** : 2 requêtes, 13 685 labels comparés, 2 modèles.
+
+**Résultat (job 44111)** :
+
+- **Requête 1 ("urgence réclamation client") : F2LLM-v2-330M compétitif, voire
+  légèrement meilleur.** Top-10 des deux modèles entièrement cohérent avec la requête
+  (aucun résultat hors-sujet). Scores de similarité F2LLM plus élevés (0,765-0,736)
+  que bge-m3 (0,745-0,696) sur ce top-10 — pas de dégradation visible en passant de
+  568M à 330M.
+- **Requête 2 ("facturation résiliation panne") : F2LLM-v2-330M dégrade nettement
+  plus que bge-m3, malgré la taille rapprochée.** bge-m3 : 8/10 résultats cohérents
+  (Facture contestée, Résiliation contrat, Réclamations Factures, Contestation
+  Facture, Litige Facture), 2/10 vaguement adjacents ("recharge or cost calculation",
+  "recoup back rent or clearance"). F2LLM-v2-330M : seulement 3/10 clairement
+  cohérents (Facture contestée ×2, Facture énergie), le reste hors-sujet ou dégénéré
+  ("danger catastrophe death rape fines", "disclaimermodelexplicitcontentrapediscriminationstorylanguagesignincapable"
+  — un label manifestement corrompu/dégénéré du dictionnaire lui-même, indépendant du
+  modèle d'embedding testé).
+
+**Conclusion, sans atténuation** : **le confond de taille explique une partie de
+l'écart observé en job 40730, pas la totalité.** Pour la requête simple (concepts
+déjà proches lexicalement des labels), F2LLM-v2-330M rattrape bge-m3 — la taille
+seule suffisait à expliquer l'écart initial sur cette requête. **Pour la requête
+compositionnelle (3 concepts combinés, "facturation résiliation panne"), l'écart
+bge-m3 > F2LLM persiste même à taille comparable** — le commentaire de production
+(`saev5.py:1240`, "plus fiable que F2LLM sur des labels courts") tient donc
+partiellement : pas comme affirmation générale non nuancée, mais spécifiquement pour
+les requêtes multi-concepts, où la dégradation de F2LLM ne semble pas qu'un effet de
+taille. Un label dégénéré est apparu dans le top-10 F2LLM
+(`disclaimermodelexplicitcontentrapediscriminationstorylanguagesignincapable`) —
+signale un problème de qualité du dictionnaire de labels lui-même (probablement un
+résidu de génération de labels automatique mal filtré), indépendant du choix de
+modèle d'embedding, qui mériterait sa propre vérification.
+
+**Limite connue** : toujours pas de métrique chiffrée (precision@k contre une vérité
+terrain), seulement une lecture qualitative du top-10/15 — comme pour job 40730. Le
+label dégénéré repéré n'a pas été tracé à sa source. Détail complet :
+`docs/AUDIT_2026-08.md` (E.9).
+
+## 72. E.10 (nouveau) — le dictionnaire de labels Neuronpedia core (16k) contient 99 entrées dégénérées, dont 39 sont des transcriptions brutes de raisonnement LLM (jusqu'à 9340 caractères)
+
+**Question** : le label dégénéré repéré en §71
+(`disclaimermodelexplicitcontentrapediscriminationstorylanguagesignincapable`, feature
+9676) est-il un cas isolé, ou un symptôme d'un problème plus large dans le fichier de
+labels Neuronpedia core (`local_data/neuronpedia_labels/neuronpedia_labels_24-gemmascope-2-res-16k.json`,
+consommé par `select_latents_by_similarity`, `find_interesting_pairs`, le dashboard,
+et tout module citant des labels de features core) ?
+
+**Écart à la configuration de référence** : aucun rerun — inspection pure lecture
+(`jq`, aucun calcul) du fichier de labels déjà en cache.
+
+**Méthode** : distribution de la longueur (en caractères) des 13 535 labels non-vides
+du fichier, tri par tranche.
+
+**n** : 13 535 labels (cohérent avec la couverture 16k déjà citée en B.16, 82,6%).
+
+**Résultat** :
+
+| Longueur | n | Exemple |
+|---|---|---|
+| médiane | — | 24 caractères |
+| moyenne | — | 37,4 caractères (tirée vers le haut par les outliers ci-dessous) |
+| max | — | 9 340 caractères |
+| 80-200 caractères | 45 | phrases longues, borderline mais pas nécessairement dégénérées |
+| 200-1000 caractères | 15 | clairement pas des labels concis |
+| **>1000 caractères** | **39** | **transcriptions brutes du raisonnement de la LLM d'auto-interprétation Neuronpedia** (ex. feature dont le "label" commence par « Here's the explanation for the neuron's behavior:... » et enchaîne plusieurs paragraphes d'hypothèses successives, jamais réduits à une phrase finale) |
+
+Le label court et dégénéré repéré en §71 (`disclaimermodelexplicitcontentrapediscriminationstorylanguagesignincapable`,
+75 caractères) est d'une NATURE DIFFÉRENTE des 39 cas >1000 caractères : pas une
+transcription de raisonnement, mais une chaîne de mots-clés visiblement issus d'un
+refus de contenu de la LLM d'auto-interprétation, concaténés sans espaces — un second
+mode de dégénérescence distinct dans le même pipeline de génération de labels.
+
+**Conclusion** : le fichier de labels core (16k) contient au moins 2 modes de
+dégénérescence distincts affectant ≥99/13535 entrées (0,73%) : (a) 39 cas où le
+raisonnement complet de la LLM d'auto-interprétation Neuronpedia n'a jamais été réduit
+à un label final court (le post-traitement censé extraire la phrase finale a
+visiblement échoué), (b) au moins 1 cas où un refus de contenu a été concaténé en une
+chaîne de mots-clés sans espaces. **Vérifié : aucune des 150 features de l'extension
+jugées dans le run principal (`p1_judge_labels_extended.json`) n'est concernée** — ces
+labels viennent d'un pipeline différent (juge local odd-one-out, pas Neuronpedia), donc
+le chiffre phare 45,3% n'est pas affecté. L'impact réel touche les usages du
+dictionnaire CORE : `find_interesting_pairs`/corrélations intéressantes (embeddings de
+labels core), le module de comparaison B.24, le dashboard d'exploration des features
+core, et potentiellement toute citation d'un label core spécifique dans le rapport si
+elle tombe sur l'une de ces 99 entrées — non tracé exhaustivement dans cette passe.
+
+**Limite connue** : la source du bug (extraction Neuronpedia elle-même, ou
+`fetch_neuronpedia_labels`/le post-traitement de ce dépôt) n'a pas été identifiée —
+n'a pas vérifié si le fichier source distant (avant téléchargement local) a le même
+problème, ce qui trancherait entre un bug amont (Neuronpedia) et un bug local
+(post-traitement de ce dépôt). Les 45 cas "longish" (80-200 caractères) n'ont pas été
+inspectés individuellement — possible qu'une partie soit des labels légitimement
+verbeux plutôt que dégénérés. Détail complet : `docs/AUDIT_2026-08.md` (E.10).

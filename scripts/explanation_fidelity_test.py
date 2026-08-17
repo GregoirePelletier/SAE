@@ -132,7 +132,7 @@ def main():
             print(f"[fidelity] {col}: {n_pos}/{len(y)} positifs -- ignoré (trop déséquilibré).")
             continue
 
-        clf = LogisticRegression(max_iter=2000, C=1.0, solver="liblinear")
+        clf = LogisticRegression(max_iter=2000, C=1.0, solver="liblinear", random_state=SEED)
         clf.fit(acts, y)
         coef = clf.coef_[0]  # (d_sae,) contribution par unité d'activation
 

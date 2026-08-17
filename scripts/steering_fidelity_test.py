@@ -162,7 +162,7 @@ def main():
         if n_pos < 30 or n_pos > len(y) - 30:
             continue
 
-        clf = LogisticRegression(max_iter=2000, C=1.0, solver="liblinear")
+        clf = LogisticRegression(max_iter=2000, C=1.0, solver="liblinear", random_state=SEED)
         clf.fit(acts, y)
         coef = clf.coef_[0]
         probs = clf.predict_proba(acts)[:, 1]
