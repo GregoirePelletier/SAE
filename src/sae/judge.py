@@ -89,10 +89,17 @@ def build_feature_examples_with_control(
     offset: int = 0,
     n_pos: int = 9,
     neg_quantile: float = 0.05,   # docs sous ce quantile d'activation → pool négatif
-) -> tuple[list[str], Optional[str]]:
+    return_magnitudes: bool = False,
+):
     """
     Retourne (pos_examples, neg_example) pour le protocole odd-one-out.
     neg_example est None si aucun fragment disponible.
+
+    `return_magnitudes=True` (défaut False, RÉTROCOMPATIBLE -- 4 appelants
+    existants inchangés) : retourne en plus (pos_magnitudes, neg_magnitude), la
+    magnitude d'activation RÉELLE (token-level) de chaque exemple -- permet un
+    ρ_interp fidèle à Bills et al. 2023 (magnitude réelle, pas un rang synthétique
+    ni un négatif à 0.0 fixe), B.5, docs/AUDIT_2026-08.md.
     """
     f_acts = acts[:, f_idx].detach().float().numpy()
     threshold_pos = 1e-6

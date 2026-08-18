@@ -94,25 +94,39 @@ def compute_rho_sae(
 def downstream_classification(
     acts_by_label: Dict[str, torch.Tensor],
     raw_emb_by_label: Dict[str, torch.Tensor] = None,
+    groups_by_label: Dict[str, np.ndarray] = None,
 ) -> Dict[str, float]:
     """
-    Sonde logistique à 5 plis (StratifiedKFold) pour évaluer la séparabilité linéaire
-    des activations latentes vs embeddings bruts.
+    Sonde logistique à 5 plis pour évaluer la séparabilité linéaire des activations
+    latentes vs embeddings bruts.
+
+    `groups_by_label` (optionnel, B.6/docs/AUDIT_2026-08.md) : parent_id (mail
+    d'origine) par échantillon, même clés que `acts_by_label`. Si fourni, la CV
+    utilise `StratifiedGroupKFold` (groupe = mail d'origine, un mail original et
+    toutes ses variantes augmentées restent du même côté d'un pli) au lieu de
+    `StratifiedKFold` -- sans ça, une variante augmentée d'un mail présent dans le
+    pli de train peut fuiter dans le pli de test (quasi-duplicata sémantique),
+    gonflant artificiellement l'accuracy mesurée. Rétrocompatible : `None` (défaut)
+    garde le comportement `StratifiedKFold` existant pour tout appelant qui n'a pas
+    d'info de groupe (ex. probe energy/sports/support, mails indépendants).
     """
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
     from sklearn.metrics import accuracy_score
 
-    X_sae_list, X_raw_list, y_list = [], [], []
+    X_sae_list, X_raw_list, y_list, groups_list = [], [], [], []
     for label_id, (label_name, sae_acts) in enumerate(acts_by_label.items()):
         sae_np = sae_acts.float().detach().cpu().numpy()
         X_sae_list.append(sae_np)
         y_list.append(np.full(sae_np.shape[0], label_id))
         if raw_emb_by_label and label_name in raw_emb_by_label:
             X_raw_list.append(raw_emb_by_label[label_name].float().detach().cpu().numpy())
+        if groups_by_label is not None:
+            groups_list.append(np.asarray(groups_by_label[label_name]))
 
     X_sae = np.concatenate(X_sae_list, axis=0)
     y = np.concatenate(y_list, axis=0)
+    groups = np.concatenate(groups_list, axis=0) if groups_by_label is not None else None
 
     # liblinear ne supporte que la classification binaire (>=3 classes lève une
     # ValueError depuis les versions récentes de sklearn, cf. probe multi-classe
@@ -121,10 +135,15 @@ def downstream_classification(
     # validé (energy/sports) afin de ne rien changer à un résultat existant.
     solver = "liblinear" if len(acts_by_label) <= 2 else "lbfgs"
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    if groups is not None:
+        skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+        split_args = (X_sae, y, groups)
+    else:
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        split_args = (X_sae, y)
     accs_sae = []
 
-    for train_idx, test_idx in skf.split(X_sae, y):
+    for train_idx, test_idx in skf.split(*split_args):
         clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
         clf.fit(X_sae[train_idx], y[train_idx])
         preds = clf.predict(X_sae[test_idx])
@@ -134,8 +153,9 @@ def downstream_classification(
 
     if X_raw_list:
         X_raw = np.concatenate(X_raw_list, axis=0)
+        raw_split_args = (X_raw, y, groups) if groups is not None else (X_raw, y)
         accs_raw = []
-        for train_idx, test_idx in skf.split(X_raw, y):
+        for train_idx, test_idx in skf.split(*raw_split_args):
             clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
             clf.fit(X_raw[train_idx], y[train_idx])
             preds = clf.predict(X_raw[test_idx])

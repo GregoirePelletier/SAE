@@ -44,6 +44,12 @@ ancien run (fragments token-level, activations brutes) ne sont pas garantis
 présents sur disque : ils sont parfois purgés après coup pour l'espace, seuls
 les JSON légers de résultats survivent systématiquement.
 
+Avant de supprimer un dossier qui a l'air d'un doublon lors d'un nettoyage,
+vérifier qu'il n'est pas un **lien symbolique** vers la copie physique réelle
+(`ls -la`/`readlink`) — un dossier `local_data/saes/...` qui ressemblait à un
+doublon d'un dossier racine `saes/` était en réalité l'inverse : le lien
+pointait vers l'unique copie physique des poids SAE, supprimée par erreur.
+
 ### Réseau et portabilité
 
 `CLUSTER_OFFLINE_MODE=1` (`src/config.py`) désactive la vérification SSL et
@@ -57,6 +63,13 @@ Les labels Neuronpedia sont récupérés par téléchargement direct des lots
 `.jsonl.gz` publics du bucket S3 `neuronpedia-datasets` (pas via l'API REST),
 et mis en cache localement (`local_data/neuronpedia_labels/`, partagé entre
 tous les runs) — voir `fetch_neuronpedia_labels()`.
+
+`download_sae.py` ne télécharge par défaut que la configuration SAE utilisée par
+le run principal (`resid_post`, couche 24). Tout balayage de couche ou de
+hook-point (`attn_out`/`mlp_out`, autres couches) nécessite un
+`download_sae.py --sae-only` explicite pour cette configuration avant de
+soumettre le job — les nœuds de calcul étant offline, un poids manquant y échoue
+immédiatement, sans repli possible vers le Hub.
 
 ## Installation locale
 

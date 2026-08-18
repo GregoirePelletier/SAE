@@ -217,7 +217,8 @@ def build_email_train_test_corpus(
     test_split: float = 0.05,
     max_augmented_per_mail: int = 13,
     seed: int = 42,
-) -> Tuple[List[str], List[str], List[str], List[str]]:
+    return_groups: bool = False,
+):
     """
     Corpus principal d'entraînement du SAE : mails originaux + variantes
     augmentées acceptées. Le corpus générique energy/sports/support ne sert
@@ -232,21 +233,28 @@ def build_email_train_test_corpus(
     Retourne (train_texts, train_labels, test_texts, test_labels). Label =
     "original" pour un mail original, "{axis}__{level}" pour une variante augmentée
     (réutilisable tel quel pour la classification/diffing par axe de perturbation).
+
+    `return_groups=True` (défaut False, RÉTROCOMPATIBLE -- ~28 appelants existants
+    utilisent la signature à 4 valeurs, non touchés) : retourne en plus
+    (train_groups, test_groups), le parent_id (mail d'origine) de chaque texte --
+    permet une CV group-aware (GroupKFold/StratifiedGroupKFold) en aval, B.6,
+    docs/AUDIT_2026-08.md.
     """
     real_texts, _ = load_and_clean_emails(mails_tsv_path)
     if not real_texts:
-        return [], [], [], []
+        return ([], [], [], [], [], []) if return_groups else ([], [], [], [])
 
     rng = np.random.default_rng(seed)
     n_real = len(real_texts)
     test_mask = rng.random(n_real) < test_split
     parent_split = {i: ("test" if test_mask[i] else "train") for i in range(n_real)}
 
-    train_texts, train_labels = [], []
-    test_texts, test_labels = [], []
+    train_texts, train_labels, train_groups = [], [], []
+    test_texts, test_labels, test_groups = [], [], []
     for i, text in enumerate(real_texts):
         (test_texts if parent_split[i] == "test" else train_texts).append(text)
         (test_labels if parent_split[i] == "test" else train_labels).append("original")
+        (test_groups if parent_split[i] == "test" else train_groups).append(i)
 
     if augmented_jsonl_path and os.path.exists(augmented_jsonl_path):
         try:
@@ -271,9 +279,11 @@ def build_email_train_test_corpus(
             if split == "test":
                 test_texts.append(row.text)
                 test_labels.append(label)
+                test_groups.append(int(row.parent_idx))
             else:
                 train_texts.append(row.text)
                 train_labels.append(label)
+                train_groups.append(int(row.parent_idx))
 
         print(f"  [corpus] Emails : {n_real} réels + {len(df_aug)} augmentés "
               f"({len(train_texts)} train / {len(test_texts)} test, split par mail d'origine).")
@@ -281,6 +291,8 @@ def build_email_train_test_corpus(
         print(f"  [corpus] Emails : {n_real} réels, pas de fichier augmenté "
               f"({augmented_jsonl_path!r} absent) -- {len(train_texts)} train / {len(test_texts)} test.")
 
+    if return_groups:
+        return train_texts, train_labels, test_texts, test_labels, train_groups, test_groups
     return train_texts, train_labels, test_texts, test_labels
 
 

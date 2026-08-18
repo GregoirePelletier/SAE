@@ -57,6 +57,26 @@ def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dic
         else raw_cfg.get("hook_layer", 24)
     )
 
+    # A.5 (docs/AUDIT_2026-08.md) : les deux replis ci-dessus sont silencieux -- si
+    # config.json/cfg.json est absent de "hf_hook_point_in" ET "hook_layer" (fichier
+    # de métadonnées corrompu/incomplet, ou dossier mal peuplé), la couche résolue
+    # tombe sur 24 sans jamais être comparée à celle réellement attendue. Le nom du
+    # dossier (`.../layer_N_width_.../`) porte la couche VOULUE par l'appelant --
+    # comparaison explicite ici, échec bruyant plutôt qu'un run entier sur la
+    # mauvaise couche découvert (ou pas) après coup.
+    _dir_layer_match = re.search(r"layer_(\d+)_", path.name)
+    if _dir_layer_match:
+        expected_layer = int(_dir_layer_match.group(1))
+        if expected_layer != default_hook_layer:
+            raise ValueError(
+                f"Couche résolue depuis les métadonnées SAE ({default_hook_layer}) "
+                f"!= couche attendue d'après le nom du dossier ({expected_layer}, "
+                f"{path.name!r}) -- config.json/cfg.json probablement corrompu ou "
+                f"dossier mal peuplé. Ne pas continuer silencieusement (A.5)."
+            )
+    print(f"  [gemma_scope_loader] Couche résolue : {default_hook_layer} "
+          f"(hook_name={hook_name!r}, dossier={path.name!r})")
+
     cfg_dict = {
         "architecture": "jump_relu",
         "d_in": d_in,

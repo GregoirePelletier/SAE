@@ -237,7 +237,7 @@ MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
-    N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER,
+    N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -728,6 +728,7 @@ def run_llm_max_pool_pipeline(
     diff_texts: list = None,
     diff_labels: list = None,
     volume_filler_texts: list = None,
+    train_groups: list = None,
 ) -> dict:
     """train_texts/test_texts : corpus principal (emails+augmentés), utilisé pour
     l'entraînement du SAE et les métriques. diff_texts/diff_labels : corpus
@@ -741,7 +742,9 @@ def run_llm_max_pool_pipeline(
     `range(n_train)`) et la sonde de classification email restent calculées sur
     les emails+augmentés seuls -- sinon `volume_filler_texts` ferait partie du
     corpus "principal" et diluerait la sélection de features vers du contenu
-    générique."""
+    générique. train_groups (optionnel, défaut None -> comportement inchangé) :
+    parent_id (mail d'origine) de chaque `train_texts[i]`, même longueur/ordre --
+    permet une CV group-aware pour `clf_acc_email_axes` (B.6, docs/AUDIT_2026-08.md)."""
     print("\n" + "=" * 70)
     print(" PIPELINE 1 : GEMMA-3 → MAX-POOL SAE ACTS")
     print("=" * 70)
@@ -862,8 +865,8 @@ def run_llm_max_pool_pipeline(
                      if USE_FROZEN_CORE else None)
 
         with torch.no_grad():
-            for i in tqdm(range(0, len(all_texts), 4), desc="Extraction P1"):
-                batch = all_texts[i: i + 4]
+            for i in tqdm(range(0, len(all_texts), EXTRACTION_BATCH_SIZE), desc="Extraction P1"):
+                batch = all_texts[i: i + EXTRACTION_BATCH_SIZE]
                 inputs = tokenizer(
                     batch, return_tensors="pt", padding=True,
                     truncation=True, max_length=512,
@@ -1344,6 +1347,7 @@ def run_llm_max_pool_pipeline(
     # d'usage EDF que le probe energy/sports (générique, corpus secondaire).
     print("  [Downstream P1] Sonde logistique sur SAE activations (axes email, corpus principal)...")
     train_labels_arr = np.array(train_labels)
+    train_groups_arr = np.array(train_groups) if train_groups is not None else None
     label_counts = pd.Series(train_labels_arr).value_counts()
     usable_labels = label_counts[label_counts >= 10].index.tolist()  # StratifiedKFold(5) minimum
     clf_results_email = {}
@@ -1353,7 +1357,12 @@ def run_llm_max_pool_pipeline(
                 lbl: train_doc_acts[torch.from_numpy(train_labels_arr == lbl)]
                 for lbl in usable_labels
             }
-            clf_results_email = downstream_classification(acts_by_label=acts_by_label_email)
+            groups_by_label_email = (
+                {lbl: train_groups_arr[train_labels_arr == lbl] for lbl in usable_labels}
+                if train_groups_arr is not None else None
+            )
+            clf_results_email = downstream_classification(
+                acts_by_label=acts_by_label_email, groups_by_label=groups_by_label_email)
             print(f"  [Downstream P1] acc_SAE (axes email, {len(usable_labels)} classes) = "
                   f"{clf_results_email.get('acc_sae', float('nan')):.4f}")
         except Exception as e:
@@ -1405,10 +1414,14 @@ def run_f2llm_pipeline(
     test_labels: list,
     diff_texts: list = None,
     diff_labels: list = None,
+    test_groups: list = None,
 ) -> dict:
     """train_texts/test_texts : corpus principal (emails+augmentés) -- entraîne
     directement le PhraseLevelSAE. diff_texts/diff_labels : corpus secondaire
-    (energy/sports/support), encodé post-hoc pour la démo de diffing uniquement."""
+    (energy/sports/support), encodé post-hoc pour la démo de diffing uniquement.
+    test_groups (optionnel, défaut None -> comportement inchangé) : parent_id
+    (mail d'origine) de chaque `test_texts[i]` -- CV group-aware pour la sonde
+    "axes email" (B.6, docs/AUDIT_2026-08.md), même logique que Pipeline 1."""
     print("\n" + "=" * 70)
     print(" PIPELINE 2 : F2LLM-v2 PHRASE-LEVEL SAE → MAX-POOL DOCUMENT")
     print("=" * 70)
@@ -1552,6 +1565,7 @@ def run_f2llm_pipeline(
     # même logique/justification (probe plus pertinent que energy/sports ici).
     print("  [Downstream P2] Sonde logistique sur SAE activations (axes email, corpus principal)...")
     test_labels_arr = np.array(test_labels)
+    test_groups_arr = np.array(test_groups) if test_groups is not None else None
     label_counts_p2 = pd.Series(test_labels_arr).value_counts()
     usable_labels_p2 = label_counts_p2[label_counts_p2 >= 10].index.tolist()
     clf_results_p2_email = {}
@@ -1561,7 +1575,12 @@ def run_f2llm_pipeline(
                 lbl: doc_acts[torch.from_numpy(test_labels_arr == lbl)]
                 for lbl in usable_labels_p2
             }
-            clf_results_p2_email = downstream_classification(acts_by_label=acts_by_label_email_p2)
+            groups_by_label_email_p2 = (
+                {lbl: test_groups_arr[test_labels_arr == lbl] for lbl in usable_labels_p2}
+                if test_groups_arr is not None else None
+            )
+            clf_results_p2_email = downstream_classification(
+                acts_by_label=acts_by_label_email_p2, groups_by_label=groups_by_label_email_p2)
             print(f"  [Downstream P2] acc_SAE (axes email, {len(usable_labels_p2)} classes) = "
                   f"{clf_results_p2_email.get('acc_sae', float('nan')):.4f}")
         except Exception as e:
@@ -1681,12 +1700,16 @@ if __name__ == "__main__":
         print(f"Train (generic, confirmatoire) : {len(train_texts)} chunks | "
               f"Test : {len(test_texts)} chunks")
         diff_texts, diff_labels = [], []
+        train_groups = None  # pas de notion de mail d'origine dans ce corpus generique
+        test_groups = None
     else:
         with stage_timer("Chargement corpus principal (emails+augmentés)"):
-            train_texts, train_labels, test_texts, test_labels = build_email_train_test_corpus(
-                LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
-                test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
-                seed=CORPUS_SPLIT_SEED,
+            train_texts, train_labels, test_texts, test_labels, train_groups, test_groups = (
+                build_email_train_test_corpus(
+                    LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+                    test_split=EMAIL_TEST_SPLIT, max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
+                    seed=CORPUS_SPLIT_SEED, return_groups=True,
+                )
             )
         if not train_texts:
             print("  Fallback emails synthétiques (Mails.tsv introuvable).")
@@ -1759,7 +1782,7 @@ if __name__ == "__main__":
         with stage_timer("Pipeline 1 (Gemma-3 + GemmaScope-2)"):
             results_p1 = run_llm_max_pool_pipeline(
                 train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels,
-                volume_filler_texts=volume_filler_texts,
+                volume_filler_texts=volume_filler_texts, train_groups=train_groups,
             )
             run_steering_demo(results_p1)
     # Le steering n'a plus besoin des doc_acts : libération avant P2 (pic RSS).
@@ -1770,7 +1793,8 @@ if __name__ == "__main__":
     if "p2" in RUN:
         with stage_timer("Pipeline 2 (F2LLM + PhraseLevelSAE)"):
             results_p2 = run_f2llm_pipeline(
-                train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels
+                train_texts, train_labels, test_texts, test_labels, diff_texts, diff_labels,
+                test_groups=test_groups,
             )
 
     print("\n" + "=" * 70)

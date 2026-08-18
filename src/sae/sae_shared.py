@@ -181,9 +181,13 @@ def load_or_train_extended_sae(
           f"({n_val} tenus à l'écart pour validation)...")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    from torch.utils.data import TensorDataset, DataLoader, Subset
-    train_dataset = Subset(TensorDataset(acts_train), train_idx)
-    loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
+    # Indexation vectorisée (acts_train[idx_batch], un seul gather par batch) --
+    # PAS DataLoader(Subset(TensorDataset(...))), qui appelle __getitem__ 1024 fois
+    # (une fois par échantillon) avant collate : coûteux en soi, et catastrophique
+    # si acts_train est un tenseur memmap disque (open_mmap_reservoir, saev5.py),
+    # où chaque accès individuel déclenche sa propre lecture au lieu d'un seul
+    # gather. Même pattern que Pipeline 2 (phrase_sae.py::load_or_train_sae).
+    BATCH_SIZE = 1024
 
     # Historique PAR STEP (pas par époque), aligné avec la convention du
     # Pipeline 2 (phrase_sae.py::load_or_train_sae) -- permet de tracer des
@@ -194,8 +198,10 @@ def load_or_train_extended_sae(
 
     for epoch in range(epochs):
         model.train()
-        for batch in loader:
-            b = batch[0].to(device).to(torch.bfloat16)
+        epoch_perm = train_idx[torch.randperm(len(train_idx))]
+        for i in range(0, len(epoch_perm), BATCH_SIZE):
+            batch_idx = epoch_perm[i:i + BATCH_SIZE]
+            b = acts_train[batch_idx].to(device).to(torch.bfloat16)
             optimizer.zero_grad()
             out = model(b)
             loss = out["loss"]

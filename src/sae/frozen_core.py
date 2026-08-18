@@ -80,14 +80,20 @@ class FrozenCoreResidualSAE(nn.Module):
             core_acts = self.core_sae.encode(x_bf16)
             core_out = self.core_sae.decode(core_acts)
 
-        # .float() immédiat : core_sae travaille en bf16 (cf. commentaire decode()) mais
-        # toute la branche "extra" (paramètres, loss) est fp32 partout ailleurs dans ce
-        # fichier. Laisser `residual` en bf16 jusqu'ici et compter sur la promotion
-        # implicite fp32/bf16 dans mse_loss/var_residual/_aux_loss casse le backward
-        # ("Found dtype BFloat16 but expected Float" — la promotion marche en forward
-        # mais pas de façon fiable pour le gradient d'une op mêlant un tenseur fp32
+        # `residual` doit être fp32 dès cette ligne : core_sae travaille en bf16 (cf.
+        # commentaire decode()) mais toute la branche "extra" (paramètres, loss) est fp32
+        # partout ailleurs dans ce fichier. Laisser `residual` en bf16 jusqu'ici et compter
+        # sur la promotion implicite fp32/bf16 dans mse_loss/var_residual/_aux_loss casse le
+        # backward ("Found dtype BFloat16 but expected Float" — la promotion marche en
+        # forward mais pas de façon fiable pour le gradient d'une op mêlant un tenseur fp32
         # avec grad_fn et un tenseur bf16 sans grad_fn). Confirmé par isolation empirique.
-        residual = (x_bf16 - core_out).float()
+        #
+        # Upcast AVANT la soustraction (pas après, B.21) : x-core_out annule presque
+        # entièrement (résidu ≈ quelques % de la norme de x) -- soustraire en bf16 perd
+        # une grande partie de la précision utile avant même le cast, upcaster ensuite ne
+        # la récupère pas. Mesuré empiriquement (docs/AUDIT_2026-08.md, B.21) : ~6-7%
+        # d'erreur relative injectée dans le résidu que l'extension apprend.
+        residual = x_bf16.float() - core_out.float()
         pre = self._pre_extra(residual)
         extra_acts = self.topk_extra(pre)
         extra_out = (extra_acts @ self.W_dec_extra.float()) * self.input_scale

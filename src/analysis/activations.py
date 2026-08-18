@@ -47,13 +47,20 @@ def valid_token_mask(
 
 
 def norm_outlier_mask(resid: torch.Tensor, mask: torch.Tensor, sigma_clip: float = 4.0) -> torch.Tensor:
-    """Exclut les tokens dont ||x_t|| est un outlier intra-batch (massive activations résiduelles)."""
+    """Exclut les tokens dont ||x_t|| est un outlier intra-DOCUMENT (massive activations
+    résiduelles) -- mu/sd calculées séparément par document (B.10, docs/AUDIT_2026-08.md) :
+    les calculer sur tout le batch aplati mélangeait des documents indépendants et rendait
+    le seuil dépendant de `batch_size` (quels AUTRES documents partagent le batch), pas
+    seulement du document lui-même."""
     norms = resid.norm(dim=-1)                       # [B, T]
-    vals = norms[mask]
-    if vals.numel() < 8:
-        return mask
-    mu, sd = vals.mean(), vals.std() + 1e-6
-    return mask & ((norms - mu) / sd < sigma_clip)
+    out = mask.clone()
+    for b in range(norms.shape[0]):
+        vals = norms[b][mask[b]]
+        if vals.numel() < 8:
+            continue
+        mu, sd = vals.mean(), vals.std() + 1e-6
+        out[b] &= (norms[b] - mu) / sd < sigma_clip
+    return out
 
 
 def extract_residual_acts(

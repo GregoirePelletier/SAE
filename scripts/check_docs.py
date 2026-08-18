@@ -36,9 +36,6 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
     # URL d'API publique versionnée (v2.1), span de backticks multi-lignes non
     # détecté par la lecture ligne à ligne — pas un numéro de version interne.
     ("RESULTS_TESTS.md", "du schéma de l'export public (`data.economie.gouv.fr/api/explore/v2.1/catalog/"),
-    # Citation directe de la formulation du juge LLM lui-même ("je reconnais un
-    # concept" / "je peux le classer"), pas une première personne de l'auteur.
-    ("docs/sae_diagnostics_playbook.md", 'le juge distingue "je reconnais un concept" de "je peux le classer par'),
 }
 
 VERSION_RE = re.compile(r"\bv\d{1,2}\b")

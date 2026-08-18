@@ -397,7 +397,7 @@ def page_explanation_quality(run_dir: str) -> None:
 def page_diagnostics(run_dir: str) -> None:
     st.header("Diagnostics d'entraînement")
     st.caption("Figures produites par scripts/generate_diagnostic_plots.py (lecture d'artefacts "
-               "déjà sur disque, aucun rerun) — cf. docs/sae_diagnostics_playbook.md pour la "
+               "déjà sur disque, aucun rerun) — cf. CLAUDE.md pour la "
                "checklist de lecture (convergence, fidélité, capacité, interprétabilité, "
                "significativité, indépendance du juge).")
 

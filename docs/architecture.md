@@ -91,10 +91,69 @@ diagnostic qui a motivé cette séparation) :
   stockage existante (HDF5, zarr, safetensors, parquet, `scipy.sparse` sur disque) n'a
   été évaluée comme alternative, et le compromis mémoire/temps d'inférence de ce format
   maison n'a jamais été mesuré — seul l'argument volumétrique (Mo/doc) est documenté.
-- `shards.py` : sharding/mmap (`torch.load(..., mmap=True)`) pour de gros tenseurs
-  d'activations denses — **code mort** : aucun appelant ailleurs dans le dépôt
-  (`src/`, `scripts/`, `tests/`), seulement ses propres définitions. À supprimer ou à
-  documenter comme non utilisé, pas comme faisant partie du chemin actif.
+- Le module `shards.py` (sharding/mmap pour tenseurs denses) était du code mort —
+  aucun appelant nulle part dans le dépôt — et a été supprimé.
+
+### CSR et RAM/VRAM/vitesse d'entraînement — la question ne se pose pas où on l'attend
+
+Le CSR de `fragment_store.py` **n'est pas sur le chemin d'entraînement**. Les deux
+boucles d'entraînement (`ExtendedSAE`, `PhraseLevelSAE`) ne lisent jamais de fragment
+CSR : `decode_core_sparse` (le seul point où un fragment est redécodé en dense) n'est
+appelé qu'une fois, après l'entraînement, pour fusionner les features "extra" en vue de
+la labellisation/du dashboard (`saev5.py:1070`). Le CSR est un format de stockage
+post-hoc pour l'analyse par token (exemples positifs/négatifs, labellisation), pas un
+levier de vitesse ou de mémoire d'entraînement — pour cet usage (encodage/décodage
+ponctuel, jamais dans une boucle chaude), le format fait-maison est raisonnable tel
+quel malgré l'absence de comparaison à une bibliothèque existante.
+
+Le vrai chemin d'entraînement passe par le réservoir `open_mmap_reservoir` (résidus
+bruts, P1) et par un tenseur dense (embeddings F2LLM, P2). Deux incidents d'OOM RAM
+réels y ont déjà été corrigés (réservoir anonyme 768 Go à 100M tokens, `RESULTS_TESTS.md`
+§23.3 ; 1,4 To visés à 200M, §54) en passant `torch.empty(...)` → `torch.from_file(...,
+mmap)`. Ce correctif est nécessaire à l'échelle extrême (100-200M tokens) et absent, il
+recasserait tout run à cette échelle — mais il n'est pas gratuit, et il est aujourd'hui
+appliqué **sans condition d'échelle**, y compris à la configuration de référence
+(`N_TOKENS_EXTRA_TRAIN=500000` ≈ 4 Go, tient trivialement en VRAM). Deux points
+identifiés, non corrigés à ce stade :
+
+1. **P1** (`sae_shared.py:184-198`) construit ses batches via
+   `DataLoader(Subset(TensorDataset(acts_train), train_idx), batch_size=1024,
+   shuffle=True)`, sans `num_workers`/`pin_memory`. `TensorDataset.__getitem__` indexe
+   le memmap **ligne par ligne** (1024 accès Python séparés par batch, recollés par
+   `default_collate`) plutôt qu'un seul gather vectorisé — un anti-pattern PyTorch connu,
+   coûteux en particulier sur un tenseur memmap (autant de page faults potentiels que
+   d'échantillons). **P2** (`phrase_sae.py:219-220`) évite déjà ce piège dans le même
+   dépôt : indexation vectorisée directe (`embeddings[permutation[i:i+batch_size]]`),
+   sans `DataLoader`. Porter ce même pattern à P1 est un gain de vitesse quasi gratuit,
+   sans changement de sémantique d'entraînement.
+2. Le réservoir passe systématiquement par le chemin mmap, même quand il tiendrait sans
+   problème en mémoire GPU (500K-2M tokens, la quasi-totalité des runs réels à ce jour,
+   cf. `docs/evaluation_protocol.md`). Un seuil simple (matérialiser un tenseur dense sur
+   `DEVICE` une fois en dessous d'une taille donnée, garder le chemin mmap actuel
+   au-delà) supprimerait le transfert host→device par step ET l'indirection memmap pour
+   tous les runs de taille courante, sans toucher au comportement déjà validé à grande
+   échelle.
+
+Autres points relevés sur le même chemin, non bloquants mais à corriger si la vitesse
+d'entraînement devient un sujet actif :
+
+- **P2 entraîne en fp32** (`phrase_sae.py:153-220`), pas en bf16 malgré la règle du
+  projet ("bf16 partout", `CLAUDE.md`) — écart documenté par un commentaire inline
+  (incompatibilité fp32 params / bf16 grad au backward pour un modèle from-scratch),
+  jamais retesté avec un cast cohérent bout-en-bout. Coût : ~2× la bande passante/VRAM
+  de P1 à taille de dictionnaire comparable, sans qu'un compromis ait été mesuré.
+- **Extraction Gemma-3** (`saev5.py:865-870`) : batch=4, `max_length=512`, débit mesuré
+  ~14 docs/s (`RESULTS_TESTS.md` §23.3) pour un modèle 12B en simple passe avant
+  (`no_grad`, `.eval()` déjà en place, aucune accumulation GPU entre batches — la partie
+  mémoire est correcte). batch=4 est probablement très en dessous de ce qu'un GPU de
+  cluster (A100/H100) peut absorber pour une séquence de 512 tokens sans generate() ni
+  KV-cache — piste de vitesse non testée, mesurable directement maintenant grâce au
+  chronométrage de `stage_timer` (cf. section Scripts).
+- Aucun `torch.autocast`/`GradScaler`/`torch.compile` nulle part dans les deux boucles
+  d'entraînement — le cast bf16 manuel de P1 est défendable (bf16 n'a pas besoin de loss
+  scaling), mais `torch.compile` n'a jamais été essayé sur des SAE aussi petits
+  (`D_EXTRA=1024`/`D_SAE=8192`, architecture peu profonde), un cas typiquement favorable
+  à la fusion de kernels.
 
 ## Retrieval (Latent Terms) et cooccurrence
 
@@ -173,7 +232,6 @@ src/
     keywords.py               # Listes de mots-clés par domaine
   storage/
     fragment_store.py       # Stockage CSR (torch) des activations token-level
-    shards.py                # Sharding/mmap d'activations denses -- CODE MORT, aucun appelant
   visualization/
     dashboard.py             # Dashboard interactif Streamlit
 scripts/                   # Points d'entrée secondaires (cf. section Scripts)

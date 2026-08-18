@@ -48,6 +48,20 @@ corpus) sont **découplés** dans `src/config.py`, tous deux à 42 par défaut �
 ne pas supposer qu'ils sont le même paramètre en reconstruisant un split de
 référence.
 
+## Pièges PyTorch/HuggingFace rencontrés
+
+- `@torch.no_grad()` en décorateur sur une fonction **génératrice** ne protège que
+  l'appel qui crée l'objet générateur, pas les itérations faites ensuite via
+  `next()`/`for` — l'autograd tourne actif sur tous les forwards suivants, cause
+  d'OOM déjà rencontrée une fois (`src/analysis/activations.py::extract_residual_acts`,
+  déjà corrigé). Toujours un `with torch.no_grad():` explicite autour du corps de la
+  boucle pour ce genre de fonction, jamais le décorateur seul.
+- `output_hidden_states=True` sans `logits_to_keep=1` fait calculer par défaut les
+  logits sur toute la séquence et tout le vocabulaire (Gemma-3 : ~262k tokens) même
+  quand seul `hidden_states` est utilisé — coût VRAM inutile qui peut à lui seul
+  causer un OOM. Toujours passer `logits_to_keep=1` pour une extraction
+  hidden-states-only.
+
 ## Cluster SLURM
 
 Conventions de partitions, soumission, logs, disque : `docs/ops.md`.
@@ -92,8 +106,45 @@ ne veut pas.
 
 ## Diagnostics — un run est-il sain avant d'en tirer une conclusion ?
 
-`docs/sae_diagnostics_playbook.md` : checklist ordonnée (convergence →
-fidélité de reconstruction → capacité → interprétabilité → significativité →
-indépendance du juge) avant de faire confiance à un résultat. Figures
-associées : `scripts/generate_diagnostic_plots.py` (agrégation rétroactive,
-zéro rerun) + `src/analysis/plotting.py` (fonctions réutilisables).
+Checklist ordonnée à suivre avant de faire confiance à un résultat
+d'interprétabilité — un run qui échoue tôt dans cet ordre rend les étapes
+suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifié
+1-3. Chaque métrique est déjà calculée par le pipeline (`results.json`,
+`p1_top_extended_features.json`, `*_history.json`) ou tracée par
+`scripts/generate_diagnostic_plots.py` (agrégation rétroactive, zéro rerun) +
+`src/analysis/plotting.py`.
+
+1. **Convergence** (`plots/p1_training_curves.html`/`p2_*`) : loss train encore
+   en baisse nette à la dernière époque → sous-entraîné. Loss validation qui
+   diverge de la loss train → surapprentissage sur le résidu. `dead_frac` qui
+   ne redescend jamais après un pic initial → l'AuxK ne ranime pas les
+   features mortes.
+2. **Fidélité de reconstruction** (`results.json → rho_sae`, `fve_pretrained`) :
+   `rho_sae` proche de 0 → l'extension n'apprend que du bruit sur le résidu.
+   `fve_pretrained` très bas → le core lui-même n'explique déjà plus grand-chose
+   à ce point du réseau, aucune extension ne peut compenser.
+3. **Budget de capacité** (`results.json → dead_pct`) : une fraction de
+   features mortes élevée n'est pas nécessairement un problème si
+   `rho_sae`/`interp_rate` restent bons — mais une hausse brutale entre deux
+   runs par ailleurs identiques signale un problème d'entraînement (LR,
+   époques), pas un choix de capacité.
+4. **Fiabilité du taux d'interprétabilité** (`p1_top_extended_features.json →
+   interp_score`, `rho_interp`) : le protocole odd-one-out est bruité au
+   niveau d'une feature isolée (`RESULTS_TESTS.md` §13.1 : ~31% de décisions
+   instables au simple réordonnancement des exemples) — ne jamais lire une
+   feature individuelle comme "prouvée interprétable", seul le taux agrégé
+   sur n≥150 est informatif.
+5. **Significativité statistique** (`src/analysis/stats.py`, jamais une
+   lecture à l'œil de deux pourcentages) : layer 31 vs layer 24 (référence)
+   est le seul écart individuel qui atteint `|z|>1,96` contre la configuration
+   de référence à ce jour (`RESULTS_TESTS.md` §51, sans correction
+   multi-tests, à répliquer avant adoption) ; `mlp_out` vs `attn_out` (§53) est
+   significatif entre eux mais ni l'un ni l'autre ne l'est contre `resid_post`
+   isolément. Tout le reste (`K_EXTRA`, `D_EXTRA`, volume, seed) reste dans le
+   bruit à n=150 — seul le choix de taille du modèle extracteur/juge produit
+   un effet massif et répliqué à chaque palier.
+6. **Indépendance du juge** (uniquement si le corpus de test inclut du texte
+   généré par le même modèle que le juge, ex. corpus augmenté) : vérifié
+   résolu négativement sur ce projet (`RESULTS_TESTS.md` §48/§50/§52) — à
+   revérifier explicitement sur tout nouveau corpus/juge dans cette
+   configuration, ce n'est pas une propriété générique du protocole.

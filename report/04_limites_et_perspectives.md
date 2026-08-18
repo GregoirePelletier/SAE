@@ -88,9 +88,12 @@ massives de Gemma-3 — la formule qui somme sur les dimensions avant de
 normaliser est mécaniquement dominée par une seule dimension outlier et
 rapporte une variance quasi-totalement expliquée, sans rapport avec la
 qualité de reconstruction réelle. Ne jamais publier un score de variance
-expliquée sur ce modèle sans préciser la formule exacte utilisée. La
-comparaison avec `interp_embed` reste partielle (test optionnel dépendant
-d'une installation non faite par défaut).
+expliquée sur ce modèle sans préciser la formule exacte utilisée : la formule
+retenue pour ce projet est la nôtre, qui centre la variance par dimension
+plutôt que sur la norme globale (cf. `docs/references.md` pour la
+justification). La comparaison avec `interp_embed` (submodule installé et
+peuplé) reste faite par lecture du papier, jamais par exécution de son code
+de référence.
 
 `FrozenCoreResidualSAE`/`ExtendedSAE` est une implémentation de SAE Boost
 (Koriagin et al., COLM 2025) : même architecture, un SAE résiduel entraîné
@@ -295,8 +298,10 @@ de concepts, pas des atomes stables du dictionnaire.
 - Passer le vote majoritaire en protocole par défaut de `odd_one_out_judge`
   (actuellement une fonction séparée, `scripts/judge_robustness_check.py`, à
   fusionner dans `src/sae/judge.py`).
-- Implémenter la métrique de variance expliquée robuste aux outliers
-  proposée en comparaison SAELens (médiane des ratios par token).
+- Isoler explicitement les dimensions à activation massive identifiées par la
+  littérature (Sun et al., COLM 2024) dans le calcul de variance expliquée,
+  plutôt qu'une statistique robuste générique qui traiterait ce signal
+  structuré comme du bruit à lisser (cf. `docs/references.md`).
 - Remplacer les intervalles de confiance approximatifs (Wald) encore utilisés
   ponctuellement au chapitre 3 par `proportion_with_ci` (Wilson,
   `src/analysis/stats.py`), déjà la référence pour le reste du module

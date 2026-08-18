@@ -15,7 +15,14 @@ SEED = int(os.environ.get("SEED", "42"))
 CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 
 # ─── Pipeline 2 (F2LLM) ───
-EMB_MODEL      = os.environ.get("EMB_MODEL", "codefuse-ai/F2LLM-v2-80M")
+# F2LLM-v2-330M : la variante 80M n'était plus qu'un défaut historique, jamais
+# révisé après la décision "backbone assez grand" (RESULTS_TESTS.md ~L815,
+# results_v10_p2_f2llm330m/) -- restait un défaut divergent entre la doc et le
+# code (docs/AUDIT_2026-08.md, désynchro EMB_MODEL). Chemin LOCAL, pas un ID Hub
+# ("codefuse-ai/F2LLM-v2-330M") : vérifié cette session, aucune entrée F2LLM dans
+# ~/.cache/huggingface/hub -- un ID Hub échouerait sur un nœud de calcul offline
+# (HF_HUB_OFFLINE=1) malgré les poids déjà présents localement. Toujours surchargeable.
+EMB_MODEL      = os.environ.get("EMB_MODEL", "/home/h21486/SAE/models/F2LLM-v2-330M")
 # "last_token" (défaut) : backbone décodeur causal (F2LLM). "cls" : backbone
 # encodeur bidirectionnel entraîné pour ce pooling (bge-m3) -- cf.
 # src/sae/phrase_sae.py::extract_f2llm_embeddings.
@@ -38,11 +45,19 @@ MAX_PHRASES_DOC = int(os.environ.get("MAX_PHRASES_DOC", "20"))
 
 # ─── Pipeline 1 (FrozenCore) ───
 D_EXTRA      = int(os.environ.get("D_EXTRA", "1024"))
-K_EXTRA      = int(os.environ.get("K_EXTRA", "32"))
+# K=5 (SAE Boost, Koriagin et al.) : jamais adopté en défaut malgré un signal
+# directionnel confirmé sur 3 graines dans ce dépôt (RESULTS_TESTS.md §45,
+# z poolé=1,70, p=0,089 -- borderline mais cohérent, docs/AUDIT_2026-08.md).
+K_EXTRA      = int(os.environ.get("K_EXTRA", "5"))
 EPOCHS_EXTRA = int(os.environ.get("EPOCHS_EXTRA", "10"))
 LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
 USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
 N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
+# Taille de batch pour l'extraction Gemma-3 (saev5.py, boucle "Extraction P1") --
+# 4 était codé en dur, jamais mesuré contre une valeur plus grande sur A100/H100
+# (12B en simple passe avant, marge VRAM probable). Configurable pour permettre
+# un balayage empirique avant le run de référence à grande échelle.
+EXTRACTION_BATCH_SIZE = int(os.environ.get("EXTRACTION_BATCH_SIZE", "4"))
 # Sanity-check (Korznikov et al. 2026, "Sanity Checks for Sparse Autoencoders : Do SAEs
 # Beat Random Baselines?") : construit un FrozenDecoderExtendedSAE (décodeur figé,
 # initialisation aléatoire jamais entraînée) à la place d'ExtendedSAE, pour tester si nos
@@ -62,12 +77,17 @@ MODEL_SIZE = os.environ.get("MODEL_SIZE", "12b")
 # machines. RELEASE_ID : le repo réel est "google/gemma-scope-2-{taille}-it",
 # sans suffixe "-res".
 _PRESETS = {
-    # Largeur du SAE core : couverture Neuronpedia mesurée empiriquement pour
-    # gemma-3-12b-it/layer 24 (fetch_neuronpedia_labels) -- 16k -> 82,6%
-    # (13535/16384) ; 65k -> 87,8% (57551/65536, meilleure couverture ET ~4,3x
-    # plus de features labellisées en absolu) ; 262k -> 5,3% (13851/262144) ;
-    # 1m -> pas de labels hébergés. 65k retenue comme largeur par défaut.
-    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_24_width_65k_l0_medium", 24, 3840),
+    # Couche 31 (~2/3 profondeur, 48 couches) plutôt que 24 (~0,5) : SPLARE
+    # (Formal et al., NAVER Labs) situe la profondeur optimale à ~2/3 du modèle ;
+    # layer 31 est aussi le SEUL résultat de balayage de couche nominalement
+    # significatif mesuré dans ce dépôt (58,0% vs 45,3%, z=2,20, p=0,028,
+    # RESULTS_TESTS.md §51, jamais répliqué sur une 2e graine). Largeur 16k
+    # (pas 65k) à cette couche : c'est la configuration réellement testée en §51
+    # (résultat lié à cette largeur précise, pas 65k à layer 31 -- jamais tourné) ;
+    # coûte en couverture Neuronpedia (82,6% à 16k vs 87,8% à 65k, mesuré à
+    # layer 24, cf. `docs/AUDIT_2026-08.md` SPLARE) mais reste la largeur
+    # correspondant au résultat empirique retenu, pas une combinaison inédite.
+    "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_31_width_16k_l0_medium", 31, 3840),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),
     "1b":   ("google/gemma-3-1b-it",  "gemma-scope-2-1b-it",  "layer_13_width_16k_l0_medium", 13, 1152),
     # google/gemma-3-270m-it (LM) + google/gemma-scope-2-270m-it (SAE, resid_post,
