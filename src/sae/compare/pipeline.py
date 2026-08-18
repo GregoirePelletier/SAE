@@ -21,8 +21,8 @@ from .crosslingual import crosslingual_alignment, downstream_report, ce_loss_inc
 from ...analysis import visualization as viz
 from ...config import DTYPE
 
-# Chemin de sortie configurable (B.24, docs/AUDIT_2026-08.md) : "results_v9" en
-# dur risquait de mélanger un run avec un ancien cache du même nom (B.8).
+# Chemin de sortie configurable (`RESULTS_TESTS.md` §73) : "results_v9" en
+# dur risquait de mélanger un run avec un ancien cache du même nom.
 OUT = Path(os.environ.get("COMPARE_PIPELINE_OUT", "results_compare_pipeline"))
 _DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 _TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16

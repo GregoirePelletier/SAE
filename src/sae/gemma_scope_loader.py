@@ -57,7 +57,7 @@ def gemma_scope_converter(path, device: str = "cpu", cfg_overrides: Optional[dic
         else raw_cfg.get("hook_layer", 24)
     )
 
-    # A.5 (docs/AUDIT_2026-08.md) : les deux replis ci-dessus sont silencieux -- si
+    # Les deux replis ci-dessus sont silencieux -- si
     # config.json/cfg.json est absent de "hf_hook_point_in" ET "hook_layer" (fichier
     # de métadonnées corrompu/incomplet, ou dossier mal peuplé), la couche résolue
     # tombe sur 24 sans jamais être comparée à celle réellement attendue. Le nom du

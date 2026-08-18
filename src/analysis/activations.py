@@ -48,7 +48,7 @@ def valid_token_mask(
 
 def norm_outlier_mask(resid: torch.Tensor, mask: torch.Tensor, sigma_clip: float = 4.0) -> torch.Tensor:
     """Exclut les tokens dont ||x_t|| est un outlier intra-DOCUMENT (massive activations
-    résiduelles) -- mu/sd calculées séparément par document (B.10, docs/AUDIT_2026-08.md) :
+    résiduelles) -- mu/sd calculées séparément par document :
     les calculer sur tout le batch aplati mélangeait des documents indépendants et rendait
     le seuil dépendant de `batch_size` (quels AUTRES documents partagent le batch), pas
     seulement du document lui-même."""
@@ -119,20 +119,51 @@ def scatter_maxpool(
     unit_to_doc: torch.Tensor,   # [n_units] int64
     n_docs: int,
     d: int = None,
+    mode: str = "max",
 ) -> torch.Tensor:
     """
-    doc_vec[j, f] = max_{i : unit_to_doc[i]=j} values[i, f].
-    Implémentation UNIQUE du max-pooling en espace SAE (scatter_reduce amax).
+    doc_vec[j, f] = max_{i : unit_to_doc[i]=j} values[i, f] (mode="max", défaut,
+    comportement INCHANGÉ -- implémentation de référence du max-pooling en espace SAE ;
+    `src/storage/fragment_store.py::doc_maxpool` en est une seconde, sur fragments CSR,
+    avec une convention d'initialisation différente).
     Remplace : sae_shared.pool_embeddings_by_document,
                phrase_sae.encode_documents_with_phrase_sae (boucle interne),
                la double boucle de maxpool_sae_docs.
     Docs sans unité → vecteur nul.
+
+    Biais de longueur confirmé (`RESULTS_TESTS.md` §59, ρ=0,906 longueur↔nb features
+    actives, très fort) : 2 modes alternatifs, À TESTER empiriquement (effet sur
+    `clf_acc_email_axes`, combiné à la CV group-aware §57) avant d'envisager un
+    changement de défaut --
+    PAS adoptés par défaut ici, seulement rendus disponibles :
+      "mean"          : moyenne au lieu du max -- invariant à la position du pic,
+                         mais dilue les activations rares/ponctuelles.
+      "max_log_norm"  : max normalisé par log(1+T) (T = nb d'unités du document) --
+                         atténue (sans l'éliminer) l'effet mécanique "plus d'essais
+                         => plus de chances d'un maximum élevé" sans changer la
+                         nature du signal (toujours un pic, pas une moyenne).
+    "top-k moyenne" (3e alternative citée par l'audit) non implémentée ici : pas
+    compatible avec un simple scatter_reduce, demanderait un regroupement explicite
+    par document -- à ajouter séparément si les deux modes ci-dessus ne suffisent
+    pas à trancher.
     """
     d = d or values.shape[1]
+    if mode == "mean":
+        out = torch.zeros((n_docs, d), dtype=values.dtype, device=values.device)
+        idx = unit_to_doc.long().unsqueeze(-1).expand(-1, d)
+        out.scatter_reduce_(0, idx, values, reduce="mean", include_self=False)
+        return out
     out = torch.full((n_docs, d), float("-inf"), dtype=values.dtype, device=values.device)
     idx = unit_to_doc.long().unsqueeze(-1).expand(-1, d)
     out.scatter_reduce_(0, idx, values, reduce="amax", include_self=False)
-    return torch.where(torch.isinf(out), torch.zeros_like(out), out)
+    out = torch.where(torch.isinf(out), torch.zeros_like(out), out)
+    if mode == "max_log_norm":
+        counts = torch.bincount(unit_to_doc.long(), minlength=n_docs).to(out.dtype)
+        norm = torch.log1p(counts).clamp(min=1e-6).unsqueeze(-1)
+        return out / norm
+    if mode != "max":
+        raise ValueError(f"mode={mode!r} non supporté (max/mean/max_log_norm).")
+    return out
 
 
 def maxpool_sae_docs(

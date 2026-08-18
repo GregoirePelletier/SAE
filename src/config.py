@@ -18,7 +18,7 @@ CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 # F2LLM-v2-330M : la variante 80M n'était plus qu'un défaut historique, jamais
 # révisé après la décision "backbone assez grand" (RESULTS_TESTS.md ~L815,
 # results_v10_p2_f2llm330m/) -- restait un défaut divergent entre la doc et le
-# code (docs/AUDIT_2026-08.md, désynchro EMB_MODEL). Chemin LOCAL, pas un ID Hub
+# code (désynchro EMB_MODEL, corrigée). Chemin LOCAL, pas un ID Hub
 # ("codefuse-ai/F2LLM-v2-330M") : vérifié cette session, aucune entrée F2LLM dans
 # ~/.cache/huggingface/hub -- un ID Hub échouerait sur un nœud de calcul offline
 # (HF_HUB_OFFLINE=1) malgré les poids déjà présents localement. Toujours surchargeable.
@@ -47,7 +47,7 @@ MAX_PHRASES_DOC = int(os.environ.get("MAX_PHRASES_DOC", "20"))
 D_EXTRA      = int(os.environ.get("D_EXTRA", "1024"))
 # K=5 (SAE Boost, Koriagin et al.) : jamais adopté en défaut malgré un signal
 # directionnel confirmé sur 3 graines dans ce dépôt (RESULTS_TESTS.md §45,
-# z poolé=1,70, p=0,089 -- borderline mais cohérent, docs/AUDIT_2026-08.md).
+# z poolé=1,70, p=0,089 -- borderline mais cohérent).
 K_EXTRA      = int(os.environ.get("K_EXTRA", "5"))
 EPOCHS_EXTRA = int(os.environ.get("EPOCHS_EXTRA", "10"))
 LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
@@ -85,7 +85,7 @@ _PRESETS = {
     # (pas 65k) à cette couche : c'est la configuration réellement testée en §51
     # (résultat lié à cette largeur précise, pas 65k à layer 31 -- jamais tourné) ;
     # coûte en couverture Neuronpedia (82,6% à 16k vs 87,8% à 65k, mesuré à
-    # layer 24, cf. `docs/AUDIT_2026-08.md` SPLARE) mais reste la largeur
+    # layer 24) mais reste la largeur
     # correspondant au résultat empirique retenu, pas une combinaison inédite.
     "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_31_width_16k_l0_medium", 31, 3840),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),

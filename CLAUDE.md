@@ -41,6 +41,19 @@ Module partagé (McNemar apparié, Cochran-Armitage, proportions+IC de Wilson,
 h de Cohen, BH/FDR, analyse de puissance) — ne pas réinventer un test par
 script.
 
+## Cache/checkpoint — piège fréquent
+
+Une clé de cache ou un chemin de checkpoint doit encoder TOUS les paramètres
+dont le contenu dépend (taille de SAE, corpus, budget de tokens, etc.), pas
+seulement ceux qui semblaient pertinents au moment d'écrire le loader — sinon
+un run peut charger silencieusement le checkpoint d'une configuration
+différente au lieu de réentraîner. `load_or_train_extended_sae` ne valide
+aujourd'hui pas que la configuration demandée correspond à celle du
+checkpoint chargé (risque structurel identifié, pas encore corrigé) : avant
+de faire confiance à un résultat qui dépend d'un cache réutilisé entre runs,
+vérifier à la main que la configuration n'a pas changé depuis l'écriture du
+cache.
+
 ## Seeds — piège fréquent
 
 `SEED` (entraînement SAE/juge) et `CORPUS_SPLIT_SEED` (split train/test du
@@ -116,9 +129,13 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
 
 1. **Convergence** (`plots/p1_training_curves.html`/`p2_*`) : loss train encore
    en baisse nette à la dernière époque → sous-entraîné. Loss validation qui
-   diverge de la loss train → surapprentissage sur le résidu. `dead_frac` qui
-   ne redescend jamais après un pic initial → l'AuxK ne ranime pas les
-   features mortes.
+   diverge de la loss train → surapprentissage sur le résidu — mais
+   `BatchTopKEncoder` (`src/sae/batch.py`) bascule en régime JumpReLU seuillé
+   dès `model.eval()`, différent du régime BatchTopK d'entraînement : une
+   partie de l'écart train/val mesure ce changement de régime, pas seulement
+   du surapprentissage, ne pas lire l'écart brut comme une preuve directe.
+   `dead_frac` qui ne redescend jamais après un pic initial → l'AuxK ne
+   ranime pas les features mortes.
 2. **Fidélité de reconstruction** (`results.json → rho_sae`, `fve_pretrained`) :
    `rho_sae` proche de 0 → l'extension n'apprend que du bruit sur le résidu.
    `fve_pretrained` très bas → le core lui-même n'explique déjà plus grand-chose

@@ -81,16 +81,30 @@ def fetch_neuronpedia_labels(
             break
         r.raise_for_status()
         n = 0
-        with gzip.open(io.BytesIO(r.content), "rt", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                item = json.loads(line)
-                idx = int(item["index"])
-                if idx not in labels:
-                    labels[idx] = item.get("description", "").strip()
-                n += 1
+        n_degenerate = 0
+        for line in gzip.open(io.BytesIO(r.content), "rt", encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            idx = int(item["index"])
+            desc = item.get("description", "").strip()
+            # `RESULTS_TESTS.md` §72 : ≥99/13535 labels déjà en cache sont des
+            # transcriptions brutes du raisonnement de la LLM d'auto-interprétation
+            # Neuronpedia (jusqu'à 9340 caractères) au lieu d'un label court -- le
+            # post-traitement censé les réduire échoue silencieusement en amont.
+            # Filtre défensif ici (pertinent pour tout FUTUR téléchargement, ex. un
+            # nouveau (layer, width) jamais mis en cache) : un label anormalement
+            # long n'est pas exploitable comme label, à exclure plutôt qu'à propager.
+            if len(desc) > 200:
+                n_degenerate += 1
+                continue
+            if idx not in labels:
+                labels[idx] = desc
+            n += 1
+        if n_degenerate:
+            log.warning(f"[neuronpedia] batch {batch} : {n_degenerate} labels dégénérés "
+                        f"(>200 caractères) exclus (E.10)")
         log.info(f"[neuronpedia] batch {batch} : {n} labels")
         batch += 1
 

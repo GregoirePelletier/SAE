@@ -99,7 +99,7 @@ def build_feature_examples_with_control(
     existants inchangés) : retourne en plus (pos_magnitudes, neg_magnitude), la
     magnitude d'activation RÉELLE (token-level) de chaque exemple -- permet un
     ρ_interp fidèle à Bills et al. 2023 (magnitude réelle, pas un rang synthétique
-    ni un négatif à 0.0 fixe), B.5, docs/AUDIT_2026-08.md.
+    ni un négatif à 0.0 fixe).
     """
     f_acts = acts[:, f_idx].detach().float().numpy()
     threshold_pos = 1e-6
@@ -112,6 +112,7 @@ def build_feature_examples_with_control(
     # sémantiquement du même exemple pour le juge LLM.
     sorted_desc = np.argsort(f_acts)[::-1]
     pos_examples = []
+    pos_magnitudes = []
     seen_target_words = set()
     for d_idx in sorted_desc:
         if f_acts[d_idx] <= threshold_pos:
@@ -131,13 +132,18 @@ def build_feature_examples_with_control(
             continue
         seen_target_words.add(target_word)
         pos_examples.append(ctx)
+        pos_magnitudes.append(float(max_act))
         if len(pos_examples) >= n_pos:
             break
 
-    # Négatif : doc avec activation nulle ou quasi-nulle
+    # Négatif : doc avec activation nulle ou quasi-nulle. Graine locale par feature
+    # (pas random.shuffle sur le module global) : un rejeu du même f_idx reconstruit
+    # le MÊME négatif, condition nécessaire pour comparer un score rejugé à un score
+    # en cache sans confondre "négatif différent" et "juge différent".
     neg_pool = np.where(f_acts <= threshold_neg)[0].tolist()
-    random.shuffle(neg_pool)
+    random.Random(f_idx).shuffle(neg_pool)
     neg_example = None
+    neg_magnitude = 0.0
     for d_idx in neg_pool[:20]:
         if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
@@ -145,8 +151,13 @@ def build_feature_examples_with_control(
         toks = doc_data["token_strings"]
         mid = len(toks) // 2
         neg_example = extract_causal_context(toks, mid)
+        # Magnitude RÉELLE (pas 0.0 fixe, B.5) : max token-level de CETTE feature
+        # sur ce document -- cohérent avec la façon dont pos_magnitudes est mesurée.
+        neg_magnitude = float(feature_column(doc_data, f_idx).max())
         break
 
+    if return_magnitudes:
+        return pos_examples, neg_example, pos_magnitudes, neg_magnitude
     return pos_examples, neg_example
 
 
@@ -220,8 +231,8 @@ def odd_one_out_judge(
     results = {}
 
     for f_idx in feature_indices:
-        pos_examples, neg_example = build_feature_examples_with_control(
-            f_idx, token_fragments_dir, acts, offset=offset, n_pos=n_pos,
+        pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_feature_examples_with_control(
+            f_idx, token_fragments_dir, acts, offset=offset, n_pos=n_pos, return_magnitudes=True,
         )
 
         if len(pos_examples) < 3:
@@ -312,17 +323,13 @@ def odd_one_out_judge(
                 resp_s = tokenizer.decode(out_s[0][inputs_s.shape[-1]:], skip_special_tokens=True)
             try:
                 scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
-                # Activation réelle pour chaque exemple (positifs connus + 0 pour le négatif)
-                f_acts_np = acts[:, f_idx].detach().float().numpy()
-                # Reconstituons les activations dans l'ordre shufflé
-                # pos_examples[i] correspond à doc trié desc → approx suffisant
-                act_ground = []
-                for orig_idx in indices:
-                    if orig_idx < len(pos_examples):
-                        # activation approximative : rang dans le top
-                        act_ground.append(float(n_pos - orig_idx))
-                    else:
-                        act_ground.append(0.0)
+                # Magnitude d'activation RÉELLE (pas un rang synthétique, pas 0.0 fixe
+                # pour le négatif) -- fidèle à la définition
+                # de Bills et al. 2023 : ρ_interp corrèle le score du juge à l'activation
+                # réelle. all_magnitudes est dans le même ordre que all_examples (avant
+                # mélange) ; réindexé ici dans l'ordre shufflé effectivement présenté.
+                all_magnitudes = pos_magnitudes + ([neg_magnitude] if neg_example else [])
+                act_ground = [all_magnitudes[orig_idx] for orig_idx in indices]
                 if len(scores_llm) == len(act_ground):
                     rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
             except Exception:
@@ -353,16 +360,22 @@ def build_phrase_examples_with_control(
     phrase_acts: torch.Tensor,     # (n_phrases, d_sae)
     n_pos: int = 9,
     neg_quantile: float = 0.05,
-) -> tuple[list[str], Optional[str]]:
+    return_magnitudes: bool = False,
+):
     """Équivalent phrase-level de build_feature_examples_with_control : pas de
     fragments à charger, la phrase elle-même est l'exemple. Déduplication sur
-    le texte de la phrase (nettoyé) pour éviter les répétitions."""
+    le texte de la phrase (nettoyé) pour éviter les répétitions.
+
+    `return_magnitudes=True` (défaut False, rétrocompatible) : retourne en plus
+    (pos_magnitudes, neg_magnitude), l'activation réelle de chaque exemple --
+    même correctif que build_feature_examples_with_control (B.5)."""
     f_acts = phrase_acts[:, f_idx].detach().float().numpy()
     threshold_pos = 1e-6
     threshold_neg = float(np.quantile(f_acts, neg_quantile))
 
     sorted_desc = np.argsort(f_acts)[::-1]
     pos_examples = []
+    pos_magnitudes = []
     seen = set()
     for p_idx in sorted_desc:
         if f_acts[p_idx] <= threshold_pos:
@@ -373,18 +386,24 @@ def build_phrase_examples_with_control(
             continue
         seen.add(key)
         pos_examples.append(f"<<{text}>>")
+        pos_magnitudes.append(float(f_acts[p_idx]))
         if len(pos_examples) >= n_pos:
             break
 
+    # Graine locale par feature (B.28) -- cf. build_feature_examples_with_control.
     neg_pool = np.where(f_acts <= threshold_neg)[0].tolist()
-    random.shuffle(neg_pool)
+    random.Random(f_idx).shuffle(neg_pool)
     neg_example = None
+    neg_magnitude = 0.0
     for p_idx in neg_pool[:20]:
         text = re.sub(r"\s+", " ", phrase_texts[p_idx]).strip()
         if text:
             neg_example = f"<<{text}>>"
+            neg_magnitude = float(f_acts[p_idx])
             break
 
+    if return_magnitudes:
+        return pos_examples, neg_example, pos_magnitudes, neg_magnitude
     return pos_examples, neg_example
 
 
@@ -411,8 +430,8 @@ def local_gemma_judge(
     results = {}
 
     for f_idx in feature_indices:
-        pos_examples, neg_example = build_phrase_examples_with_control(
-            f_idx, phrase_texts, phrase_acts, n_pos=n_pos,
+        pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_phrase_examples_with_control(
+            f_idx, phrase_texts, phrase_acts, n_pos=n_pos, return_magnitudes=True,
         )
 
         if len(pos_examples) < 3:
@@ -495,7 +514,9 @@ def local_gemma_judge(
                 resp_s = tokenizer.decode(out_s[0][inputs_s.shape[-1]:], skip_special_tokens=True)
             try:
                 scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
-                act_ground = [float(n_pos - i) if i < len(pos_examples) else 0.0 for i in indices]
+                # Magnitude réelle, pas un rang synthétique (B.5) -- cf. odd_one_out_judge.
+                all_magnitudes = pos_magnitudes + ([neg_magnitude] if neg_example else [])
+                act_ground = [all_magnitudes[orig_idx] for orig_idx in indices]
                 if len(scores_llm) == len(act_ground):
                     rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
             except Exception:

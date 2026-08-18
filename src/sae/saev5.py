@@ -744,7 +744,7 @@ def run_llm_max_pool_pipeline(
     corpus "principal" et diluerait la sélection de features vers du contenu
     générique. train_groups (optionnel, défaut None -> comportement inchangé) :
     parent_id (mail d'origine) de chaque `train_texts[i]`, même longueur/ordre --
-    permet une CV group-aware pour `clf_acc_email_axes` (B.6, docs/AUDIT_2026-08.md)."""
+    permet une CV group-aware pour `clf_acc_email_axes` (`RESULTS_TESTS.md` §57)."""
     print("\n" + "=" * 70)
     print(" PIPELINE 1 : GEMMA-3 → MAX-POOL SAE ACTS")
     print("=" * 70)
@@ -1421,7 +1421,7 @@ def run_f2llm_pipeline(
     (energy/sports/support), encodé post-hoc pour la démo de diffing uniquement.
     test_groups (optionnel, défaut None -> comportement inchangé) : parent_id
     (mail d'origine) de chaque `test_texts[i]` -- CV group-aware pour la sonde
-    "axes email" (B.6, docs/AUDIT_2026-08.md), même logique que Pipeline 1."""
+    "axes email" (`RESULTS_TESTS.md` §57), même logique que Pipeline 1."""
     print("\n" + "=" * 70)
     print(" PIPELINE 2 : F2LLM-v2 PHRASE-LEVEL SAE → MAX-POOL DOCUMENT")
     print("=" * 70)

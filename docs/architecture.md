@@ -142,13 +142,14 @@ d'entraînement devient un sujet actif :
   (incompatibilité fp32 params / bf16 grad au backward pour un modèle from-scratch),
   jamais retesté avec un cast cohérent bout-en-bout. Coût : ~2× la bande passante/VRAM
   de P1 à taille de dictionnaire comparable, sans qu'un compromis ait été mesuré.
-- **Extraction Gemma-3** (`saev5.py:865-870`) : batch=4, `max_length=512`, débit mesuré
-  ~14 docs/s (`RESULTS_TESTS.md` §23.3) pour un modèle 12B en simple passe avant
-  (`no_grad`, `.eval()` déjà en place, aucune accumulation GPU entre batches — la partie
-  mémoire est correcte). batch=4 est probablement très en dessous de ce qu'un GPU de
-  cluster (A100/H100) peut absorber pour une séquence de 512 tokens sans generate() ni
-  KV-cache — piste de vitesse non testée, mesurable directement maintenant grâce au
-  chronométrage de `stage_timer` (cf. section Scripts).
+- **Extraction Gemma-3** (`saev5.py:868-870`) : `EXTRACTION_BATCH_SIZE` (`src/config.py`,
+  défaut 4, configurable), `max_length=512`, débit mesuré ~14 docs/s
+  (`RESULTS_TESTS.md` §23.3) pour un modèle 12B en simple passe avant (`no_grad`,
+  `.eval()` déjà en place, aucune accumulation GPU entre batches — la partie mémoire est
+  correcte). Le défaut (4) est probablement très en dessous de ce qu'un GPU de cluster
+  (A100/H100) peut absorber pour une séquence de 512 tokens sans generate() ni KV-cache
+  — configurable, mais jamais balayé empiriquement à une valeur plus grande ; mesurable
+  directement maintenant grâce au chronométrage de `stage_timer` (cf. section Scripts).
 - Aucun `torch.autocast`/`GradScaler`/`torch.compile` nulle part dans les deux boucles
   d'entraînement — le cast bf16 manuel de P1 est défendable (bf16 n'a pas besoin de loss
   scaling), mais `torch.compile` n'a jamais été essayé sur des SAE aussi petits

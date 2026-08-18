@@ -88,10 +88,10 @@ class FrozenCoreResidualSAE(nn.Module):
         # forward mais pas de façon fiable pour le gradient d'une op mêlant un tenseur fp32
         # avec grad_fn et un tenseur bf16 sans grad_fn). Confirmé par isolation empirique.
         #
-        # Upcast AVANT la soustraction (pas après, B.21) : x-core_out annule presque
+        # Upcast AVANT la soustraction, pas après : x-core_out annule presque
         # entièrement (résidu ≈ quelques % de la norme de x) -- soustraire en bf16 perd
         # une grande partie de la précision utile avant même le cast, upcaster ensuite ne
-        # la récupère pas. Mesuré empiriquement (docs/AUDIT_2026-08.md, B.21) : ~6-7%
+        # la récupère pas. Mesuré empiriquement (`RESULTS_TESTS.md` §61) : ~6-7%
         # d'erreur relative injectée dans le résidu que l'extension apprend.
         residual = x_bf16.float() - core_out.float()
         pre = self._pre_extra(residual)

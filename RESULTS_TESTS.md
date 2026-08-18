@@ -3790,3 +3790,68 @@ problème, ce qui trancherait entre un bug amont (Neuronpedia) et un bug local
 (post-traitement de ce dépôt). Les 45 cas "longish" (80-200 caractères) n'ont pas été
 inspectés individuellement — possible qu'une partie soit des labels légitimement
 verbeux plutôt que dégénérés. Détail complet : `docs/AUDIT_2026-08.md` (E.10).
+
+## 73. B.24/E.7 — premier essai réel du module de comparaison inter-modèles : verdict "comparable", mais le seuil par permutation censé être le plus rigoureux est dégénéré et n'était de toute façon jamais appliqué
+
+**Question** : `src/sae/compare/` (alignement cross-modèle de features SAE,
+détection de features non alignées/"polluées") est entièrement implémenté mais
+n'avait jamais été exécuté sur un cas réel avant cette passe — le module
+produit-il un résultat exploitable, et le seuil de significativité par
+permutation qu'il calcule (`q_null_npmi95`) mais n'applique pas est-il
+lui-même fiable ?
+
+**Écart à la configuration de référence** : `--model-a` = F2LLM-v2-80M
+(backbone Pipeline 2 en production), `--model-b` = bge-m3 — pas une
+comparaison Pipeline 1 vs Pipeline 2. `pipeline.py --mode compare` entraîne
+DEUX nouveaux `PhraseLevelSAE` from-scratch pour l'occasion, pas les
+checkpoints existants ; pooling mean pour les deux modèles (`embed_corpus`),
+alors que bge-m3 est utilisé en pooling CLS ailleurs dans ce dépôt.
+
+**Méthode** : `src/sae/compare/pipeline.py --mode compare` (job 43958,
+chemin de sortie corrigé au préalable, `results_v9` en dur → variable
+d'environnement `COMPARE_PIPELINE_OUT`) ; inspection a posteriori des
+parquets produits pour vérifier le seuil par permutation (job 44110, aucun
+recalcul).
+
+**n** : 2 SAE entraînés from-scratch sur 3480 mails, 207 features (modèle A,
+30 communautés NPMI) et 317 features (modèle B, 57 communautés) survivant au
+filtre de fréquence du graphe.
+
+**Résultat** : entraînement sain des deux SAE (NMSE 0,021→0,013, dead
+fraction quasi nulle en fin d'entraînement). `verdict="comparable"` (aucun
+modèle >1,5× l'autre en masse d'activation portée par les features
+flaggées), `mean_match_corr=0,177` (corrélation moyenne faible entre
+features appariées par Hongrois), 0 feature flaggée comme polluée dans les
+deux modèles (`n_flagged=0`, `model_score=0,000`). Le seuil réellement
+utilisé pour flagger (mean+2×std du `pollution_score` z-scoré) donne 4,18
+(A) et 4,27 (B) contre un score maximum observé de 3,96 (A)/3,76 (B) —
+aucune feature ne franchit ce seuil, de peu. Le seuil par permutation calculé
+mais jamais exploité (`q_null_npmi95`) vaut **1,0000 dans les deux
+modèles** — la valeur maximale possible de NPMI, dégénéré, qui ne pourrait
+jamais flagger quoi que ce soit s'il était réellement appliqué à la place du
+seuil actuel.
+
+**Conclusion** : le module fonctionne de bout en bout et produit un verdict
+exploitable une fois le bug de chemin de sortie corrigé. Le seuil par
+permutation prévu pour être le plus rigoureux ne l'est pas — il est
+dégénéré sur ce type de graphe (probablement le même phénomène de
+sous-puissance que §66/B.27 : peu de features actives survivent aux
+permutations sans perdre leur structure de co-occurrence, produisant un null
+artificiellement extrême). Conséquence pratique sur ce run précis : ça ne
+change probablement pas le verdict "comparable", le seuil correctement
+calculé aurait été encore plus permissif que celui effectivement utilisé,
+pas plus strict.
+
+**Limite connue** : le verdict "comparable" avec corrélation moyenne faible
+(0,177) est compatible avec deux lectures opposées — les deux backbones
+capturent des structures sémantiques réellement différentes sans qu'aucun
+ne soit "pollué" relativement à l'autre, ou le détecteur manque de
+puissance sur ce corpus (3480 mails, D_SAE=2048) pour distinguer les deux
+cas. Un balayage avec un `--model-b` attendu comme nettement moins adapté au
+domaine (anglais générique plutôt que français) permettrait de vérifier que
+le détecteur peut au moins détecter une différence connue avant de faire
+confiance à un verdict "comparable" sur une paire dont le comportement
+attendu est inconnu. Le seuil `mean+2×std` réellement utilisé pour flagger
+reste, lui, non corrigé (`src/sae/compare/model_compare.py`) : soit le
+dériver de `q_null_npmi95` une fois ce dernier correctement calibré, soit
+retirer la colonne vestigiale.

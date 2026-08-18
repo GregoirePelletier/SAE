@@ -436,12 +436,12 @@ def page_consolidated_report(run_dir: str) -> None:
 
 
 def page_audit_2026_08() -> None:
-    """Agrège les sorties JSON produites par l'audit 2026-08 (docs/AUDIT_2026-08.md) --
+    """Agrège les sorties JSON produites par les scripts d'audit méthodologique --
     jusqu'ici dispersées sous docs/ et cache/, lisibles seulement en ouvrant chaque
-    fichier à la main (audit round 3, §6.4). Recherche par motif plutôt que liste en
-    dur : reste à jour sans édition à chaque nouveau script d'audit."""
-    st.header("Audit 2026-08 — validité des résultats")
-    st.caption("cf. `docs/AUDIT_2026-08.md` (constats détaillés) et `RESULTS_TESTS.md` §57-62. "
+    fichier à la main. Recherche par motif plutôt que liste en dur : reste à jour sans
+    édition à chaque nouveau script d'audit."""
+    st.header("Audit méthodologique — validité des résultats")
+    st.caption("cf. `RESULTS_TESTS.md` §57-73. "
                "Indépendant du run sélectionné dans la barre latérale.")
 
     patterns = [

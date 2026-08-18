@@ -38,17 +38,31 @@ def compute_metrics(
     nmse = mse / variance
     fve = 1.0 - nmse
 
+    # FVE/NMSE ci-dessus portent sur `sae_out` =
+    # core+extra (scope complet), mais "L0" seul (ci-dessous, INCHANGÉ pour rester
+    # rétrocompatible avec les chiffres déjà publiés) ne comptait que l'extra --
+    # numérateur et dénominateur de portée différente si lus comme un même point
+    # Pareto FVE/L0. L0_core et L0_total ajoutés pour un appariement correct.
+    l0_core = float("nan")
     if is_saelens:
         with torch.no_grad():
             codes = model.encode(acts_bf16)
         l0 = (codes.abs() > 1e-6).float().sum(dim=-1).mean().item()
+        l0_total = l0
     else:
         l0 = out.get("l0_extra", torch.tensor(0.0)).item()
+        if "core_acts" in out:
+            l0_core = (out["core_acts"].abs() > 1e-6).float().sum(dim=-1).mean().item()
+            l0_total = l0_core + l0
+        else:
+            l0_total = l0
 
     return {
         "FVE": float(fve.item()),
         "NMSE": float(nmse.item()),
         "L0": float(l0),
+        "L0_core": float(l0_core),
+        "L0_total": float(l0_total),
     }
 
 
@@ -100,7 +114,7 @@ def downstream_classification(
     Sonde logistique à 5 plis pour évaluer la séparabilité linéaire des activations
     latentes vs embeddings bruts.
 
-    `groups_by_label` (optionnel, B.6/docs/AUDIT_2026-08.md) : parent_id (mail
+    `groups_by_label` (optionnel, `RESULTS_TESTS.md` §57) : parent_id (mail
     d'origine) par échantillon, même clés que `acts_by_label`. Si fourni, la CV
     utilise `StratifiedGroupKFold` (groupe = mail d'origine, un mail original et
     toutes ses variantes augmentées restent du même côté d'un pli) au lieu de
@@ -144,7 +158,7 @@ def downstream_classification(
     accs_sae = []
 
     for train_idx, test_idx in skf.split(*split_args):
-        clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
+        clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver, random_state=42)
         clf.fit(X_sae[train_idx], y[train_idx])
         preds = clf.predict(X_sae[test_idx])
         accs_sae.append(accuracy_score(y[test_idx], preds))
@@ -156,7 +170,7 @@ def downstream_classification(
         raw_split_args = (X_raw, y, groups) if groups is not None else (X_raw, y)
         accs_raw = []
         for train_idx, test_idx in skf.split(*raw_split_args):
-            clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver)
+            clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver, random_state=42)
             clf.fit(X_raw[train_idx], y[train_idx])
             preds = clf.predict(X_raw[test_idx])
             accs_raw.append(accuracy_score(y[test_idx], preds))

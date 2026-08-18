@@ -81,9 +81,9 @@ décision la plus citée ailleurs dans le projet) avant §28 ou §33.
 ## Décalage avec `RESULTS_TESTS.md`
 
 Ce document n'a pas été mis à jour en substance depuis sa création (liée à §16) — un
-seul commit ultérieur, purement rédactionnel. Tout `RESULTS_TESTS.md` §17 à §72
-(largement la série `docs/AUDIT_2026-08.md`, §57-72) est donc absent d'ici, y compris
-des résultats qui contredisent ou nuancent des lignes déjà présentes dans les tableaux
+seul commit ultérieur, purement rédactionnel. Tout `RESULTS_TESTS.md` §17 à §73 est
+donc absent d'ici, y compris des résultats qui contredisent ou nuancent des lignes
+déjà présentes dans les tableaux
 ci-dessus : le balayage de couche (§51, ci-dessus), le point de hook mlp_out > attn_out
 (§53), et surtout §60 (`INTENT_KEYWORDS_FR` sous-comptait sévèrement les labels réels
 d'intention — "résiliation" passe de 1 à 864 mails détectés une fois le bug de regex
@@ -91,6 +91,51 @@ réellement corrigé, ×1,15 à ×3,37 sur les autres intentions). Ce correctif 
 directement la ligne #8 "Détection d'urgence/intention (réelle)" de l'inventaire
 ci-dessus : toute lecture de `intent_urgency_probe_results.json` produite avant ce
 correctif utilise des labels de référence faux, pas seulement bruités.
+
+## Points ouverts (hygiène et méthodologie)
+
+Items identifiés mais non résolus, à traiter avant de s'appuyer dessus sans réserve :
+
+- **Circularité possible du baseline TF-IDF** (§37, cf. `docs/experiments.md`) : les
+  labels de vérité terrain d'intention viennent eux-mêmes de règles à base de
+  mots-clés (`INTENT_KEYWORDS_FR`) — un classifieur lexical comme TF-IDF peut donc
+  recouper la vérité terrain par construction, pas seulement par fuite de style
+  d'augmentation. À distinguer d'un test sur des labels d'intention annotés
+  indépendamment du texte, non fait à ce jour.
+- **`corpus_diff_stats` (Fisher exact) traite les mails augmentés comme un échantillon
+  indépendant des originaux** (`src/analysis/cooccurrence.py:102-117`), alors qu'ils
+  sont pairés par `parent_id` — un test apparié serait plus adapté à la structure
+  réelle des données ; impact sur les p-values de diffing non quantifié.
+- **Fallback GemmaScope silencieux vers layer=24** en cas de config manquante :
+  mécanisme confirmé, mais pas vérifié si un run déjà publié (notamment celui qui
+  établit la préférence pour la couche 31, cf. `RESULTS_TESTS.md` §51 ci-dessus) est
+  passé par ce fallback plutôt que par la couche demandée — à vérifier avant de faire
+  confiance sans réserve au résultat de couche 31.
+- **Prompt de labellisation du juge dupliqué dans 7 scripts** (pas de module partagé),
+  refactor volontairement pas fait pour l'instant.
+- **8 constantes numériques du pipeline sans provenance documentée en commentaire**
+  (aucune ne référence un papier) : lecture faite, analyse de sensibilité jamais
+  lancée.
+- **Pipeline 2 (`PhraseLevelSAE`) n'a pas son ablation de volume d'entraînement** —
+  celle qui existe (§12/§18.3) ne couvre que l'extension P1.
+- **`augmentation.py::validate()` ne détecte que les faits omis, jamais les faits
+  fabriqués** (numéros de contrat/montants/dates inventés plutôt qu'oubliés) — garde-fou
+  qualité asymétrique, pas vérifié dans l'autre sens.
+- **Aucun juge hors famille Gemma ni hors taille testé** (Gemma-3-27B-it,
+  Llama-3.1-8B) pour distinguer un effet de famille de modèle d'un effet de taille
+  pure dans l'effet dose-réponse déjà mesuré (`sweep_model_scale.html`).
+- **Bug de parsing potentiel** dans `scripts/explanation_plausibility_test.py:180`
+  (test `"A" in resp`, peut compter une réponse dégénérée comme un choix valide) —
+  identifié, pas corrigé.
+- **Dashboard** : affichage IC systématique (au lieu de ponctuel), diffing étendu aux
+  3 paires de domaines, test de biais de prior sur `generate_llm_diff_hypothesis` —
+  tous les trois touchent `saev5.py` (pipeline de production), volontairement pas
+  modifiés sans pouvoir vérifier un run complet de bout en bout derrière.
+- **Fidélité de `src/sae/retrieval/latent_terms.py` au protocole Latent Terms** :
+  testé (`RESULTS_TESTS.md` §26/§68/§69) mais sur un SAE entraîné en domaine et
+  phrase-level, pas token-level sur corpus générique comme la spécification d'origine
+  — écart protocolaire assumé, jamais quantifié séparément de la performance retrieval
+  elle-même. Item volumineux, pas engagé.
 
 ## Comment lire les résultats consolidés
 

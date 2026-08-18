@@ -237,8 +237,8 @@ def build_email_train_test_corpus(
     `return_groups=True` (défaut False, RÉTROCOMPATIBLE -- ~28 appelants existants
     utilisent la signature à 4 valeurs, non touchés) : retourne en plus
     (train_groups, test_groups), le parent_id (mail d'origine) de chaque texte --
-    permet une CV group-aware (GroupKFold/StratifiedGroupKFold) en aval, B.6,
-    docs/AUDIT_2026-08.md.
+    permet une CV group-aware (GroupKFold/StratifiedGroupKFold) en aval,
+    `RESULTS_TESTS.md` §57.
     """
     real_texts, _ = load_and_clean_emails(mails_tsv_path)
     if not real_texts:
