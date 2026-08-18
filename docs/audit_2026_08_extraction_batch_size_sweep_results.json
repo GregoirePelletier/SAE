@@ -1,0 +1,50 @@
+{
+  "layer": 24,
+  "model_id": "/home/h21486/SAE/models/gemma-3-12b-it",
+  "results": {
+    "4": {
+      "status": "ok",
+      "elapsed_s": 2.200286151841283,
+      "n_docs": 32,
+      "docs_per_sec": 14.543562878501593,
+      "batches_per_sec": 3.6358907196253982,
+      "peak_vram_gb": 26.211639296
+    },
+    "8": {
+      "status": "ok",
+      "elapsed_s": 4.428582645952702,
+      "n_docs": 64,
+      "docs_per_sec": 14.451576298003571,
+      "batches_per_sec": 1.8064470372504464,
+      "peak_vram_gb": 27.9802112
+    },
+    "16": {
+      "status": "ok",
+      "elapsed_s": 8.678395398892462,
+      "n_docs": 128,
+      "docs_per_sec": 14.749270356630142,
+      "batches_per_sec": 0.9218293972893838,
+      "peak_vram_gb": 31.577706496
+    },
+    "24": {
+      "status": "ok",
+      "elapsed_s": 13.158029774203897,
+      "n_docs": 192,
+      "docs_per_sec": 14.591850246182972,
+      "batches_per_sec": 0.6079937602576239,
+      "peak_vram_gb": 35.174387712
+    },
+    "32": {
+      "status": "ok",
+      "elapsed_s": 17.394497053697705,
+      "n_docs": 256,
+      "docs_per_sec": 14.717298189750176,
+      "batches_per_sec": 0.459915568429693,
+      "peak_vram_gb": 38.771068928
+    },
+    "48": {
+      "status": "oom",
+      "error": "CUDA out of memory. Tried to allocate 720.00 MiB. GPU 0 has a total capacity of 39.49 GiB of which 449.56 MiB is free. Including non-PyTorch memory, this process has 39.05 GiB memory in use. Of the allocated memory 36.23 GiB is allocated by PyTorch, and 2.32 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)"
+    }
+  }
+}
