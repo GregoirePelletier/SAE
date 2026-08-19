@@ -62,11 +62,9 @@ from transformers import AutoModel, AutoTokenizer
 
 try:
     from src.data.dataset import load_mails_tsv
-    from src.data.preparation import sample_fineweb2_chunks
     from src.config import D_SAE, K_SPARSE, SAVE_DIR, CACHE_DIR, EMB_MODEL, LOCAL_DATASET_PATH
 except ImportError:  # exécution à plat
     from dataset import load_mails_tsv
-    from preparation import sample_fineweb2_chunks
     from config import D_SAE, K_SPARSE, SAVE_DIR, CACHE_DIR, EMB_MODEL, LOCAL_DATASET_PATH
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -202,39 +200,70 @@ def _batch_token_activations(texts, tokenizer, model, max_length, batch_size=64)
             yield t
 
 
+def _stream_generic_texts(local_dataset_path: str, min_chars: int = 200):
+    """Lecture EN STREAMING (`datasets.load_dataset(..., streaming=True)`) du
+    corpus FineWeb2-fr générique -- jamais `sample_fineweb2_chunks`
+    (`src/data/preparation.py`), qui charge tout le shard parquet en RAM
+    (`streaming=False`) avant de filtrer : un shard de 4,6 Go compressé a fait
+    OOM-killer un run à --mem=96G (job 44434). Pas de dédup/découpage en
+    chunks de taille fixe ici -- inutile à cette échelle, et le papier lui
+    aussi échantillonne directement des passages FineWeb-Edu sans dédup
+    (§3.1) ; chaque document est utilisé tel quel, tronqué à `max_length`
+    tokens au moment de la tokenisation (`_batch_token_activations`)."""
+    from datasets import load_dataset
+    ds = load_dataset("parquet", data_files={"train": local_dataset_path},
+                      split="train", streaming=True)
+    for ex in ds:
+        text = (ex.get("text") or "").replace("\n", " ").strip()
+        if len(text) >= min_chars:
+            yield text
+
+
 def build_token_training_pool(target_tokens: int, tokenizer, model, cache_path: str = None,
-                               chunk_length: int = 1024, max_length: int = TRAIN_MAX_LENGTH,
+                               max_length: int = TRAIN_MAX_LENGTH, stream_batch_size: int = 64,
                                ) -> torch.Tensor:
     """Corpus d'entraînement du SAE : texte générique FineWeb2-fr HORS
-    domaine (§3.1), jamais Mails.tsv. Sur-demande de chunks (le ratio
-    tokens/chunk réel dépend du tokenizer) puis arrêt dès que la cible de
-    tokens est atteinte -- pas de traitement au-delà du nécessaire."""
+    domaine (§3.1), jamais Mails.tsv. Lu en streaming (cf.
+    `_stream_generic_texts`), arrêt dès que la cible de tokens est
+    atteinte -- pas de matérialisation du corpus source en RAM."""
     if cache_path and os.path.exists(cache_path + ".pt"):
         print(f"  [LatentTerms] Restauration du pool d'entraînement : {cache_path}.pt")
         return torch.load(cache_path + ".pt", map_location="cpu")
 
-    n_target_chunks = max(target_tokens // 150, 10_000)  # sur-demande volontaire, cf. docstring
-    chunks = sample_fineweb2_chunks(n_target_chunks, chunk_length=chunk_length,
-                                     local_dataset_path=LOCAL_DATASET_PATH)
-    if not chunks:
+    pool, n_tok, n_docs = [], 0, 0
+    buffer = []
+
+    def _flush(buf):
+        nonlocal n_tok
+        for tok in _batch_token_activations(buf, tokenizer, model, max_length, batch_size=stream_batch_size):
+            if tok.shape[0] == 0:
+                continue
+            pool.append(tok)
+            n_tok += tok.shape[0]
+            if n_tok >= target_tokens:
+                return
+
+    for text in _stream_generic_texts(LOCAL_DATASET_PATH):
+        buffer.append(text)
+        n_docs += 1
+        if len(buffer) >= stream_batch_size:
+            _flush(buffer)
+            buffer = []
+            if n_tok >= target_tokens:
+                break
+    if buffer and n_tok < target_tokens:
+        _flush(buffer)
+
+    if not pool:
         raise RuntimeError(f"Corpus générique FineWeb2-fr introuvable ({LOCAL_DATASET_PATH}) "
                             "-- requis pour entraîner le SAE hors-domaine (§3.1 du papier).")
-
-    pool, n_tok = [], 0
-    for tok in _batch_token_activations(chunks, tokenizer, model, max_length):
-        if tok.shape[0] == 0:
-            continue
-        pool.append(tok)
-        n_tok += tok.shape[0]
-        if n_tok >= target_tokens:
-            break
     embeddings = torch.cat(pool, dim=0)[:target_tokens]
     if embeddings.shape[0] < 0.9 * target_tokens:
         print(f"  [LatentTerms] ATTENTION : pool d'entraînement sous la cible "
-              f"({embeddings.shape[0]} / {target_tokens} tokens) -- corpus FineWeb2-fr local "
-              f"insuffisant à cette taille de chunk.")
+              f"({embeddings.shape[0]} / {target_tokens} tokens, corpus FineWeb2-fr épuisé "
+              f"après {n_docs} documents).")
     print(f"  [LatentTerms] Pool d'entraînement : {embeddings.shape[0]} tokens "
-          f"({len(chunks)} chunks génériques sollicités).")
+          f"({n_docs} documents génériques lus en streaming).")
     if cache_path:
         torch.save(embeddings, cache_path + ".pt")
     return embeddings
