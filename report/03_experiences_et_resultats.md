@@ -817,51 +817,28 @@ par ailleurs.
 
 ### 5.5. Retrieval par concept
 
-`src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
-entraîné par pure reconstruction, Clavié et al. 2026) n'était exercé que par
-inspection visuelle sur données de substitution. Protocole quantitatif
-(`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20
-contre les labels faibles d'intention (5.1), sur 4 requêtes en paraphrase, comparé
-à une baseline TF-IDF, sur les 3480 mails originaux.
+`src/sae/retrieval/latent_terms.py` réimplémente fidèlement Latent Terms (Clavié
+et al. 2026) : BM25 sur le vocabulaire latent d'un SAE entraîné par pure
+reconstruction sur des activations **token** de F2LLM, extraites sur un corpus
+FineWeb2-fr **générique hors-domaine** (jamais sur les mails eux-mêmes — §3.1 du
+papier), puis appliqué aux mails entiers (pas de découpage en phrases). Protocole
+quantitatif (`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20 contre
+les labels faibles d'intention (5.1), sur 4 requêtes en paraphrase, comparé à une
+baseline TF-IDF, sur les 3480 mails originaux.
 
-| Intention | Taux de base | P@10 Latent Terms | P@10 TF-IDF |
-|---|---|---|---|
-| réclamation | 54,8% | 1,00 | 1,00 |
-| remboursement | 22,9% | 1,00 | 0,30 |
-| information | 60,7% | 1,00 | 0,70 |
-| urgence | 33,8% | 0,00 | 0,80 |
-
-(Labels d'intention corrigés — cf. 5.1 ; taux de base ajouté car il change fortement
-pour "information", 18,0%→60,7% — le correctif touche surtout ce label, cf. 5.1.)
-
-Précision parfaite et robuste au correctif des labels pour Latent Terms sur 3
-intentions sur 4 (réclamation, remboursement, information), malgré des requêtes ne
-reprenant pas les mots exacts du label — généralisation sémantique réelle. TF-IDF
-reste net­tement en retrait sur remboursement (0,30) et information (0,70), mais ces
-deux chiffres remontent par rapport aux labels originaux (0,00→0,30, 0,20→0,70) —
-en partie parce que le taux de base d'"information" a lui-même presque triplé
-(18,0%→60,7%), ce qui relève mécaniquement la probabilité qu'un tirage TF-IDF
-touche juste. **La lecture "généralisation sémantique réelle" pour information tient
-moins fort qu'avant le correctif** : à un taux de base de 60,7%, P@10=1,00 pour
-Latent Terms est moins surprenant qu'à 18,0%. Échec complet et inchangé sur urgence
-(0,00), diagnostiqué précisément : la requête active bien des features latentes non
-nulles, mais un seul document sur 3480 dans tout le corpus partage une
-intersection non nulle avec elles — limite structurelle du BM25 sur vocabulaire
-latent très parcimonieux (k=16), pas un raté sémantique. Détail
-complet : `RESULTS_TESTS.md` §26, §68.
+*[Résultats en attente du job SLURM `latent_retrieval_precision_eval` — voir
+`RESULTS_TESTS.md` §<N-À-COMPLÉTER>. Les chiffres ci-dessous (§26/§68/§69) mesuraient
+une première version phrase-level, entraînée en domaine sur Mails.tsv — écart
+méthodologique corrigé, supersédés, conservés en trace historique uniquement.]*
 
 **Réserve méthodologique sur la comparaison à TF-IDF (§5.1 et §5.5)** : la vérité
 terrain utilisée dans les deux cas (`INTENT_KEYWORDS_FR`) est elle-même construite par
 détection de mots-clés. Comparer un système sémantique (SAE ou Latent Terms) à un
 système lexical (TF-IDF) sur une étiquette **définie par la présence de mots-clés**
-favorise structurellement le système lexical — le cas où TF-IDF bat nettement Latent
-Terms (urgence, 0,80 vs 0,00 ci-dessus) est cohérent avec cette hypothèse, pas
-seulement avec la limite du BM25 parcimonieux diagnostiquée séparément. Ce n'est pas un
-test totalement loyal de la valeur sémantique ajoutée face à une baseline lexicale ; une
-vérité terrain indépendante du regex (annotation manuelle sur un petit échantillon)
-serait nécessaire pour trancher si l'écart mesuré reflète un apport sémantique réel ou
-un artefact de la définition de l'étiquette. Non tranché à ce stade — perspective pour
-la suite (chapitre 4).
+favorise structurellement le système lexical ; une vérité terrain indépendante du
+regex (annotation manuelle sur un petit échantillon) serait nécessaire pour trancher
+si l'écart mesuré reflète un apport sémantique réel ou un artefact de la définition de
+l'étiquette. Non tranché à ce stade — perspective pour la suite (chapitre 4).
 
 ### 5.6. Le core seul égale-t-il core+extension sur les métriques en aval ?
 

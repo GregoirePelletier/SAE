@@ -132,7 +132,11 @@ SAVE_DIR = os.environ.get("SAVE_DIR", "./results/")
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 LOCAL_DATASET_PATH = os.environ.get(
     "LOCAL_DATASET_PATH",
-    "./local_data/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet")
+    # "./datasets/...", pas "./local_data/datasets/..." (défaut historique jamais
+    # atteint sur le disque réel -- tous les slurm/pipeline_runs/*.slurm surchargent
+    # déjà cette variable vers le bon chemin ; corrigé ici pour que le défaut soit
+    # utilisable sans surcharge, ex. src/sae/retrieval/latent_terms.py).
+    "./datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet")
 # Corpus emails EDF originaux + variantes augmentées (générées par
 # scripts/run_augmentation.py) : emplacement canonique unique, utilisé par
 # saev5.py, scripts/run_augmentation.py et scripts/baseline_gemmascope.py.

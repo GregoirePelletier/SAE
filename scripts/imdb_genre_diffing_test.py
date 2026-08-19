@@ -218,12 +218,22 @@ def main():
         )
     judge_model.eval()
 
+    def _apply_chat_and_extract(messages: list) -> torch.Tensor:
+        """Même correctif que src/sae/judge.py::_apply_chat_and_extract --
+        apply_chat_template peut retourner un BatchEncoding (pas un Tensor
+        nu) selon le tokenizer (Qwen3.8-27B, natif VLM, en fait partie) ;
+        .shape planterait alors avec KeyError('shape') via
+        BatchEncoding.__getattr__."""
+        out = judge_tok.apply_chat_template(
+            messages, add_generation_prompt=True, return_tensors="pt",
+        )
+        if hasattr(out, "input_ids"):
+            out = out.input_ids
+        return out.to(judge_model.device)
+
     def judge_surface_similarity(text_a: str, text_b: str, n_samples: int = N_JUDGE_SAMPLES) -> float:
         prompt = SURFACE_SIMILARITY_PROMPT.format(text_a=text_a, text_b=text_b)
-        inputs = judge_tok.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            add_generation_prompt=True, return_tensors="pt",
-        ).to(judge_model.device)
+        inputs = _apply_chat_and_extract([{"role": "user", "content": prompt}])
         scores = []
         with torch.no_grad():
             for _ in range(n_samples):
@@ -255,10 +265,7 @@ def main():
             "\n\nSET B:\n" + b +
             "\n\nIn one short sentence, describe the main topical difference of SET A compared to SET B."
         )
-        inputs = judge_tok.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            add_generation_prompt=True, return_tensors="pt",
-        ).to(judge_model.device)
+        inputs = _apply_chat_and_extract([{"role": "user", "content": prompt}])
         with torch.no_grad():
             out = judge_model.generate(input_ids=inputs, max_new_tokens=64, do_sample=False)
         return judge_tok.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True).strip()

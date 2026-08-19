@@ -287,6 +287,15 @@ de concepts, pas des atomes stables du dictionnaire.
   tâche — directement aligné avec les objectifs de détection
   d'urgence/d'intention. Non implémenté : nécessiterait une nouvelle boucle
   d'entraînement jointe.
+- **Au-delà du scoring gelé Latent Terms : SPLARE** (Formal et al., NAVER
+  Labs Europe, 2026) : `src/sae/retrieval/latent_terms.py` (§5.5) reste un
+  scoring BM25 gelé sur un vocabulaire SAE, sans réentraînement. SPLARE va
+  plus loin — entraîner un pipeline de retrieval complet type SPLADE sur ce
+  même type de vocabulaire (LoRA sur un LLM 2B-7B) — à l'état de l'art
+  multilingue/cross-domaine. Non implémenté ici (hors périmètre : LLM de
+  cette taille, boucle d'entraînement retrieval supervisée absentes de
+  l'architecture actuelle) — piste de poursuite si le retrieval devient un
+  objectif de production plutôt qu'un usage exploratoire.
 
 ## Perspectives
 

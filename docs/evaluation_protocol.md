@@ -48,7 +48,7 @@ quoi la comparer.
 | 12 | Corrélations "intéressantes" (NPMI + dissimilarité) | *(dans results.json, section P1)* — `find_interesting_pairs` | `p1_interesting_correlations.json` | vs matrice NPMI brute seule (`p1_npmi.pt`, sans filtre) |
 | 13 | Diffing cross-domaine (SAE natif, mails originaux vs augmentés) | *(déjà produit)* `slurm/baseline_diffing/run_baseline_full_v2.slurm` | `results_v11_baseline_objetfix/cache_baseline_full/diff_*.csv` | avant/après fix biais "Objet :" (§14.1) ; vs diffing energy/sports (P1, générique) |
 | 14 | **Embedding backbone Pipeline 2 : F2LLM-80M vs F2LLM-330M (nouveau)** | `slurm/pipeline_runs/run_sae_v10_p2_f2llm330m.slurm` | `results_v10_p2_f2llm330m/results.json` | comparer NMSE/L0/`clf_acc_email_axes` contre `results_v10_emails_main/results.json` (section P2) |
-| 15 | Retrieval BM25 sur vocabulaire latent (Latent Terms) | `scripts/retrieval_demo.py` / `src/sae/retrieval/latent_terms.py --mails ...` | résultats console | non comparé formellement à ce jour à `select_latents_by_similarity` (piste de suite) |
+| 15 | Retrieval BM25 sur vocabulaire latent (Latent Terms, token-level) | `scripts/latent_retrieval_precision_eval.py` / `src/sae/retrieval/latent_terms.py --mails ...` | `latent_retrieval_precision_results.json`, `RESULTS_TESTS.md` §<N-À-COMPLÉTER> | non comparé formellement à ce jour à `select_latents_by_similarity` (piste de suite) |
 | 16 | Robustesse au biais de formatage du corpus augmenté | *(déjà produit)* fix `load_augmented` + rerun #13 | cf. §14.1 | avant/après, par axe/niveau |
 
 ## Limites connues de l'extrapolation à 500K tokens
@@ -132,10 +132,9 @@ Items identifiés mais non résolus, à traiter avant de s'appuyer dessus sans r
   tous les trois touchent `saev5.py` (pipeline de production), volontairement pas
   modifiés sans pouvoir vérifier un run complet de bout en bout derrière.
 - **Fidélité de `src/sae/retrieval/latent_terms.py` au protocole Latent Terms** :
-  testé (`RESULTS_TESTS.md` §26/§68/§69) mais sur un SAE entraîné en domaine et
-  phrase-level, pas token-level sur corpus générique comme la spécification d'origine
-  — écart protocolaire assumé, jamais quantifié séparément de la performance retrieval
-  elle-même. Item volumineux, pas engagé.
+  résolu (`RESULTS_TESTS.md` §<N-À-COMPLÉTER>) — réimplémentation token-level, SAE
+  entraîné sur corpus FineWeb2-fr générique hors-domaine, conforme à §3.1-3.2 du
+  papier. Ancienne version phrase-level/en-domaine : §26/§68/§69, supersédés.
 
 ## Comment lire les résultats consolidés
 

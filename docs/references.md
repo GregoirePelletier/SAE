@@ -32,6 +32,7 @@
 | **Sparse Autoencoders Can Capture Language-Specific Concepts Across Diverse Languages** ([arXiv:2507.11230](https://arxiv.org/abs/2507.11230)) | Motive directement le test de biais multilingue ci-dessus : montre que les SAE peuvent isoler des features spécifiques à une langue plutôt que purement sémantiques, un facteur de confusion supplémentaire pour un juge LLM interrogé dans une langue différente de celle du corpus source. | Cité comme motivation du test (`RESULTS_TESTS.md` §22), pas de réplication directe de leur protocole de détection de features langue-spécifiques dans ce projet. |
 | **Unstable Features, Reproducible Subspaces** ([arXiv:2606.12138](https://arxiv.org/abs/2606.12138)) et **Toward Identifiable Sparse Autoencoders** ([arXiv:2605.31245](https://arxiv.org/abs/2605.31245)) | Montrent que les features individuelles d'un SAE varient selon la graine d'entraînement, alors que le sous-espace de bas rang qu'elles couvrent reste, lui, reproductible — très pertinent pour juger de la reproductibilité de ce projet, motive directement l'ablation de variance de seed. | **Ablation reproduite** (`RESULTS_TESTS.md` §21, `report/03_experiences_et_resultats.md` §12, job 41118, `SEED=123` vs `SEED=42` via `CORPUS_SPLIT_SEED` découplé) : taux d'interprétabilité agrégé stable (45,3% vs 47,3%, z=0,35, non significatif) mais seulement 28,2% (22/78) de recouvrement exact des libellés de features entre les deux graines — confirme empiriquement, sur ce projet, la thèse "features instables / sous-espace reproductible" des deux papiers. |
 | **Mechanistic Indicators of Understanding in Large Language Models** (Beckmann & Queloz, 2026, `pdf/MechanisticIndicatorsinLLM.pdf`) | Cadrage philosophique de l'interprétabilité mécaniste (à quel titre l'interprétabilité mécaniste permet-elle de parler de "compréhension" chez un LLM) — utilisé pour la motivation générale du projet, pas de technique actionnable. | Cité en introduction (`report/00_introduction.md`) pour le cadrage motivationnel uniquement. |
+| **SPLARE** (Formal et al., NAVER Labs Europe, ICLR 2026) | Va au-delà de Latent Terms : au lieu d'un simple scoring BM25 gelé sur un vocabulaire SAE, entraîne un pipeline de retrieval complet type SPLADE sur ce vocabulaire (LoRA sur un LLM 2B-7B), à l'état de l'art multilingue/cross-domaine. Déjà cité dans ce projet pour un point ponctuel (`src/config.py`, choix de `layer 31` — profondeur optimale ~2/3 du modèle). | **Non implémenté** — hors périmètre de ce qui est fait ici (Latent Terms reste un scoring gelé, sans réentraînement) ; piste de poursuite documentée en `report/04_limites_et_perspectives.md`. |
 
 ## Protocoles/méthodes issus de la littérature
 
@@ -40,7 +41,10 @@
   score du juge et l'activation réelle) — implémenté dans
   `src/sae/judge.py::odd_one_out_judge`/`local_gemma_judge`.
 - **Latent Terms (BM25 sur vocabulaire latent SAE)** : Clavié et al. 2026, implémenté
-  dans `src/sae/retrieval/latent_terms.py`.
+  fidèlement (token-level, SAE hors-domaine) dans `src/sae/retrieval/latent_terms.py`.
+  Aucun dépôt officiel publié par les auteurs à ce jour ; seule réimplémentation tierce
+  connue (`x-tabdeveloping/latent_terms`, JAX, non maintenue, non vérifiable) — non
+  vendorisée, réimplémenté directement depuis le papier.
 - **BatchTopK + AuxK** : architecture d'entraînement SAE utilisée pour `PhraseLevelSAE`
   et l'extension `ExtendedSAE` (`src/sae/batch.py`, `src/sae/frozen_core.py`).
 - **Diffing de corpus (Fisher exact + correction Benjamini-Hochberg)** :

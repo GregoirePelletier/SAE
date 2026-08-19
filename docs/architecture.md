@@ -158,18 +158,18 @@ d'entraînement devient un sujet actif :
 
 ## Retrieval (Latent Terms) et cooccurrence
 
-- **Latent Terms** (`src/sae/retrieval/latent_terms.py`) : réimplémentation from-scratch
-  (BM25 sur le vocabulaire latent d'un SAE de phrases, Clavié et al. 2026,
-  arXiv:2605.29384) — il n'existe **aucun dépôt officiel** publié par les auteurs ; la
-  seule réimplémentation tierce (`x-tabdeveloping/latent_terms`, JAX) n'est pas
-  vendorisée et n'a jamais servi d'oracle de comparaison (cf. `docs/references.md`).
-  Testé à échelle de production sur les 3480 mails originaux
-  (`scripts/latent_retrieval_precision_eval.py`, `RESULTS_TESTS.md` §26/§68/§69) :
-  P@10/P@20 parfaits sur 3 intentions sur 4 (réclamation, remboursement, information),
-  mais **P@10=0.00 sur "urgence"** (contre 0.80 pour TF-IDF) — mode d'échec structurel
-  de BM25 sur un vocabulaire latent creux, pas un artefact du run. Fiabilité non
-  uniforme, à garder à l'esprit avant tout usage en aval de ce module au-delà des 3
-  intentions validées.
+- **Latent Terms** (`src/sae/retrieval/latent_terms.py`) : réimplémentation fidèle
+  token-level (BM25 sur le vocabulaire latent d'un SAE entraîné par pure
+  reconstruction sur des activations TOKEN de F2LLM, Clavié et al. 2026,
+  arXiv:2605.29384, §3.1-3.2) — il n'existe **aucun dépôt officiel** publié par les
+  auteurs (vérifié : blog Mixedbread + org GitHub sans repo dédié) ; la seule
+  réimplémentation tierce (`x-tabdeveloping/latent_terms`, JAX, non maintenue, 0
+  usage vérifiable) n'est pas vendorisée (cf. `docs/references.md`). SAE entraîné sur
+  un corpus FineWeb2-fr générique HORS domaine (jamais sur Mails.tsv, conforme au
+  papier), index construit sur les mails entiers (pas de découpage en phrases — écart
+  d'une première version corrigé). Résultats et écarts d'échelle assumés (33M tokens
+  uniques plutôt que 30B, une seule graine) : `RESULTS_TESTS.md` §<N-À-COMPLÉTER>,
+  supersède §26/§68/§69 (première version phrase-level/en-domaine).
 - **Cooccurrence** (`src/analysis/cooccurrence.py`) : NPMI (`compute_npmi`) et
   clustering Louvain (`nx.community.louvain_communities`, pondéré par NPMI) sont
   implémentés et exercés en production (`cooccurrence_graph`, appelé depuis
@@ -341,7 +341,7 @@ LOCAL_MAILS_PATH=local_data/emails/Mails.tsv MODEL_ID=google/gemma-3-12b-it \
 ### `scripts/retrieval_demo.py`
 
 Câble `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un
-SAE de phrases, Clavié et al. 2026) à un point d'entrée testable sans
+SAE token-level, Clavié et al. 2026) à un point d'entrée testable sans
 `Mails.tsv` : corpus de substitution public (FineWeb-2, domaine "energy").
 
 ```bash

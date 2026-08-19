@@ -72,7 +72,18 @@ def main():
         batch_size=16,
     )
     torch.cuda.empty_cache()
-    print(f"Encoded {len(ds)} emails.", flush=True)
+    n_before = len(ds)
+    # Dataset.latents() remplit les lignes échouées (None, ex. edge case
+    # d'encodage) avec csr_matrix(np.full(d_sae, np.nan)) -- scipy stocke NaN
+    # comme entrée explicite "non-nulle" dans TOUTES les colonnes, donc
+    # .sum(axis=0) sur le résultat dense propage NaN à CHAQUE feature, pas
+    # seulement aux lignes en échec (bug rencontré : 0/65536 "actives" alors
+    # que les activations brutes étaient saines -- diagnostiqué via
+    # scripts/diagnose_email_zero_activations.py). filter_na_rows() est leur
+    # méthode dédiée pour exactement ce cas.
+    ds = ds.filter_na_rows()
+    n_dropped = n_before - len(ds)
+    print(f"Encoded {n_before} emails, {n_dropped} failed to encode (dropped via filter_na_rows).", flush=True)
 
     binarized = ds.latents("binarize")  # (n_docs, d_sae), leur API telle quelle
     freq = binarized.sum(axis=0) / binarized.shape[0]

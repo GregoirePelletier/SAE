@@ -1,37 +1,30 @@
 """
-scripts/latent_retrieval_precision_eval.py — Évaluation quantitative (jamais faite)
-de src/sae/retrieval/latent_terms.py (Latent Terms, Clavié et al. 2026,
-arXiv:2605.29384 : BM25 sur le vocabulaire latent d'un SAE entraîné par pure
-reconstruction sur les phrases, Pipeline 2).
+scripts/latent_retrieval_precision_eval.py — Évaluation quantitative de
+src/sae/retrieval/latent_terms.py (Latent Terms, Clavié et al. 2026,
+arXiv:2605.29384, réimplémentation token-level : BM25 sur le vocabulaire
+latent d'un SAE entraîné par pure reconstruction sur des activations token
+F2LLM d'un corpus GÉNÉRIQUE hors-domaine, §3.1).
 
-Jusqu'ici, ce module n'était exercé QUE via scripts/retrieval_demo.py (1-2 requêtes
-inspectées à l'œil, sur des données de substitution FineWeb2/Wikipedia -- écrit sur
-une machine sans Mails.tsv) et le dashboard (parcours interactif, pas de métrique).
-Sur le cluster, Mails.tsv (mails originaux) est disponible : ce script construit un
-vrai protocole précision/rappel en utilisant les labels faibles d'intention déjà
-présents dans le corpus (`src.data.dataset.INTENT_KEYWORDS_FR`, régime réutilisé par
-scripts/intent_urgency_probe.py, explanation_fidelity_test.py,
-steering_fidelity_test.py) comme vérité terrain de substitution.
+Remplace la version précédente (SAE phrase-level entraîné directement sur
+Mails.tsv) : RESULTS_TESTS.md §26/§68/§69, supersédés par §<N-À-COMPLÉTER>.
 
-Protocole :
-  1. Corpus = mails originaux de Mails.tsv (3480 mails), 4 intentions déjà validées
-     comme suffisamment équilibrées (>=30 positifs) dans les tests précédents :
-     réclamation, remboursement, information, urgence.
-  2. Pour chaque intention, une requête en langage naturel PARAPHRASANT (pas copiant
-     mot pour mot) le motif regex de l'intention -- teste la généralisation
-     sémantique, pas juste le rappel de mots-clés exacts.
-  3. Index Latent Terms (BM25 sur activations SAE de phrases, F2LLM-v2-80M +
-     PhraseLevelSAE entraîné ICI par pure reconstruction sur ce corpus, dim320/8192/
-     k16 -- mêmes défauts que Pipeline 2) construit sur l'ensemble des 3480 mails.
-  4. Baseline de comparaison : TF-IDF + cosinus sur le texte brut, mêmes requêtes,
-     même corpus -- un système de retrieval "mots" classique et bien compris.
-  5. Métrique : Precision@10 et Precision@20 (fraction de documents pertinents,
-     au sens du label faible d'intention, dans le top-k), comparée au taux de base
-     de l'intention dans le corpus (performance d'un tirage aléatoire).
-
-Coût : F2LLM-v2-80M sur ~3480 mails (quelques milliers de phrases après découpage,
-`split_into_phrases`) + entraînement d'un petit PhraseLevelSAE dédié -- GPU requis
-mais très rapide (quelques minutes), pas de Gemma-3-12B.
+Protocole (inchangé par rapport aux runs précédents, seule l'implémentation
+Latent Terms change) :
+  1. Corpus = mails originaux de Mails.tsv (3480 mails), 4 intentions déjà
+     validées comme suffisamment équilibrées (>=30 positifs) dans les tests
+     précédents : réclamation, remboursement, information, urgence
+     (`src.data.dataset.INTENT_KEYWORDS_FR`, patterns V2 en production).
+  2. Pour chaque intention, une requête en langage naturel PARAPHRASANT (pas
+     copiant mot pour mot) le motif regex de l'intention -- teste la
+     généralisation sémantique, pas juste le rappel de mots-clés exacts.
+  3. Index Latent Terms construit sur les 3480 mails ENTIERS (pas de
+     découpage en phrases -- écart corrigé par rapport à la version
+     précédente, cf. docstring de latent_terms.py).
+  4. Baseline de comparaison : TF-IDF + cosinus sur le texte brut, mêmes
+     requêtes, même corpus.
+  5. Métrique : Precision@10 et Precision@20 (fraction de documents
+     pertinents, au sens du label faible d'intention, dans le top-k),
+     comparée au taux de base de l'intention dans le corpus.
 
 Usage : PYTHONPATH=. .venv/bin/python scripts/latent_retrieval_precision_eval.py
 """
@@ -41,17 +34,16 @@ import json
 import os
 
 import numpy as np
-import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from src.config import LOCAL_MAILS_PATH, SAVE_DIR, CACHE_DIR, D_SAE, K_SPARSE
+from src.config import LOCAL_MAILS_PATH, SAVE_DIR, CACHE_DIR, D_SAE, K_SPARSE, EMB_MODEL
 from src.data.dataset import load_mails_tsv
-from src.data.preparation import split_into_phrases
-from src.sae.phrase_sae import extract_f2llm_embeddings, load_or_train_sae
-from src.sae.retrieval.latent_terms import latent_doc_weights, LatentTermsIndex
+from src.sae.retrieval.latent_terms import (
+    load_f2llm, build_token_training_pool, load_or_train_latent_terms_sae,
+    latent_doc_weights, LatentTermsIndex, TRAIN_TOKENS,
+)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TOP_K = (10, 20)
 
 # Requêtes en paraphrase (pas les mots exacts du regex INTENT_KEYWORDS_FR) --
@@ -82,23 +74,21 @@ def main():
         n_pos = int(df[f"intent_{intent}"].sum())
         print(f"  intent_{intent}: {n_pos}/{len(df)} positifs ({100*n_pos/len(df):.1f}%)")
 
-    print("[retrieval-eval] Découpage en phrases + embeddings F2LLM...")
-    phrases, p2d = split_into_phrases(texts, max_phrases_per_doc=20)
-    p2d = np.array(p2d)
-    print(f"[retrieval-eval] {len(phrases)} phrases.")
+    print("[retrieval-eval] Chargement F2LLM + pool d'entraînement générique (hors domaine)...")
+    tokenizer, model = load_f2llm()
+    d_in = model.config.hidden_size
+    model_tag = os.path.basename(EMB_MODEL.rstrip("/"))
 
-    emb, d_in = extract_f2llm_embeddings(
-        phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"lt_eval_phrase_emb_n{len(phrases)}"),
-    )
-    print("[retrieval-eval] Entraînement du PhraseLevelSAE (reconstruction pure)...")
-    sae, _ = load_or_train_sae(
-        d_in=d_in, d_sae=D_SAE, k=K_SPARSE, embeddings=emb,
-        save_path=os.path.join(SAVE_DIR, f"lt_eval_sae_d{D_SAE}_k{K_SPARSE}.pt"),
-    )
-    sae = sae.to(DEVICE)
+    token_pool = build_token_training_pool(
+        TRAIN_TOKENS, tokenizer, model,
+        cache_path=os.path.join(CACHE_DIR, f"lt_generic_token_pool_n{TRAIN_TOKENS}_{model_tag}"))
+    print("[retrieval-eval] Entraînement du SAE token-level (reconstruction pure, hors domaine)...")
+    sae, _ = load_or_train_latent_terms_sae(
+        d_in=d_in, d_sae=D_SAE, k=K_SPARSE, token_pool=token_pool,
+        save_path=os.path.join(SAVE_DIR, f"lt_sae_token_d{D_SAE}_k{K_SPARSE}_tok{TRAIN_TOKENS}_{model_tag}.pt"))
 
-    W_docs = latent_doc_weights(sae, emb, p2d, n_docs=len(texts))
+    print("[retrieval-eval] Indexation des 3480 mails (token-level, sum-pooling par document)...")
+    W_docs = latent_doc_weights(sae, texts, tokenizer, model)
     index = LatentTermsIndex(W_docs)
 
     print("[retrieval-eval] Baseline TF-IDF...")
@@ -113,10 +103,8 @@ def main():
         base_rate = float(relevant.mean())
 
         # Latent Terms
-        q_emb, _ = extract_f2llm_embeddings([query], max_length=128, cache_path=None)
-        w_q = np.asarray(
-            latent_doc_weights(sae, q_emb, np.zeros(1, dtype=int), n_docs=1).todense()
-        ).ravel()
+        W_q = latent_doc_weights(sae, [query], tokenizer, model)
+        w_q = np.asarray(W_q.todense()).ravel()
         lt_ranked = [i for i, _ in index.search(w_q, top_k=max(TOP_K))]
 
         # TF-IDF

@@ -4,6 +4,15 @@ Correctifs ayant changé un comportement observable de la pipeline. Le détail
 technique de chaque diagnostic vit dans `RESULTS_TESTS.md` ; ce fichier ne
 liste que le changement et sa conséquence.
 
+## Réimplémentation de `src/sae/retrieval/latent_terms.py`
+
+- Le module opérait au niveau phrase (SAE entraîné directement sur Mails.tsv,
+  activations pré-pooled par phrase) au lieu du niveau token spécifié par le
+  papier (Clavié et al. 2026, §3.1-3.2 : SAE sur chaque activation token d'un
+  corpus générique hors-domaine, sum-poolé par document à l'indexation).
+  Réimplémenté fidèlement. Résultats précédents (RESULTS_TESTS.md
+  §26/§68/§69) supersédés, conservés en trace historique uniquement.
+
 ## 2026-07-29
 
 - Correction d'une dimension figée (`D_MODEL=4096` au lieu de 3840 pour
