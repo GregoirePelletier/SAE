@@ -7,12 +7,25 @@ une implémentation **partielle** du papier — jamais l'inverse. Catégories A/
 définies dans la mission (remplacer / forcer la leur / double / garder la mienne).
 
 **Corrections triviales faites au passage** (demandées dans la mission) :
-- `src/sae/sae_shared.py` importe `interp_embed.sae.utils.get_reconstruction_error` :
+- `src/sae/sae_shared.py:29` importe `interp_embed.sae.utils.get_reconstruction_error` :
   fonction absente de `external/interp_embed/interp_embed/sae/utils.py` (vérifié —
   le fichier ne contient que `process_device_config`, `ensure_loaded`,
   `try_to_load_feature_labels`, `get_goodfire_d_sae`, `get_goodfire_config_from_hf`,
   `goodfire_sae_loader`, `get_goodfire_config`, `store_activations_hook`). Import mort
-  confirmé, à corriger à l'étape 1.
+  confirmé, à corriger à l'étape 1. **Conséquence plus grave que "juste un import mort" :**
+  ce sous-import est dans le MÊME bloc `try` (lignes 28–32) que
+  `from interp_embed import Dataset as InterpDataset` (ligne 30) — l'`ImportError`
+  levée par `get_reconstruction_error` (ligne 29, exécutée en premier) est capturée par
+  l'`except ImportError: InterpDataset = None` (ligne 31–32) AVANT que la ligne 30 ne
+  s'exécute. Or `interp_embed/__init__.py:6` exporte bien `Dataset` (`from
+  .dataset_analysis import Dataset`, `__all__ = ["Dataset"]`) — cet import réussirait
+  seul. Résultat : `InterpDataset` reste `None` en permanence, MÊME MAINTENANT que le
+  submodule est peuplé, à cause d'un import mort sans rapport qui masque silencieusement
+  un import valide dans le même `try`. Le commentaire `sae_shared.py:20-22` ("interp_embed
+  reste volontairement non peuplé... ce chemin ne prend effet que si le submodule est un
+  jour initialisé") est lui-même obsolète — le submodule EST initialisé, mais le code ne
+  peut pas le voir à cause de ce bug. Même famille de désynchronisation documentée en
+  désaccord #6 (`tests/test_interp_embed_diff.py`).
 - `examples/analysis.ipynb` cellule 0 (`from interp_embed.saes import GoodfireSAE`) :
   non vérifié directement (notebook non lu, hors périmètre lecture de code), mais le
   module réel est bien `interp_embed.sae.local_sae.GoodfireSAE` (classe dépréciée,

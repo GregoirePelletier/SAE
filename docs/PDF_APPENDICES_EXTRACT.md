@@ -1051,7 +1051,7 @@ Liste consolidée de tout ce que l'extraction PDF a rendu ambigu, illisible, ou 
 
 2. **Formule exacte de normalisation du NPMI (Appendice E.1, page 29).** Le texte définit le PMI (`log(P(i,j)/(P(i)P(j)))`) mais ne donne jamais l'équation de normalisation transformant PMI en NPMI. La forme standard (`NPMI = PMI / -log P(i,j)`) est plausible mais non confirmée dans le texte.
 
-3. **Mapping numérique de l'échelle de score du prompt de similarité de surface (Appendice D.3, page 23-24).** Le prompt ne retourne que "yes"/"related"/"no" ; le mapping vers une échelle numérique {1, 0.5, 0} mentionné dans la consigne de la mission n'apparaît pas dans le texte des Appendices — probablement défini dans le corps principal (Section 4.1), hors du périmètre de lecture demandé (lignes 979+).
+3. **RÉSOLU** — Mapping numérique de l'échelle de score du prompt de similarité de surface (Appendice D.3, page 23-24). Le prompt ne retourne que "yes"/"related"/"no" ; le mapping numérique est bien dans le corps principal comme supposé, retrouvé page 4, §4.1, ligne 230 de `_paper_pages_raw.txt` (fichier de travail, supprimé depuis) : *"we measure surface similarity between the top five latents and the ground truth using GPT-5 (1 = same, 0.5 = related, 0 = unrelated)"* — donc yes→1, related→0.5, no→0, verbatim confirmé.
 
 4. **Définition formelle du "z-score de conductance" (Appendice F.4, page 37-38).** Les tables 15-17 affichent une colonne "Z" avec des valeurs numériques (ex. -16.8, -27.2) à côté de la précision par cluster, mais aucune formule ou définition explicite du z-score n'apparaît dans le texte de l'Appendice F lu. Probablement définie dans le corps principal (Section 4.3).
 
