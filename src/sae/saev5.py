@@ -286,7 +286,7 @@ from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
-    EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA,
+    EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA, REENCODE_BATCH_SIZE,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -1394,61 +1394,88 @@ def run_llm_max_pool_pipeline(
                 _last_checkpoint_reencode = _reencode_resume_from
                 _reencode_early_exit = False
                 _fragment_writer = AsyncFragmentWriter()  # audit perf G2 -- cf. flush() avant checkpoint plus bas
+                # Ré-encodage batché (audit perf §2.9 item 8) : les fragments d'un même
+                # lot de REENCODE_BATCH_SIZE documents sont concaténés le long de la
+                # dimension token pour UN SEUL appel _encode_extra_acts (un GEMM au lieu
+                # d'un par document) -- équivalence exacte car ext_sae.eval() (ligne
+                # ~1330) place BatchTopKEncoder en mode seuil global élément-par-élément,
+                # jamais le budget partagé par batch de l'entraînement (src/sae/batch.py).
+                # Le reste (merge CSR, écriture fragment, max-pool, checkpoint) reste
+                # documents par document -- ce sont des opérations CPU/sparse par nature,
+                # et la granularité de checkpoint (perte bornée à
+                # EXTRACTION_CHECKPOINT_INTERVAL documents) doit rester inchangée.
                 with torch.no_grad():
-                    for _pos in tqdm(range(_reencode_resume_from, len(re_encode_targets)),
-                                     desc="Re-encodage SAEBoostResidualSAE (sparse, filler exclu)"):
-                        i = re_encode_targets[_pos]
-                        frag = load_fragment(token_fragments_dir, i)
-                        raw_acts = frag["raw_acts"].to(DEVICE).float()
+                    _pbar = tqdm(total=len(re_encode_targets), initial=_reencode_resume_from,
+                                 desc="Re-encodage SAEBoostResidualSAE (sparse, filler exclu, batché)")
+                    _pos = _reencode_resume_from
+                    while _pos < len(re_encode_targets):
+                        _chunk_positions = list(range(_pos, min(_pos + REENCODE_BATCH_SIZE, len(re_encode_targets))))
+                        _chunk_doc_ids = [re_encode_targets[p] for p in _chunk_positions]
+                        _frags = [load_fragment(token_fragments_dir, i) for i in _chunk_doc_ids]
+                        # Concaténation CPU (copie contiguë bon marché) puis UN SEUL
+                        # transfert host->device pour tout le lot, au lieu d'un par
+                        # document -- amortit aussi l'overhead de transfert, pas
+                        # seulement celui du lancement de kernel du GEMM.
+                        _lengths = [f["raw_acts"].shape[0] for f in _frags]
+                        _raw_acts_cat = torch.cat([f["raw_acts"] for f in _frags], dim=0).to(DEVICE).float()
                         # L'encodeur extra lit x directement (SAE Boost §3.1, correctif
                         # frozen_core.py de cette session) -- PAS le résidu e = x - x̂_core.
                         # decode_core_sparse (reconstruction du core, O(nnz*d_in)) est donc
                         # devenu inutile ici : c'était uniquement pour calculer ce résidu,
-                        # que l'encodeur ne consomme plus. Avant ce correctif, cet appel
-                        # passait encore le résidu à _encode_extra_acts alors que
-                        # frozen_core.py avait déjà changé de convention -- régression
-                        # silencieuse détectée en relisant ce site d'appel après coup
-                        # (accès direct à la méthode privée, donc pas couvert par les tests
-                        # de encode()/forward() qui, eux, avaient été mis à jour).
-                        token_extra_acts = ext_sae._encode_extra_acts(raw_acts)
-                        if n_train + n_filler <= i < n_train + n_filler + n_test and \
-                           sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
-                            _eval_raw.append(raw_acts.float().cpu())
+                        # que l'encodeur ne consomme plus.
+                        _token_extra_acts_cat = ext_sae._encode_extra_acts(_raw_acts_cat)
+                        _raw_acts_list = list(torch.split(_raw_acts_cat, _lengths))
+                        _token_extra_acts_list = list(torch.split(_token_extra_acts_cat, _lengths))
+                        del _raw_acts_cat, _token_extra_acts_cat
 
-                        csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
-                        del token_extra_acts
-                        save_fragment(token_fragments_dir, i,
-                                      token_strings=frag["token_strings"],
-                                      csr=csr, d_total=d_core + D_EXTRA,  # raw_acts non repassé -> purgé
-                                      writer=_fragment_writer)
-                        all_doc_sae_acts[i].copy_(
-                            doc_maxpool({
-                                "rowptr": csr[0],
-                                "cols": csr[1],
-                                "vals": csr[2],
-                                "shape": csr[3],
-                            })
-                        )
+                        for _j, i in enumerate(_chunk_doc_ids):
+                            frag = _frags[_j]
+                            raw_acts = _raw_acts_list[_j]
+                            token_extra_acts = _token_extra_acts_list[_j]
+                            if n_train + n_filler <= i < n_train + n_filler + n_test and \
+                               sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
+                                _eval_raw.append(raw_acts.float().cpu())
 
-                        if (_pos + 1 - _last_checkpoint_reencode >= EXTRACTION_CHECKPOINT_INTERVAL
-                                or _GracefulShutdown.requested):
-                            # flush() AVANT le checkpoint -- même raison qu'en extraction
-                            # (cf. docstring AsyncFragmentWriter) : un fragment réencodé
-                            # ENCORE en file d'attente à ce moment est un fragment purgé
-                            # de son raw_acts sans que le core ait été récupéré nulle
-                            # part ailleurs -- perte définitive si le checkpoint le
-                            # marquait "fait" avant que l'écriture n'ait réellement eu lieu.
-                            _fragment_writer.flush()
-                            _write_checkpoint(_reencode_progress_path, next_idx=_pos + 1)
-                            if _eval_raw:   # sauvegarde incrémentale : irrécupérable après purge sinon
-                                torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
-                            _last_checkpoint_reencode = _pos + 1
-                        if _GracefulShutdown.requested:
-                            print(f"  [P1] Signal de coupure reçu -- checkpoint écrit à la position "
-                                  f"{_pos+1}/{len(re_encode_targets)} (filler exclu), arrêt propre "
-                                  "(reprise au prochain sbatch).")
-                            _reencode_early_exit = True
+                            csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
+                            save_fragment(token_fragments_dir, i,
+                                          token_strings=frag["token_strings"],
+                                          csr=csr, d_total=d_core + D_EXTRA,  # raw_acts non repassé -> purgé
+                                          writer=_fragment_writer)
+                            all_doc_sae_acts[i].copy_(
+                                doc_maxpool({
+                                    "rowptr": csr[0],
+                                    "cols": csr[1],
+                                    "vals": csr[2],
+                                    "shape": csr[3],
+                                })
+                            )
+                            _pbar.update(1)
+
+                            _cur_pos = _chunk_positions[_j]
+                            if (_cur_pos + 1 - _last_checkpoint_reencode >= EXTRACTION_CHECKPOINT_INTERVAL
+                                    or _GracefulShutdown.requested):
+                                # flush() AVANT le checkpoint -- même raison qu'en extraction
+                                # (cf. docstring AsyncFragmentWriter) : un fragment réencodé
+                                # ENCORE en file d'attente à ce moment est un fragment purgé
+                                # de son raw_acts sans que le core ait été récupéré nulle
+                                # part ailleurs -- perte définitive si le checkpoint le
+                                # marquait "fait" avant que l'écriture n'ait réellement eu lieu.
+                                _fragment_writer.flush()
+                                _write_checkpoint(_reencode_progress_path, next_idx=_cur_pos + 1)
+                                if _eval_raw:   # sauvegarde incrémentale : irrécupérable après purge sinon
+                                    torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
+                                _last_checkpoint_reencode = _cur_pos + 1
+                            if _GracefulShutdown.requested:
+                                print(f"  [P1] Signal de coupure reçu -- checkpoint écrit à la position "
+                                      f"{_cur_pos+1}/{len(re_encode_targets)} (filler exclu), arrêt propre "
+                                      "(reprise au prochain sbatch).")
+                                _reencode_early_exit = True
+                                break
+                        del _token_extra_acts_list, _raw_acts_list
+                        if _reencode_early_exit:
                             break
+                        _pos += len(_chunk_positions)
+                    _pbar.close()
 
                 if _reencode_early_exit:
                     _fragment_writer.close()

@@ -67,6 +67,16 @@ N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
 # (12B en simple passe avant, marge VRAM probable). Configurable pour permettre
 # un balayage empirique avant le run de référence à grande échelle.
 EXTRACTION_BATCH_SIZE = int(os.environ.get("EXTRACTION_BATCH_SIZE", "4"))
+# Taille de batch pour le ré-encodage SAEBoostResidualSAE (saev5.py, audit perf
+# §2.9 item 8) : les fragments d'un même lot sont concaténés le long de la
+# dimension token avant UN SEUL appel à _encode_extra_acts, au lieu d'un appel
+# par document. Équivalence exacte garantie par construction (BatchTopKEncoder
+# en mode eval -- seuil global élément-par-élément, pas de budget partagé par
+# batch comme en entraînement, cf. src/sae/batch.py) : la seule source d'écart
+# possible est la non-associativité flottante du GEMM batché sur GPU, pas un
+# changement de sémantique. 128 par défaut, prudent (VRAM du batch dépend de la
+# longueur token totale du lot, variable d'un document à l'autre).
+REENCODE_BATCH_SIZE = int(os.environ.get("REENCODE_BATCH_SIZE", "128"))
 # Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : nombre de documents
 # entre deux checkpoints de progression de l'extraction P1 (compteurs du
 # réservoir de Vitter + indice du prochain document à traiter). Borne le
