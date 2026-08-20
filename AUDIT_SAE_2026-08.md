@@ -387,11 +387,46 @@ seuls les résidus sont manquants, fragments intacts) ne peut plus couvrir le fi
 explicitement (avertissement imprimé) plutôt que silencieusement faux, plage train uniquement. Le
 mécanisme de reprise (§2.3) mis à jour en conséquence (reconstruction par placeholder pour les
 positions filler déjà « traitées »). Testé (CPU, `tests/test_extraction_filler_lightening.py`).
-Risque résiduel à surveiller sur le premier run réel : le placeholder est casté explicitement au
-même dtype que la branche réelle (`TORCH_DTYPE`, cohérent avec `torch.zeros(D_EXTRA, dtype=
-token_sae_acts.dtype, ...)` déjà présent dans le code pour la même raison) — non vérifié sur GPU à
-ce jour, un éventuel désaccord de dtype ferait échouer `torch.stack` de façon bruyante et immédiate
-(pas un risque de corruption silencieuse), donc facilement détectable au premier run.
+Le risque dtype du placeholder (`torch.zeros(..., dtype=TORCH_DTYPE)`) ne s'est pas matérialisé —
+`torch.stack` n'a levé aucune erreur sur les trois runs GPU ci-dessous.
+
+**Vérifié sur GPU — comparaison contrôlée à trois (jobs 44560 v1 sans correctif, 44571 v2
+ré-encodage seul, 44572 v3 les deux, 100k tokens résidus, SEED=42, mêmes paramètres sinon,
+`slurm/pipeline_runs/run_validation_100k_layer24_*.slurm`) :**
+- **Fidélité inchangée**, comme attendu (filler ne nourrit que la diversité du réservoir, jamais
+  relu en aval) : rho_sae 0,827 / 0,831 / 0,821, fve_pretrained 0,8309 identique aux trois, dead_pct
+  57,8 % identique aux trois — écarts dans le bruit d'échantillonnage du réservoir, aucune
+  dégradation attribuable aux correctifs.
+- **Ré-encodage, comparaison propre (v1 vs v2, seule variable : filler exclu ou non des
+  `re_encode_targets`)** : 47 253 → 44 253 documents (**−6,3 %**, cohérent avec un filler à ~6 % du
+  corpus à cette échelle de validation, *pas* les 92 % du run de référence), 76 min 57 → 67 min 27
+  (**−12,3 %** temps mur), débit 10,23 → 10,93 doc/s. Effet propre, non confondu.
+- **Extraction, comparaison confondue par la concurrence GPU** : 44560 a tourné seul sur le nœud
+  tôt (57 min 14), tandis que 44571 et 44572 ont tourné **simultanément** l'un de l'autre sur les 8
+  GPU du même nœud `dgx-a100` (I/O réseau partagé, cf. G2) — 44571 (v2, sans allègement extraction)
+  69 min 24, plus lent que 44560 malgré un code identique : la concurrence domine le signal, la
+  comparaison 44560 vs {44571,44572} sur cette seule phase n'est pas exploitable telle quelle.
+  Sur la paire à concurrence appariée (44571 vs 44572, tous deux actifs sur la même fenêtre) :
+  69 min 24 → 65 min 46 (**−5,2 %**), direction cohérente avec l'attendu (allègement modeste : seul
+  l'encodage core est sauté pour un document filler, pas le forward Gemma-3 qui reste dominant et
+  identique pour tous les documents).
+- **Total pipeline** (moins sensible à la concurrence ponctuelle, intègre sur toute la durée) :
+  v1 11 873,7 s → v2 11 352,7 s → v3 10 905,1 s, monotone, **−8,2 %** cumulé sur les deux
+  correctifs. Le ré-encodage (effet propre ci-dessus) explique à lui seul ~59 % du gain total.
+- **Effet de bord découvert en marge** : le répertoire de fragments de v2 (16 Go) est *plus gros*
+  que celui de v1 (12 Go) malgré un nombre de fragments identique (47 253) — attendu : v1 réencode
+  tous les fragments (y compris filler), ce qui purge leur `raw_acts` (cf. docstring
+  `save_fragment`) ; v2 exclut le filler du ré-encodage, donc ses 3 000 fragments filler gardent
+  `raw_acts` indéfiniment. Sans conséquence en production (v3+ n'écrit plus aucun fragment filler,
+  le cas ne se pose plus), mais confirme que v2 n'était bien qu'une étape intermédiaire de la
+  comparaison, jamais destinée à devenir l'état par défaut.
+- **Leçon méthodologique** : lancer plusieurs runs de comparaison « contrôlée » en parallèle sur le
+  même nœud casse l'isolation à l'échelle de la phase (I/O réseau partagé) même quand le total
+  pipeline reste lisible — à échelonner (soumission séquentielle, pas simultanée) si le
+  découpage par phase compte, pas seulement le total.
+- **Limite explicite** : filler ~6 % du corpus à cette échelle (100k tokens), pas 92 % comme au run
+  de référence — ces chiffres valident la *direction* et l'absence de régression, pas l'*ampleur*
+  du gain attendu en production.
 
 ### 2.3 Reprise après OOM / timeout — **CORRIGÉ pour les trois boucles longues identifiées**
 
@@ -658,7 +693,7 @@ est précisément la direction annoncée.
 | 9 | `LogisticRegression` sur CSR sparse | `metrics.py` | 100–1000× sur la sonde | 1 h | **fait et testé** (CPU) |
 | 10 | Dégroupage O(n log n) de `phrase_to_doc` | `saev5.py:1512` | supprime un O(n²) | 30 min | **fait et testé** (CPU, `group_indices_by_doc`) |
 | 11 | TF32/SDPA/`inference_mode`/`expandable_segments` | global | 3–8 % cumulés | 1 h | partiellement fait (`set_float32_matmul_precision` posé dans `phrase_sae.py`/`latent_terms.py`) ; SDPA/`inference_mode`/`expandable_segments` pas encore |
-| 12 | Exclure le filler du ré-encodage **et** de l'extraction | `saev5.py`, `src/data/preparation.py::build_reencode_targets`/`is_filler_document` | jusqu'à ×13 sur le ré-encodage, gain GPU+disque proportionné sur l'extraction (92% du corpus sur le run de référence, jamais relu en aval) | 2 h + 2 h | **fait et testé** (CPU) pour les deux passes — ré-encodage (§2.5) trouvé en observant job 44211 tourner dedans en direct, extraction (G7, §2.2) fait ensuite sur confirmation explicite que le premier correctif était sûr. Comparaison contrôlée à trois lancée pour isoler la contribution de chaque correctif (jobs 44560 v1 sans correctif / 44571 v2 ré-encodage seul / 44572 v3 les deux) |
+| 12 | Exclure le filler du ré-encodage **et** de l'extraction | `saev5.py`, `src/data/preparation.py::build_reencode_targets`/`is_filler_document` | jusqu'à ×13 sur le ré-encodage, gain GPU+disque proportionné sur l'extraction (92% du corpus sur le run de référence, jamais relu en aval) | 2 h + 2 h | **fait, testé (CPU) et vérifié sur GPU** — comparaison contrôlée à trois terminée (jobs 44560/44571/44572, cf. G7 §2.2) : fidélité inchangée (rho_sae/fve_pretrained/dead_pct dans le bruit), ré-encodage −12,3 % temps mur pour −6,3 % de documents (effet propre), extraction −5,2 % à concurrence appariée (comparaison brute confondue par 3 jobs simultanés sur le même nœud, cf. G7), total pipeline −8,2 % cumulé. Chiffres à l'échelle de validation (filler ~6 % du corpus) : direction confirmée, ampleur à revalider au run de référence (92 % filler) |
 | 13 | Amortir les écritures aléatoires du réservoir (buffer trié) | `saev5.py` (`_flush_pending_reservoir_writes`) | supprime le write-amplification aléatoire sur le memmap 768 Go en phase 2 de l'échantillonnage par réservoir | 2 h | **fait et testé** (CPU, `tests/test_reservoir_write_batching.py`) — équivalence bit-exacte au chemin d'écriture immédiate, y compris résolution des collisions, vérifiée avant déploiement |
 
 Bout à bout sur un run type : **20 h 57 d'extraction → estimation 5–7 h**, entraînement extra
