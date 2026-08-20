@@ -12,7 +12,7 @@ from src.sae.sae_shared import load_or_train_extended_sae
 
 
 class _LoggingStubModel(nn.Module):
-    """Modèle jouet exposant la même interface qu'ExtendedSAE (forward ->
+    """Modèle jouet exposant la même interface que SAEBoostResidualSAE (forward ->
     dict avec loss/l0/dead_frac/aux_loss) et journalisant lui-même, à chaque
     appel de forward(), les valeurs qu'il retourne -- source de vérité
     indépendante de l'agrégation testée."""

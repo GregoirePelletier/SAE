@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import torch
 from sae_lens import SAE
 
-from src.sae.frozen_core import ExtendedSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
+from src.sae.frozen_core import SAEBoostResidualSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
 
 
 def _mock_core_sae(batch, d_model, d_sae_core, core_out):
@@ -93,6 +93,34 @@ def test_backward_does_not_raise_dtype_error():
     assert sae.W_enc_extra.grad is not None
 
 
+def test_direct_encode_extra_acts_call_matches_encode_method():
+    """Non-régression du bug trouvé dans saev5.py (passe de ré-encodage,
+    `ext_sae._encode_extra_acts(...)` appelée directement plutôt que via
+    `encode()`) : ce site d'appel privé avait été oublié lors du correctif
+    SAE Boost et continuait de passer le résidu e à l'encodeur alors que
+    `encode()`/`forward()` avaient déjà été corrigés pour x -- divergence
+    silencieuse (mêmes noms de fonctions, mauvais argument), invisible tant
+    qu'on ne compare pas explicitement les deux chemins sur le même x.
+    Garde-fou : quiconque appelle `_encode_extra_acts` directement doit lui
+    passer x, comme `encode()` le fait en interne -- ce test échoue si les
+    deux se remettent à diverger."""
+    batch, d_model, d_sae_core, d_extra = 4, 16, 8, 4
+    x = torch.randn(batch, d_model)
+    core_out = (0.4 * x).to(torch.bfloat16)
+    mock_core_sae = _mock_core_sae(batch, d_model, d_sae_core, core_out)
+
+    sae = FrozenCoreResidualSAE(core_sae=mock_core_sae, d_extra=d_extra, k_extra=2)
+
+    full_encoding = sae.encode(x)
+    extra_from_encode = full_encoding[:, d_sae_core:]
+
+    # Appel direct, tel que saev5.py le fait dans la passe de ré-encodage :
+    # DOIT recevoir x, exactement comme encode() le fait en interne.
+    extra_direct = sae._encode_extra_acts(x.to(torch.bfloat16).float())
+
+    assert torch.equal(extra_from_encode, extra_direct)
+
+
 def test_encoder_input_scale_calibrated_on_x_not_on_residual():
     """encoder_input_scale et input_scale doivent être calibrés sur deux
     distributions différentes (x vs e) -- ici volontairement séparées de
@@ -104,7 +132,7 @@ def test_encoder_input_scale_calibrated_on_x_not_on_residual():
     domain_inputs = torch.randn(200, d_model) * 1000.0     # x : grande échelle (activations massives)
     domain_residuals = torch.randn(200, d_model) * 0.5     # e : petite échelle
 
-    sae = ExtendedSAE(
+    sae = SAEBoostResidualSAE(
         core_sae=mock_core_sae, d_extra=d_extra, k_extra=2,
         domain_residuals=domain_residuals, domain_inputs=domain_inputs,
     )
