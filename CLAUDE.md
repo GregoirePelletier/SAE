@@ -18,7 +18,7 @@ LLM local. Deux pipelines : Pipeline 1 (Gemma-3 → SAE GemmaScope-2 + extension
 - `FrozenCoreResidualSAE` est spécifique au projet, ne pas la remplacer par un
   usage direct de SAELens.
 - bf16 partout, y compris en local (les activations massives de Gemma-3
-  débordent en fp16). La branche "extra" de `FrozenCoreResidualSAE`/`ExtendedSAE`
+  débordent en fp16). La branche "extra" de `FrozenCoreResidualSAE`/`SAEBoostResidualSAE`
   reste en fp32 ; ne jamais caster le module entier après construction.
 - Toute modification doit laisser `pytest tests/ -q` 100% vert.
 

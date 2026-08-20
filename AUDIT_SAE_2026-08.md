@@ -356,7 +356,80 @@ plus coûteux), `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (présent uni
 `slurm/baseline_diffing/*`, pas dans `pipeline_runs/`). Chacun vaut 1 à 5 % ; ensemble sur un run
 de 20 h, c'est plusieurs heures. Ce sont des lignes uniques.
 
-### 2.3 Reprise après OOM / timeout — **réponse : non, il n'y en a pas**
+**G7 — Filler encodé et fragmenté pour rien — CORRIGÉ.** Symétrique du correctif de §2.5
+(ré-encodage), appliqué ici côté extraction une fois le premier confirmé sûr. Avant : chaque
+document filler passait par `pretrained_sae.encode()` (coût GPU dominant par document) **et**
+`save_fragment()` (écriture disque complète), alors que son seul rôle est de nourrir le réservoir
+de résidus bruts — rôle qui ne dépend ni de l'encodage core ni de l'écriture de fragment. Corrigé
+(`is_filler_document`, `src/data/preparation.py`, appelé dans la boucle d'extraction) : pour un
+document filler, ni encodage core ni fragment ; `filtered` (résidu brut) alimente directement le
+réservoir comme avant, une entrée placeholder bon marché (`torch.zeros`, même dtype) garde
+`all_doc_sae_acts` aligné sur `doc_global_idx`. Répercussions traitées explicitement : le test
+« fragments complets » (`n_fragmented_expected`) exclut désormais la plage filler de son décompte
+attendu ; le mécanisme de repli qui reconstruit le réservoir depuis les fragments (utilisé quand
+seuls les résidus sont manquants, fragments intacts) ne peut plus couvrir le filler — dégradé
+explicitement (avertissement imprimé) plutôt que silencieusement faux, plage train uniquement. Le
+mécanisme de reprise (§2.3) mis à jour en conséquence (reconstruction par placeholder pour les
+positions filler déjà « traitées »). Testé (CPU, `tests/test_extraction_filler_lightening.py`).
+Risque résiduel à surveiller sur le premier run réel : le placeholder est casté explicitement au
+même dtype que la branche réelle (`TORCH_DTYPE`, cohérent avec `torch.zeros(D_EXTRA, dtype=
+token_sae_acts.dtype, ...)` déjà présent dans le code pour la même raison) — non vérifié sur GPU à
+ce jour, un éventuel désaccord de dtype ferait échouer `torch.stack` de façon bruyante et immédiate
+(pas un risque de corruption silencieuse), donc facilement détectable au premier run.
+
+### 2.3 Reprise après OOM / timeout — **CORRIGÉ pour les trois boucles longues identifiées**
+
+**Mise à jour** : les trois boucles de plusieurs heures de ce dépôt ont maintenant une reprise —
+extraction P1 (`saev5.py`, ~24 h sur le run de référence), ré-encodage ExtendedSAE (`saev5.py`,
+deuxième passe de durée comparable, §2.5 — identifiée en observant le job 44211 tourner dedans
+en temps réel), extraction F2LLM P2 (`phrase_sae.py::extract_f2llm_embeddings`). Mécanisme commun
+(`src/storage/checkpoint.py`) : checkpoint JSON atomique (tmp + `os.replace`) tous les
+`EXTRACTION_CHECKPOINT_INTERVAL` documents (défaut 2000) ou tous les `shard_size` (P2, défaut
+100 000 phrases) ; handler `SIGTERM`/`SIGUSR1` (`--signal=B:USR1@600` côté SLURM) qui force un
+checkpoint propre avant le `SIGKILL` d'un timeout plutôt que de perdre le travail en cours. Le
+critère de reprise est toujours *quel est le prochain élément non traité*, jamais *le run est-il
+complet* — un fragment/shard au-delà du checkpoint persisté, s'il en existe un d'une tentative
+précédente tuée en plein lot, est délibérément ignoré et réécrit, jamais fait confiance.
+
+Point spécifique à l'extraction P1 : le compteur du réservoir de Vitter (`n_residuals_seen`,
+`n_residuals_collected`) fait partie de l'état persisté — sans lui, une reprise aurait biaisé
+l'échantillon d'entraînement de l'ExtendedSAE vers les documents post-reprise (le bug que cette
+section signalait déjà comme risque associé à toute reprise naïve). Vérifié par un test CPU
+statistique (`tests/test_reservoir_resume_invariant.py`) : la probabilité marginale d'inclusion
+d'un item dans le réservoir final est la même, à la tolérance statistique près, qu'on traite le
+flux en une passe ou en deux passes avec compteurs correctement repris — et un contre-essai
+confirme que le test détecterait bien une régression vers l'ancien comportement (compteurs
+remis à 0 à la reprise).
+
+Point spécifique au ré-encodage : les documents déjà traités **purgent** leur `raw_acts` du
+fragment (économie de disque intentionnelle) — la reprise reconstruit leur vecteur document via
+`doc_maxpool` sur le CSR déjà fusionné (core+extra), sans avoir besoin de `raw_acts`. Effet de
+bord découvert en implémentant ceci : `p1_eval_raw_tokens.pt` (échantillon FVE/ρ_SAE, capturé
+juste avant purge) était lui aussi exposé à une perte de données en cas de coupure pendant sa
+fenêtre de capture — persisté de façon incrémentale désormais, avec avertissement explicite si
+une reprise survient après la fenêtre sans fichier préexistant (perte résiduelle possible dans ce
+cas précis, mais visible, jamais silencieuse).
+
+**Bug de fidélité trouvé en implémentant ceci, sans rapport avec la reprise elle-même** : le site
+d'appel du ré-encodage (`ext_sae._encode_extra_acts(...)`, accès direct à la méthode privée,
+donc non couvert par les tests de `encode()`/`forward()` déjà mis à jour) passait encore le
+résidu `e = x - x̂_core` à l'encodeur extra, alors que le correctif SAE Boost de cette session
+(§1.3) avait déjà changé `frozen_core.py` pour que l'encodeur lise `x`. Régression silencieuse —
+mêmes noms de fonctions, mauvais argument, aucune erreur levée. Corrigée dans la foulée (l'appel
+passe maintenant `raw_acts` directement, et `decode_core_sparse` — qui ne servait qu'à calculer
+ce résidu — a disparu de cette passe, gain de performance en plus du correctif de fidélité) ;
+garde-fou ajouté en test (`tests/test_frozen_core_encoder_reads_x.py::
+test_direct_encode_extra_acts_call_matches_encode_method`) pour empêcher toute récidive de ce
+type de divergence entre un appel direct et la méthode publique.
+
+**Non fait** : la troncature/sharding des fragments eux-mêmes (G2), le stockage de `e` en int8
+(G3) — ces deux-là changent le format sur disque et restent tenus à l'écart tant qu'un run de
+référence n'a pas tourné sur le nouveau mécanisme de reprise.
+
+---
+
+Contenu original de cette section (diagnostic qui a motivé le correctif ci-dessus, conservé pour
+mémoire) :
 
 C'est la réponse directe à votre question, et le risque le plus coûteux du dépôt.
 
@@ -435,19 +508,38 @@ préservée **et** 1 600 Mo économisés.
 dict de retour à chaque step ; le harnais ne le lit jamais. Allocation de [B, 17408] fp32 pure
 perte. Le rendre optionnel (`return_feature_acts=False` par défaut).
 
-### 2.5 Ré-encodage ExtendedSAE (`saev5.py:1069`)
+### 2.5 Ré-encodage SAEBoostResidualSAE (`saev5.py`)
 
-`for i in tqdm(range(len(all_texts)))` — **un document à la fois**, avec par itération :
-`load_fragment` (lecture d'un fichier), `.to(DEVICE)`, `decode_core_sparse` (index_add GPU sur
-~T×70 nnz), `_encode_extra_acts`, `merge_extra` (un `argsort` CPU), `save_fragment` (réécriture du
-fichier). Pour 432 k documents, c'est une **seconde passe complète** sur tout le corpus, avec
-432 k lectures + 432 k écritures et des kernels GPU dimensionnés pour un seul document (~250 tokens),
-où le lancement de kernel coûte plus cher que le calcul.
-- Batcher par 64–256 documents (concaténer les CSR, un seul `index_add_`, un seul encode).
-- Avec G3 (stockage de `e`), `decode_core_sparse` disparaît entièrement de cette passe.
-- Avec G2 (shards), les 864 k opérations fichier deviennent ~900.
-Gain attendu combiné : **5–10× sur cette étape**, qui est aujourd'hui du même ordre de grandeur que
-l'extraction elle-même.
+**Filler exclu de cette passe — CORRIGÉ.** Découvert en observant job 44211 tourner en direct
+dans cette exacte passe (4h+, 46% avant timeout SLURM à 48h) : `all_texts = train_texts +
+volume_filler_texts + test_texts + diff_texts`, et le ré-encodage itérait sur `range(len(all_texts))`
+— y compris le filler (FineWeb2-fr générique, ajouté uniquement pour donner du volume de tokens au
+réservoir d'entraînement, §1.3/§2.3). Vérifié précisément (`grep` de tous les consommateurs de
+`all_doc_sae_acts`/fragments) : **aucun** ne relit jamais la tranche filler —
+`train_doc_acts`/`test_doc_acts`/`diff_doc_acts` l'excluent explicitement par slicing, la sélection
+de features n'itère que sur `range(n_train)`, le juge n'utilise que des offsets qui la sautent. Sur
+le run de référence, filler = 540 000/584 253 documents (**92% du corpus**) — 92% du travail de
+cette passe portait sur des vecteurs jamais consultés. Corrigé :
+`src/data/preparation.py::build_reencode_targets` construit `train ∪ (test ∪ diff)`, filler exclu ;
+le ré-encodage n'itère plus que sur cet ensemble (`saev5.py`). Le mécanisme de reprise (§2.3)
+adapté en conséquence : le checkpoint indexe une **position** dans cette liste réduite, pas
+l'indice de document brut. Réduction attendue du volume traité par cette passe : proche de ×13 sur
+un run avec un filler de cette taille — le plus gros gain de compute de tout cet audit, plus grand
+que G1. Testé (CPU, `tests/test_reencode_skips_filler.py`) : exclusion stricte du filler, ordre
+préservé, invariant position→indice de document dont dépend la reprise.
+
+**Reste à faire, volontairement pas touché dans cette passe** : l'**extraction** (§2.2) traite
+encore le filler en entier (encodage core + écriture de fragment complet par document) alors que
+seules ses activations brutes comptent, pour nourrir le réservoir — un gain de même nature,
+symétrique, non appliqué ici pour limiter le rayon d'impact du changement (l'extraction interagit
+avec la reprise ET le fallback de reconstruction du réservoir depuis les fragments, une surface de
+risque plus large que le ré-encodage seul).
+
+**Items originaux de cet audit sur cette passe, non résolus par le correctif ci-dessus** :
+`for i in tqdm(...)` reste **un document à la fois** (pas de batching 64–256 documents) ; avec la
+correction SAE Boost de §1.3, `decode_core_sparse` a disparu de cette passe (l'encodeur lit
+directement `raw_acts`, plus besoin de reconstruire le core) — ce gain-là est déjà acquis, sans
+lien avec G2/G3 qui restent, eux, à faire (fragments shardés, stockage `e` en int8).
 
 ### 2.6 Le juge — **réponse : non, Qwen n'est branché nulle part dans la production**
 
@@ -539,7 +631,7 @@ est précisément la direction annoncée.
 
 | # | Action | Fichier | Gain estimé | Effort | Statut |
 |---|---|---|---|---|---|
-| 1 | Batcher les prompts du juge (16–32) | `judge.py:210-340` | 8–16× sur le juge (33 min → 3 min) | 2 h | à faire — restructuration en 3 passes par étage conditionnel (odd-one-out → label → score), risque de corruption silencieuse des labels si mal fait, pas encore tenté |
+| 1 | Batcher les prompts du juge (16–32) | `judge.py:210-340` | 8–16× sur le juge (33 min → 3 min) | 2 h | **fait, restructuré en 3 passes** (`_batched_generate`, `odd_one_out_judge`/`local_gemma_judge` unifiés) — testé sur GPU (job 44570) : **6,51× confirmé** (49,7s → 7,6s, 24 prompts), mais **1/24 désaccord texte-à-texte**, pas 0. Cause identifiée : non-associativité flottante des kernels batchés GPU (matmul/attention), pas un bug de masque — connue et documentée dans la littérature ML systems, affecte potentiellement tout service LLM batché, greedy (`do_sample=False`) n'élimine que l'aléa du sampling, pas cet effet. Le désaccord observé porte sur un prompt de test long (32 tokens, résumé ouvert) ; le stade le plus sensible en production (odd-one-out, 8 tokens, un seul chiffre à extraire) n'a pas été testé séparément — à faire avant de faire confiance à `interp_score` en routine. Point de comparaison : le protocole odd-one-out lui-même est déjà bruité à 31% par feature isolée (`CLAUDE.md`, §13.1) — ce bruit de batching s'ajoute à un bruit déjà accepté et plus grand, pas une nouvelle classe de risque. Code conservé (pas de régression comme G1), caveat documenté au lieu d'un revert. |
 | 2 | Troncature `layers[:LAYER]`/`layers[:LAYER+1]` + hook direct, jamais `output_hidden_states` | `saev5.py` | 1,4–2,0× sur le forward P1 | 3 h | **fait, vérifié GPU** (job 44540, `torch.equal`=True, écart=0,0, 1,98×, -13 Go VRAM) — une première variante (`output_hidden_states=True` + troncature) a échoué à l'équivalence et a été identifiée avant déploiement, cf. §2.2 |
 | 3 | Fragments shardés + écriture asynchrone | `fragment_store.py`, `saev5.py:920` | 2–2,5× sur le wall-clock d'extraction | 1 j | à faire — tenu à l'écart tant que le run en cours (job 44211) n'est pas terminé, changerait le format sur disque |
 | 4 | Reprise incrémentale (P1 et P2) | `saev5.py:783`, `phrase_sae.py:117` | supprime le risque de 20 h perdues | 1 j | à faire |
@@ -550,6 +642,7 @@ est précisément la direction annoncée.
 | 9 | `LogisticRegression` sur CSR sparse | `metrics.py` | 100–1000× sur la sonde | 1 h | **fait et testé** (CPU) |
 | 10 | Dégroupage O(n log n) de `phrase_to_doc` | `saev5.py:1512` | supprime un O(n²) | 30 min | **fait et testé** (CPU, `group_indices_by_doc`) |
 | 11 | TF32/SDPA/`inference_mode`/`expandable_segments` | global | 3–8 % cumulés | 1 h | partiellement fait (`set_float32_matmul_precision` posé dans `phrase_sae.py`/`latent_terms.py`) ; SDPA/`inference_mode`/`expandable_segments` pas encore |
+| 12 | Exclure le filler du ré-encodage | `saev5.py`, `src/data/preparation.py::build_reencode_targets` | jusqu'à ×13 sur cette passe (92% du corpus sur le run de référence, jamais relu en aval) | 2 h | **fait et testé** (CPU) — trouvé en observant job 44211 tourner dedans en direct. Extraction encore non allégée côté filler (même gain de nature, pas encore appliqué, cf. §2.5) |
 
 Bout à bout sur un run type : **20 h 57 d'extraction → estimation 5–7 h**, entraînement extra
 divisé par ~5, juge divisé par ~10, empreinte disque divisée par 4. Les items 1, 5 et 10 sont
@@ -721,7 +814,10 @@ le SAE est fp32, ce qui dégrade les métriques publiées.
 → Reformuler : « bf16 obligatoire sur les activations du residual stream de Gemma-3 (activations
 massives). Pipeline 2 : entrées normalisées, fp32 pour le SAE, bf16 pour le seul backbone. »
 Cette règle vaut aussi comme rappel : `AutoModel.from_pretrained` **sans `torch_dtype` charge en
-fp32** — la règle « bf16 partout » est aujourd'hui violée silencieusement à `phrase_sae.py:126`.
+fp32** — c'était le cas à `phrase_sae.py:126` (et, hors périmètre initial de cet audit, au même
+endroit dans `latent_terms.py::load_f2llm`) ; corrigé dans les deux fichiers (`torch_dtype=
+torch.bfloat16` explicite), `compute_sae_metrics` corrigé pour ne plus caster son entrée en bf16
+avant le SAE fp32.
 
 **(d) « Rédiger au présent, sans numéro de version interne ».**
 Excellente pour les `.md`. Mais `SAVE_DIR="./results_v14_main/"`, `run_sae_v12_scaled.slurm`,
@@ -732,11 +828,15 @@ horodatés/versionnés et que seule la prose ne l'est pas.
 
 ### 4.3 Règles à ajouter
 
-**R1 — Reprise obligatoire pour toute boucle de plus d'une heure.**
+**R1 — Reprise obligatoire pour toute boucle de plus d'une heure. — Implémentée.**
 « Toute boucle dont le coût dépasse ~1 h GPU écrit son état de progression de façon atomique et
-reprend depuis cet état. Le critère de reprise est *quels indices manquent*, jamais *le run
-est-il complet*. Un compteur d'échantillonnage (réservoir) fait partie de l'état à persister. »
-C'est le risque #1 identifié et il n'a aujourd'hui aucune règle en face.
+reprend depuis cet état. Le critère de reprise est *quel est le prochain élément non traité*,
+jamais *le run est-il complet*. Un compteur d'échantillonnage (réservoir) fait partie de l'état à
+persister. » Mécanisme partagé : `src/storage/checkpoint.py`, câblé dans les trois boucles
+concernées (extraction P1, ré-encodage ExtendedSAE, extraction F2LLM P2) — cf. §2.3 pour le
+détail et les tests. Cette règle peut maintenant être vérifiée mécaniquement plutôt
+qu'espérée : toute nouvelle boucle longue qui n'importe pas `src/storage/checkpoint.py` est
+suspecte par défaut.
 
 **R2 — Les commentaires de code suivent la règle éditoriale des `.md`.**
 « Une contrainte encore active se formule comme une règle ; sa provenance se cite par `§N` de

@@ -22,7 +22,7 @@ mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
              une fois -- aucune des trois largeurs ne change
              significativement le taux d'interprétabilité, cf.
              `RESULTS_TESTS.md` §17/§29)
-           → [optionnel] FrozenCoreResidualSAE/ExtendedSAE (résidu core → 1024
+           → [optionnel] FrozenCoreResidualSAE/SAEBoostResidualSAE (résidu core → 1024
              features "extra", TopK+AuxK)
            → max-pool documentaire (max sur les tokens du document)
 ```
@@ -30,7 +30,7 @@ mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
 - Le SAE **core** est préentraîné par DeepMind (GemmaScope-2), gelé, jamais réentraîné.
   Ses features sont labellisées via le cache Neuronpedia local (`local_data/
   neuronpedia_labels/`, cf. `src/sae/neuronpedia_labels.py`).
-- L'**extension** (`FrozenCoreResidualSAE`/`ExtendedSAE`, `src/sae/frozen_core.py`)
+- L'**extension** (`FrozenCoreResidualSAE`/`SAEBoostResidualSAE`, `src/sae/frozen_core.py`)
   encode le résidu (ce que le SAE core ne reconstruit pas) avec un second SAE de plus
   petite taille (`D_EXTRA=1024`, `K_EXTRA=32` actifs), entraîné **from-scratch** sur le
   corpus du projet (cf. section Corpus ci-dessous). Design spécifique au projet — jamais
@@ -97,7 +97,7 @@ diagnostic qui a motivé cette séparation) :
 ### CSR et RAM/VRAM/vitesse d'entraînement — la question ne se pose pas où on l'attend
 
 Le CSR de `fragment_store.py` **n'est pas sur le chemin d'entraînement**. Les deux
-boucles d'entraînement (`ExtendedSAE`, `PhraseLevelSAE`) ne lisent jamais de fragment
+boucles d'entraînement (`SAEBoostResidualSAE`, `PhraseLevelSAE`) ne lisent jamais de fragment
 CSR : `decode_core_sparse` (le seul point où un fragment est redécodé en dense) n'est
 appelé qu'une fois, après l'entraînement, pour fusionner les features "extra" en vue de
 la labellisation/du dashboard (`saev5.py:1070`). Le CSR est un format de stockage
@@ -189,7 +189,7 @@ d'entraînement devient un sujet actif :
 activations "massives" documentées dans le residual stream (outliers ~1e5) qui
 dépassent le max représentable en fp16 (~65504), overflow silencieux vers inf/nan qui
 contamine tout l'entraînement de l'extension (`Loss=nan` dès l'epoch 1, observé avant
-correction). La branche "extra" de `ExtendedSAE` reste volontairement en fp32.
+correction). La branche "extra" de `SAEBoostResidualSAE` reste volontairement en fp32.
 
 ## Configuration (`src/config.py`)
 
@@ -208,10 +208,10 @@ src/
   config.py              # Source unique de vérité (constantes, presets modèle/SAE)
   sae/
     saev5.py              # Orchestration Pipeline 1 + Pipeline 2 (point d'entrée)
-    sae_shared.py          # Harnais d'entraînement ExtendedSAE, ré-exports
+    sae_shared.py          # Harnais d'entraînement SAEBoostResidualSAE, ré-exports
     gemma_scope_loader.py  # Chargement SAE GemmaScope-2 (disque local ou Hub)
     neuronpedia_labels.py  # Labels de features via bucket S3 Neuronpedia
-    frozen_core.py         # FrozenCoreResidualSAE / ExtendedSAE
+    frozen_core.py         # FrozenCoreResidualSAE / SAEBoostResidualSAE
     phrase_sae.py          # PhraseLevelSAE + embeddings F2LLM (Pipeline 2)
     batch.py               # BatchTopKEncoder (seuil θ calibré)
     judge.py               # Labellisation LLM locale (odd-one-out)

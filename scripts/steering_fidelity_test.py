@@ -56,7 +56,7 @@ from src.config import (
 from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
 from src.sae import load_gemma_scope_sae
-from src.sae.frozen_core import ExtendedSAE
+from src.sae.frozen_core import SAEBoostResidualSAE
 from src.sae.sae_shared import steer_and_decode
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
@@ -127,12 +127,12 @@ def load_label_map():
     return label_map
 
 
-def load_frozen_core_sae() -> ExtendedSAE:
+def load_frozen_core_sae() -> SAEBoostResidualSAE:
     sae_dir = os.path.join(LOCAL_SAE_ROOT, "snapshots", SAE_SNAPSHOT, HOOK_TYPE, SAE_ID)
     core_sae = load_gemma_scope_sae(
         sae_dir=sae_dir, device=DEVICE, release_id=RELEASE_ID, sae_id=f"{HOOK_TYPE}/{SAE_ID}",
     )
-    ext_sae = ExtendedSAE(core_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
+    ext_sae = SAEBoostResidualSAE(core_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
     ckpt_path = os.path.join(SAVE_DIR, f"p1_frozen_core_d{D_EXTRA}_k{K_EXTRA}.pt")
     ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
     ext_sae.load_state_dict(ckpt["state_dict"], strict=False)

@@ -21,7 +21,7 @@
 - Koriagin, N., Aksenov, Y., Laptev, D., Gerasimov, G., Balagansky, N., Gavrilov, D.
   (2025). *Teach Old SAEs New Domain Tricks with Boosting*. COLM 2025.
   arXiv:2507.12990. Introduit "SAE Boost", architecture identifiée a posteriori
-  comme équivalente à `FrozenCoreResidualSAE`/`ExtendedSAE` de ce projet.
+  comme équivalente à `FrozenCoreResidualSAE`/`SAEBoostResidualSAE` de ce projet.
 - Korznikov, A., Galichin, A., Dontsov, A., Rogov, O. Y., Oseledets, I., Tutubalina, E.
   (2026). *Sanity Checks for Sparse Autoencoders: Do SAEs Beat Random Baselines?*
   arXiv:2602.14111. Introduit les baselines à composants gelés/aléatoires
@@ -31,7 +31,7 @@
   arXiv:2309.08600. Un des deux papiers fondateurs de l'usage des SAE pour
   l'interprétabilité des LLM.
 - Bussmann, B., Leask, P., Nanda, N. (2024). *BatchTopK Sparse Autoencoders*.
-  arXiv:2412.06410. Mécanisme de parcimonie de `ExtendedSAE`/`PhraseLevelSAE`
+  arXiv:2412.06410. Mécanisme de parcimonie de `SAEBoostResidualSAE`/`PhraseLevelSAE`
   (`src/sae/batch.py::BatchTopKEncoder`).
 - Rajamanoharan, S., Lieberum, T., Sonnerat, N. et al. (2024). *Jumping Ahead:
   Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders*.

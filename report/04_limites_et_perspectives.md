@@ -95,7 +95,7 @@ justification). La comparaison avec `interp_embed` (submodule installé et
 peuplé) reste faite par lecture du papier, jamais par exécution de son code
 de référence.
 
-`FrozenCoreResidualSAE`/`ExtendedSAE` est une implémentation de SAE Boost
+`FrozenCoreResidualSAE`/`SAEBoostResidualSAE` est une implémentation de SAE Boost
 (Koriagin et al., COLM 2025) : même architecture, un SAE résiduel entraîné
 sur l'erreur de reconstruction d'un core gelé, sommé à l'inférence. Deux
 écarts avec le papier ont été testés : (1) leur étude de sensibilité montre

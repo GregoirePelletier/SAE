@@ -21,7 +21,7 @@ Ce projet utilise deux variantes :
   Pipeline 1 (SAE "core").
 - **BatchTopK + AuxK** (les $k$ activations les plus fortes du batch sont conservées,
   un terme auxiliaire ranime les features "mortes") pour les SAE entraînés from-scratch
-  du projet (`ExtendedSAE`, `PhraseLevelSAE`).
+  du projet (`SAEBoostResidualSAE`, `PhraseLevelSAE`).
 
 ## GemmaScope-2
 
@@ -56,7 +56,7 @@ dictionnaire — question non tranchée par ce projet, cf. chapitre 4.
 générées automatiquement pour les features de nombreux SAE publics, dont GemmaScope.
 Ces explications servent de "vérité de référence" externe pour les features du SAE
 préentraîné ("core") dans ce projet. Elles n'existent en revanche pour aucune feature
-d'un SAE entraîné spécifiquement pour ce projet (l'extension `ExtendedSAE`, le
+d'un SAE entraîné spécifiquement pour ce projet (l'extension `SAEBoostResidualSAE`, le
 `PhraseLevelSAE`) — d'où le recours à un juge LLM local pour ces features-là.
 
 ### Protocole d'auto-interprétation (juge LLM local)
@@ -100,7 +100,7 @@ Cette architecture à deux niveaux (SAE généraliste + extension spécifique au
 est une implémentation de **SAE Boost** (Koriagin et al., COLM 2025, *Teach Old SAEs
 New Domain Tricks with Boosting*) — une des méthodes de domain adaptation identifiées
 dans le cadrage initial du stage. `FrozenCoreResidualSAE`/
-`ExtendedSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
+`SAEBoostResidualSAE` (`src/sae/frozen_core.py`) reproduit exactement leur méthode (SAE
 résiduel entraîné sur l'erreur de reconstruction `e = x - x̂` d'un SAE core gelé,
 sommé à l'inférence) — y compris la taille de dictionnaire résiduel (1024), identique
 dans les deux cas sans que ce ne soit délibéré. Détail complet de la comparaison

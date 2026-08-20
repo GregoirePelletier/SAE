@@ -36,7 +36,7 @@ partageant la même infrastructure de corpus, de stockage et d'évaluation :
 Le SAE GemmaScope préentraîné ("core") capture des concepts généraux (appris sur des
 corpus massifs, multi-domaines). Pour capturer des concepts spécifiques aux emails EDF
 qui ne correspondraient à aucune direction dédiée du SAE core, le Pipeline 1 ajoute une
-**extension** (`FrozenCoreResidualSAE`/`ExtendedSAE`) : un second SAE, plus petit
+**extension** (`FrozenCoreResidualSAE`/`SAEBoostResidualSAE`) : un second SAE, plus petit
 (1024 features, 32 actives simultanément), qui encode le **résidu** — ce que le SAE
 core ne reconstruit pas. Le SAE core reste gelé (jamais réentraîné) ; seule l'extension
 est entraînée, sur le corpus du projet.

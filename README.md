@@ -7,7 +7,7 @@ par GemmaScope-2 / Neuronpedia et par un juge LLM local.
 Deux pipelines :
 
 - **Pipeline 1** : Gemma-3 (hidden states, couche `LAYER`) → SAE GemmaScope-2 préentraîné
-  (+ extension `FrozenCoreResidualSAE`/`ExtendedSAE` optionnelle) → max-pool documentaire.
+  (+ extension `FrozenCoreResidualSAE`/`SAEBoostResidualSAE` optionnelle) → max-pool documentaire.
 - **Pipeline 2** : F2LLM-v2 (embeddings de phrases) → `PhraseLevelSAE` entraîné from-scratch
   (BatchTopK + AuxK) → max-pool documentaire.
 
@@ -18,7 +18,7 @@ dépannage Windows/HuggingFace : `docs/ops.md`.
 
 ## Corpus d'entraînement
 
-Le SAE d'extension (`ExtendedSAE`) et le `PhraseLevelSAE` s'entraînent sur les
+Le SAE d'extension (`SAEBoostResidualSAE`) et le `PhraseLevelSAE` s'entraînent sur les
 **mails originaux + variantes augmentées** (`local_data/emails/`), qui
 dominent le train (~41k/2,2k docs train/test). Le corpus generic
 energy/sports/support (FineWeb-2/Wikipedia) sert uniquement à une
@@ -68,7 +68,7 @@ Conditions de référence pour les comparaisons expérimentales : `docs/evaluati
 | `SAE_ID` | dérivé du preset | Sous-dossier GemmaScope (`layer_X_width_Y_l0_Z`) |
 | `DTYPE` | `bf16` | bf16 obligatoire sur Gemma-3 (activations massives, cf. `docs/architecture.md`) |
 | `LAYER` | dérivé du preset | Couche du residual stream extraite |
-| `USE_FROZEN_CORE` | `1` | Active l'extension `ExtendedSAE` (Pipeline 1) |
+| `USE_FROZEN_CORE` | `1` | Active l'extension `SAEBoostResidualSAE` (Pipeline 1) |
 | `D_EXTRA` / `K_EXTRA` | `1024` / `32` | Dimension / sparsité de l'extension |
 | `D_SAE` / `K_SPARSE` | `8192` / `16` | Dimension / sparsité du `PhraseLevelSAE` (Pipeline 2) |
 | `EMB_MODEL` | `codefuse-ai/F2LLM-v2-80M` | Modèle d'embeddings phrase (Pipeline 2) |
