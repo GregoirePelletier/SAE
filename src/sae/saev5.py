@@ -130,6 +130,14 @@ from tqdm import tqdm
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 from sae_lens import SAE
 
+# TF32 pour les matmuls fp32 (A100/H100, audit perf G6) : la branche "extra" de
+# FrozenCoreResidualSAE/SAEBoostResidualSAE reste en fp32 (CLAUDE.md, jamais
+# castée module-wide) -- même correctif déjà appliqué dans phrase_sae.py et
+# latent_terms.py, manquait ici où le volume de calcul fp32 est pourtant plus
+# élevé (entraînement + ré-encodage complet de l'extension). N'affecte aucun
+# matmul bf16 (le forward Gemma-3/core SAE, castés en TORCH_DTYPE, n'est pas fp32).
+torch.set_float32_matmul_precision("high")
+
 # fp16 par défaut en local (GPU Turing 6 Go sans bf16 natif) ; bf16 dispo via DTYPE=bf16 (cluster).
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 

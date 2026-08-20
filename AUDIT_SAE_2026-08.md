@@ -364,13 +364,24 @@ Le réservoir lui-même reste identique au tirage aléatoire près (mêmes indic
 `x_new`, seul l'ORDRE et le REGROUPEMENT des écritures physiques changent) — aucun impact sur la
 statistique de l'échantillonnage par réservoir (Algorithm R), uniquement sur la localité I/O.
 
-**G6 — Options PyTorch standard absentes.**
+**G6 — Options PyTorch standard absentes — partiellement fait.**
 Aucune occurrence dans tout le dépôt de : `attn_implementation` (SDPA/FA2 non forcé),
 `torch.backends.cuda.matmul.allow_tf32` / `set_float32_matmul_precision`, `torch.compile`,
 `pin_memory`, `non_blocking=True`, `torch.inference_mode()` (vous utilisez `no_grad`, légèrement
 plus coûteux), `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (présent uniquement dans
 `slurm/baseline_diffing/*`, pas dans `pipeline_runs/`). Chacun vaut 1 à 5 % ; ensemble sur un run
 de 20 h, c'est plusieurs heures. Ce sont des lignes uniques.
+
+Ajoutés : `set_float32_matmul_precision("high")` dans `saev5.py` (manquait alors que déjà présent
+dans `phrase_sae.py`/`latent_terms.py` — ici le volume fp32 concerné, la branche "extra" de
+SAEBoostResidualSAE, est plus élevé) ; `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` dans
+`slurm/pipeline_runs/run_validation_100k_layer24_v5_g6_tf32_expandable.slurm`. Job 44659 lancé **en
+parallèle** de l'ablation batch size (44620), pas après — priorité donnée à la vitesse totale sur
+l'isolation fine par variable (temps d'internship limité, cf. §4.2). `attn_implementation`/`torch.compile`/
+`pin_memory`/`inference_mode` non touchés : `attn_implementation` est probablement déjà un no-op
+(transformers 5.12.1, SDPA auto-détecté par défaut depuis longtemps) ; `inference_mode` porte un
+risque de régression réel (tenseurs inference ne peuvent pas être réutilisés dans un contexte
+autograd ultérieur) non vérifié — laissés de côté plutôt que déployés à l'aveugle.
 
 **G7 — Filler encodé et fragmenté pour rien — CORRIGÉ.** Symétrique du correctif de §2.5
 (ré-encodage), appliqué ici côté extraction une fois le premier confirmé sûr. Avant : chaque
@@ -685,14 +696,14 @@ est précisément la direction annoncée.
 | 1 | Batcher les prompts du juge (16–32) | `judge.py:210-340` | 8–16× sur le juge (33 min → 3 min) | 2 h | **fait, restructuré en 3 passes** (`_batched_generate`, `odd_one_out_judge`/`local_gemma_judge` unifiés) — testé sur GPU (job 44570) : **6,51× confirmé** (49,7s → 7,6s, 24 prompts), mais **1/24 désaccord texte-à-texte**, pas 0. Cause identifiée : non-associativité flottante des kernels batchés GPU (matmul/attention), pas un bug de masque — connue et documentée dans la littérature ML systems, affecte potentiellement tout service LLM batché, greedy (`do_sample=False`) n'élimine que l'aléa du sampling, pas cet effet. Le désaccord observé porte sur un prompt de test long (32 tokens, résumé ouvert) ; le stade le plus sensible en production (odd-one-out, 8 tokens, un seul chiffre à extraire) n'a pas été testé séparément — à faire avant de faire confiance à `interp_score` en routine. Point de comparaison : le protocole odd-one-out lui-même est déjà bruité à 31% par feature isolée (`CLAUDE.md`, §13.1) — ce bruit de batching s'ajoute à un bruit déjà accepté et plus grand, pas une nouvelle classe de risque. Code conservé (pas de régression comme G1), caveat documenté au lieu d'un revert. |
 | 2 | Troncature `layers[:LAYER]`/`layers[:LAYER+1]` + hook direct, jamais `output_hidden_states` | `saev5.py` | 1,4–2,0× sur le forward P1 | 3 h | **fait, vérifié GPU** (job 44540, `torch.equal`=True, écart=0,0, 1,98×, -13 Go VRAM) — une première variante (`output_hidden_states=True` + troncature) a échoué à l'équivalence et a été identifiée avant déploiement, cf. §2.2 |
 | 3 | Fragments shardés + écriture asynchrone | `fragment_store.py`, `saev5.py:920` | 2–2,5× sur le wall-clock d'extraction | 1 j | **partiellement fait** : écriture en arrière-plan faite et testée (`AsyncFragmentWriter`, CPU, `tests/test_async_fragment_writer.py`), avec discipline `flush()` avant tout checkpoint de reprise (§2.3). Sharding (1 fichier pour 1 000 docs) non touché — changerait le format sur disque, tenu à l'écart tant qu'un run de référence n'est pas relancé avec le nouveau format |
-| 4 | Reprise incrémentale (P1 et P2) | `saev5.py:783`, `phrase_sae.py:117` | supprime le risque de 20 h perdues | 1 j | à faire |
+| 4 | Reprise incrémentale (P1 et P2) | `saev5.py:783`, `phrase_sae.py:117` | supprime le risque de 20 h perdues | 1 j | **fait et testé** (CPU + GPU) — cf. §2.3, les trois boucles longues (extraction P1, ré-encodage P1, extraction P2) ont désormais un checkpoint atomique + reprise. Ligne restée "à faire" par erreur après le correctif, corrigée ici |
 | 5 | `torch_dtype=bfloat16` pour F2LLM | `phrase_sae.py:126` | jusqu'à ~10× sur l'extraction P2 | 5 min | **fait** (même correctif appliqué aussi à `latent_terms.py:load_f2llm`, hors périmètre initial, même bug) |
 | 6 | Stocker `e` en int8 au lieu de `x` | `saev5.py`, `fragment_store.py` | disque 1,6 To → 0,4 To ; entraînement ×3,4 | 2 j | à faire — la fidélité SAE Boost (§1.3, encodeur sur `x`) qui forçait ce doublon est corrigée, ce n'est plus qu'un choix de perf, tenu à l'écart tant que le run en cours n'est pas terminé |
 | 7 | `BATCH_SIZE` 1024 → 16 384 + `.item()` hors boucle | `sae_shared.py:178` | 5–15× sur l'entraînement extra | 3 h (+ ablation BatchTopK) | **partiellement fait** : `.item()`/`float()` par step → accumulation GPU + 1 sync/époque, fait et testé (CPU, valeurs identiques bit-à-bit à l'ancien code). `BATCH_SIZE` paramétré (`BATCH_SIZE_EXTRA`, `src/config.py`, défaut 1024 inchangé) plutôt que codé en dur, pour permettre l'ablation sans changer le défaut à l'aveugle. Ablation **lancée** (job 44620, `slurm/pipeline_runs/run_validation_100k_layer24_v4_batchsize16384.slurm`, réplique de 44572 avec `BATCH_SIZE_EXTRA=16384`) — comparaison prévue contre 44572 une fois les deux terminés : rho_sae, fve_pretrained, dead_pct, L0, temps d'entraînement extra. n=1 seed par bras, signal directionnel seulement à ce stade |
 | 8 | Batcher le ré-encodage (64–256 docs) | `saev5.py:1069` | 5–10× sur cette passe | 4 h | à faire |
 | 9 | `LogisticRegression` sur CSR sparse | `metrics.py` | 100–1000× sur la sonde | 1 h | **fait et testé** (CPU) |
 | 10 | Dégroupage O(n log n) de `phrase_to_doc` | `saev5.py:1512` | supprime un O(n²) | 30 min | **fait et testé** (CPU, `group_indices_by_doc`) |
-| 11 | TF32/SDPA/`inference_mode`/`expandable_segments` | global | 3–8 % cumulés | 1 h | partiellement fait (`set_float32_matmul_precision` posé dans `phrase_sae.py`/`latent_terms.py`) ; SDPA/`inference_mode`/`expandable_segments` pas encore |
+| 11 | TF32/SDPA/`inference_mode`/`expandable_segments` | global | 3–8 % cumulés | 1 h | partiellement fait (`set_float32_matmul_precision` désormais posé dans `saev5.py` en plus de `phrase_sae.py`/`latent_terms.py` ; `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` ajouté à `pipeline_runs/`, vérifié sur GPU en cours job 44659) ; SDPA jugé probablement déjà no-op (transformers 5.12.1, auto-détecté), `inference_mode` laissé de côté (risque de régression réel, pas vérifié) |
 | 12 | Exclure le filler du ré-encodage **et** de l'extraction | `saev5.py`, `src/data/preparation.py::build_reencode_targets`/`is_filler_document` | jusqu'à ×13 sur le ré-encodage, gain GPU+disque proportionné sur l'extraction (92% du corpus sur le run de référence, jamais relu en aval) | 2 h + 2 h | **fait, testé (CPU) et vérifié sur GPU** — comparaison contrôlée à trois terminée (jobs 44560/44571/44572, cf. G7 §2.2) : fidélité inchangée (rho_sae/fve_pretrained/dead_pct dans le bruit), ré-encodage −12,3 % temps mur pour −6,3 % de documents (effet propre), extraction −5,2 % à concurrence appariée (comparaison brute confondue par 3 jobs simultanés sur le même nœud, cf. G7), total pipeline −8,2 % cumulé. Chiffres à l'échelle de validation (filler ~6 % du corpus) : direction confirmée, ampleur à revalider au run de référence (92 % filler) |
 | 13 | Amortir les écritures aléatoires du réservoir (buffer trié) | `saev5.py` (`_flush_pending_reservoir_writes`) | supprime le write-amplification aléatoire sur le memmap 768 Go en phase 2 de l'échantillonnage par réservoir | 2 h | **fait et testé** (CPU, `tests/test_reservoir_write_batching.py`) — équivalence bit-exacte au chemin d'écriture immédiate, y compris résolution des collisions, vérifiée avant déploiement |
 
