@@ -666,13 +666,25 @@ Autres points P2 :
   les documents → O(n_docs × n_phrases). À 20 k documents et 300 k phrases : 6·10⁹ comparaisons.
   Remplacer par un regroupement unique (`np.argsort(p2d)` + `np.searchsorted` sur les frontières,
   ou `collections.defaultdict`) — O(n log n) une fois.
-- `load_or_train_sae` : `init_from_data` est appelé **avant** le test d'existence du checkpoint
-  (lignes 191–195), donc calculé puis écrasé à chaque restauration. Sans gravité, mais symptomatique.
-- Double normalisation du décodeur par step (`normalize_decoder()` puis `F.normalize` explicite,
-  lignes 213–216) : la seconde est redondante.
-- `compute_sae_metrics` caste l'entrée en bf16 alors que le SAE est fp32 : la promotion implicite
-  fonctionne mais **les métriques publiées sont calculées sur une entrée dégradée** par rapport à
-  l'entraînement. À aligner.
+- `load_or_train_sae` : ~~`init_from_data` appelé avant le test d'existence du checkpoint~~ —
+  **déjà corrigé** (vérifié sur le code actuel : l'appel est bien après le `return` anticipé du
+  chemin restauration, `phrase_sae.py:272-281`). Ligne restée obsolète dans cet audit.
+- ~~Double normalisation du décodeur par step, la seconde redondante~~ — **vérifié, ce n'est pas un
+  bug.** `normalize_decoder()` (ligne 303) fait deux choses en un seul appel (projection du gradient
+  parallèle + normalisation), appelé **avant** `optimizer.step()`. Le `F.normalize` explicite (ligne
+  305-306) qui suit **après** le step re-normalise le décodeur — nécessaire car Adam applique une
+  échelle adaptative **par élément**, pas par ligne : même un gradient déjà projeté orthogonalement
+  à W_dec avant le step peut ressortir légèrement hors de la norme unité après le step. Exactement
+  le même motif que `sae_shared.py` (`model.normalize_decoder()` appelé deux fois, avant **et**
+  après `optimizer.step()`, avec le même commentaire "projette avant / renormalise après") — écrit
+  différemment ici (F.normalize direct au lieu d'un second appel à la méthode complète, la
+  projection de gradient étant inutile après le step puisque le gradient n'est plus réutilisé) mais
+  intention identique. Ne pas supprimer cette ligne : ce serait une régression (dérive de norme non
+  corrigée), pas une simplification.
+- `compute_sae_metrics` caste l'entrée en bf16 alors que le SAE est fp32 : ~~la promotion implicite
+  fonctionne mais dégrade l'entrée~~ — **déjà corrigé** (vérifié sur le code actuel,
+  `phrase_sae.py:343` : `.float()` explicite avec commentaire dédié expliquant pourquoi bf16 serait
+  une dégradation ici). Ligne restée obsolète dans cet audit.
 
 ### 2.8 Étages aval — les murs de scalabilité
 
