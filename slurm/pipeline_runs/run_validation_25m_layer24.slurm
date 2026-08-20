@@ -6,7 +6,14 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
 #SBATCH --time=48:00:00
+#SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val25m_l24_%j.log
+# --signal=B:USR1@600 : SLURM envoie SIGUSR1 ~10 min avant le SIGKILL du
+# timeout (48h) -- laisse le temps à saev5.py (_GracefulShutdown) d'écrire un
+# checkpoint de progression avant l'arrêt forcé (R1, AUDIT_SAE_2026-08.md
+# §2.3/§4.3). Sans ce flag, seule une coupure "propre" (OOM, crash Python,
+# scancel) déclenche la reprise -- le timeout SLURM lui-même reste un
+# SIGKILL sec.
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
