@@ -35,6 +35,55 @@ def _apply_chat_and_extract(tokenizer, messages: list, device, **kwargs) -> torc
     return out.to(device)
 
 
+def _batched_generate(model, tokenizer, list_of_messages: list[list[dict]],
+                       max_new_tokens: int, batch_size: int = 16) -> list[str]:
+    """Génère une réponse par prompt indépendant, par lots de `batch_size`
+    (audit perf §2.6, item 1 : `model.generate` appelé une fois par feature,
+    bs=1, borné par la bande passante mémoire -- batcher amortit le transfert
+    de poids sur tout le lot, 8-16x mesurés dans l'audit).
+
+    `padding_side="left"` + `attention_mask` explicite : seule façon correcte
+    de batcher une génération -- aligne la fin de chaque prompt (donc le début
+    de la continuation générée) sur la même colonne pour toutes les lignes du
+    lot, et le masque garantit que les tokens de padding n'influencent jamais
+    l'attention des tokens réels. `do_sample=False` (inchangé, appelants
+    existants) : déterministe, un lot ou un prompt à la fois doit produire la
+    MÊME sortie pour un prompt donné -- vérifié par
+    tests/test_judge_batched_generation.py (mock, CPU) plutôt que supposé.
+
+    N'utilise PAS `apply_chat_template(..., tokenize=True, return_tensors="pt")`
+    sur une LISTE de conversations (support inégal du padding batché selon les
+    versions de transformers, cf. `_apply_chat_and_extract` ci-dessus qui
+    contourne déjà un piège voisin) -- template appliqué en texte
+    (`tokenize=False`) prompt par prompt (CPU, négligeable), puis tokenisation
+    batchée avec padding, chemin standard et portable.
+    """
+    original_padding_side = tokenizer.padding_side
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    responses: list[str] = [""] * len(list_of_messages)
+    try:
+        for start in range(0, len(list_of_messages), batch_size):
+            chunk = list_of_messages[start:start + batch_size]
+            texts = [
+                tokenizer.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+                for msgs in chunk
+            ]
+            enc = tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False).to(model.device)
+            with torch.no_grad():
+                out = model.generate(
+                    input_ids=enc["input_ids"], attention_mask=enc["attention_mask"],
+                    max_new_tokens=max_new_tokens, do_sample=False,
+                )
+            gen_only = out[:, enc["input_ids"].shape[-1]:]
+            for i in range(gen_only.shape[0]):
+                responses[start + i] = tokenizer.decode(gen_only[i], skip_special_tokens=True)
+    finally:
+        tokenizer.padding_side = original_padding_side
+    return responses
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. EXTRACTION CONTEXTE — niveau mot, gestion ▁ SentencePiece
 # ──────────────────────────────────────────────────────────────────────────────
@@ -215,6 +264,7 @@ def odd_one_out_judge(
     acts: torch.Tensor,
     offset: int = 0,
     n_pos: int = 9,
+    batch_size: int = 16,
 ) -> dict:
     """
     Pour chaque feature :
@@ -224,12 +274,23 @@ def odd_one_out_judge(
       4. Calcule ρ_interp (Spearman) entre prédiction LLM et activations réelles.
 
     Retourne dict { f_idx: { label, brief_description, interp_score, rho_interp } }.
+
+    Les 3 étapes sont batchées séparément (audit perf §2.6, item 1 : 3 appels
+    `model.generate` en bs=1 par feature -> 33 min pour 500 features, bornées
+    par la bande passante mémoire, pas le calcul). Chaque étape ne s'applique
+    qu'au SOUS-ENSEMBLE de features qui l'atteint (étape 2/3 : seulement les
+    features interprétables), donc 3 passes sur des lots décroissants plutôt
+    qu'une seule passe uniforme -- la construction des exemples (étape 0,
+    CPU) reste séquentielle et dans le MÊME ordre que l'ancien code pour que
+    `random.shuffle` produise les mêmes tirages qu'avant à graine égale.
     """
     from scipy.stats import spearmanr
 
     model.eval()
     results = {}
+    per_feature = {}
 
+    # ── Étape 0 : construction des exemples (CPU, inchangée) ──────────────
     for f_idx in feature_indices:
         pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_feature_examples_with_control(
             f_idx, token_fragments_dir, acts, offset=offset, n_pos=n_pos, return_magnitudes=True,
@@ -244,7 +305,6 @@ def odd_one_out_judge(
             }
             continue
 
-        # ── Étape 1 : Odd-one-out ──────────────────────────────────────────
         all_examples = pos_examples + ([neg_example] if neg_example else [])
         neg_position = len(all_examples) - 1 if neg_example else None
         indices = list(range(len(all_examples)))
@@ -252,7 +312,20 @@ def odd_one_out_judge(
         shuffled = [all_examples[i] for i in indices]
         correct_answer = indices.index(neg_position) + 1 if neg_example else None  # 1-based
 
-        examples_text = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(shuffled))
+        per_feature[f_idx] = {
+            "pos_examples": pos_examples, "neg_example": neg_example,
+            "pos_magnitudes": pos_magnitudes, "neg_magnitude": neg_magnitude,
+            "shuffled": shuffled, "indices": indices, "correct_answer": correct_answer,
+        }
+
+    live_features = list(per_feature.keys())
+    if not live_features:
+        return results
+
+    # ── Étape 1 : Odd-one-out, batché sur toutes les features vivantes ────
+    ood_messages = []
+    for f_idx in live_features:
+        examples_text = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(per_feature[f_idx]["shuffled"]))
         prompt_ood = (
             "Voici des exemples de textes où une feature neuronale est fortement activée "
             "(sauf un, qui est un contrôle négatif).\n\n"
@@ -260,87 +333,93 @@ def odd_one_out_judge(
             "Quel numéro est l'intrus (celui qui ne partage pas le concept commun des autres) ? "
             "Réponds uniquement avec le numéro."
         )
+        ood_messages.append([{"role": "user", "content": prompt_ood}])
 
-        inputs = _apply_chat_and_extract(
-            tokenizer, [{"role": "user", "content": prompt_ood}],
-            device=model.device, add_generation_prompt=True, return_tensors="pt",
-        )
-        with torch.no_grad():
-            out = model.generate(input_ids=inputs, max_new_tokens=8, do_sample=False)
-            resp_ood = tokenizer.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True).strip()
+    ood_responses = _batched_generate(model, tokenizer, ood_messages, max_new_tokens=8, batch_size=batch_size)
 
+    interp_features = []
+    for f_idx, resp_ood in zip(live_features, ood_responses):
         try:
             predicted = int(re.search(r"\d+", resp_ood).group())
         except Exception:
             predicted = -1
-
+        correct_answer = per_feature[f_idx]["correct_answer"]
         interp_score = int(predicted == correct_answer) if correct_answer is not None else 0
-
-        # ── Étape 2 : Label (si interprétable) ───────────────────────────
-        label_data = {"label": f"Feature_{f_idx}", "brief_description": "Non interprétable."}
+        per_feature[f_idx]["interp_score"] = interp_score
+        per_feature[f_idx]["label_data"] = {"label": f"Feature_{f_idx}", "brief_description": "Non interprétable."}
         if interp_score == 1:
-            formatted = "\n".join(f"- {ex}" for ex in pos_examples)
-            prompt_label = (
-                "Ces exemples textuels activent tous fortement une même feature neuronale "
-                "(les mots déclencheurs sont entre << >>).\n\n"
-                f"{formatted}\n\n"
-                "Génère un objet JSON avec un label court en français (≤3 mots) et une description concise :\n"
-                '{"label": "...", "brief_description": "..."}'
-            )
-            inputs_l = _apply_chat_and_extract(
-                tokenizer, [{"role": "user", "content": prompt_label}],
-                device=model.device, add_generation_prompt=True, return_tensors="pt",
-            )
-            with torch.no_grad():
-                out_l = model.generate(input_ids=inputs_l, max_new_tokens=128, do_sample=False)
-                resp_l = tokenizer.decode(out_l[0][inputs_l.shape[-1]:], skip_special_tokens=True)
-            try:
-                label_data = json.loads(re.search(r"\{.*?\}", resp_l, re.DOTALL).group())
-            except Exception:
-                pass
+            interp_features.append(f_idx)
 
-        # ── Étape 3 : ρ_interp (Bills 2023) ──────────────────────────────
-        # LLM score chaque exemple (pos + neg) sur [0, 10] ; Spearman vs activation réelle
+    # ── Étape 2 : Label, batché sur les features interprétables uniquement ─
+    label_messages = []
+    for f_idx in interp_features:
+        formatted = "\n".join(f"- {ex}" for ex in per_feature[f_idx]["pos_examples"])
+        prompt_label = (
+            "Ces exemples textuels activent tous fortement une même feature neuronale "
+            "(les mots déclencheurs sont entre << >>).\n\n"
+            f"{formatted}\n\n"
+            "Génère un objet JSON avec un label court en français (≤3 mots) et une description concise :\n"
+            '{"label": "...", "brief_description": "..."}'
+        )
+        label_messages.append([{"role": "user", "content": prompt_label}])
+
+    label_responses = (
+        _batched_generate(model, tokenizer, label_messages, max_new_tokens=128, batch_size=batch_size)
+        if label_messages else []
+    )
+    for f_idx, resp_l in zip(interp_features, label_responses):
+        try:
+            per_feature[f_idx]["label_data"] = json.loads(re.search(r"\{.*?\}", resp_l, re.DOTALL).group())
+        except Exception:
+            pass
+
+    # ── Étape 3 : ρ_interp (Bills 2023), batché sur interp + neg_example ───
+    # LLM score chaque exemple (pos + neg) sur [0, 10] ; Spearman vs activation réelle
+    score_features = [f for f in interp_features if per_feature[f]["neg_example"]]
+    score_messages = []
+    for f_idx in score_features:
+        label_str = per_feature[f_idx]["label_data"].get("label", "")
+        score_prompts = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(per_feature[f_idx]["shuffled"]))
+        prompt_score = (
+            f"Concept : « {label_str} »\n\n"
+            "Pour chaque exemple ci-dessous, note de 0 (non lié) à 10 (fortement lié) "
+            "l'intensité du lien avec ce concept. "
+            "Réponds uniquement avec un JSON : {\"scores\": [s1, s2, ...]}\n\n"
+            f"{score_prompts}"
+        )
+        score_messages.append([{"role": "user", "content": prompt_score}])
+
+    score_responses = (
+        _batched_generate(model, tokenizer, score_messages, max_new_tokens=128, batch_size=batch_size)
+        if score_messages else []
+    )
+    for f_idx, resp_s in zip(score_features, score_responses):
         rho_interp = float("nan")
-        if interp_score == 1 and neg_example:
-            label_str = label_data.get("label", "")
-            score_prompts = "\n".join(
-                f"{i+1}. {ex}" for i, ex in enumerate(shuffled)
-            )
-            prompt_score = (
-                f"Concept : « {label_str} »\n\n"
-                "Pour chaque exemple ci-dessous, note de 0 (non lié) à 10 (fortement lié) "
-                "l'intensité du lien avec ce concept. "
-                "Réponds uniquement avec un JSON : {\"scores\": [s1, s2, ...]}\n\n"
-                f"{score_prompts}"
-            )
-            inputs_s = _apply_chat_and_extract(
-                tokenizer, [{"role": "user", "content": prompt_score}],
-                device=model.device, add_generation_prompt=True, return_tensors="pt",
-            )
-            with torch.no_grad():
-                out_s = model.generate(input_ids=inputs_s, max_new_tokens=128, do_sample=False)
-                resp_s = tokenizer.decode(out_s[0][inputs_s.shape[-1]:], skip_special_tokens=True)
-            try:
-                scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
-                # Magnitude d'activation RÉELLE (pas un rang synthétique, pas 0.0 fixe
-                # pour le négatif) -- fidèle à la définition
-                # de Bills et al. 2023 : ρ_interp corrèle le score du juge à l'activation
-                # réelle. all_magnitudes est dans le même ordre que all_examples (avant
-                # mélange) ; réindexé ici dans l'ordre shufflé effectivement présenté.
-                all_magnitudes = pos_magnitudes + ([neg_magnitude] if neg_example else [])
-                act_ground = [all_magnitudes[orig_idx] for orig_idx in indices]
-                if len(scores_llm) == len(act_ground):
-                    rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
-            except Exception:
-                pass
+        try:
+            scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
+            # Magnitude d'activation RÉELLE (pas un rang synthétique, pas 0.0 fixe
+            # pour le négatif) -- fidèle à la définition de Bills et al. 2023 :
+            # ρ_interp corrèle le score du juge à l'activation réelle.
+            # all_magnitudes est dans le même ordre que all_examples (avant
+            # mélange) ; réindexé ici dans l'ordre shufflé effectivement présenté.
+            neg_example = per_feature[f_idx]["neg_example"]
+            all_magnitudes = per_feature[f_idx]["pos_magnitudes"] + ([per_feature[f_idx]["neg_magnitude"]] if neg_example else [])
+            act_ground = [all_magnitudes[orig_idx] for orig_idx in per_feature[f_idx]["indices"]]
+            if len(scores_llm) == len(act_ground):
+                rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
+        except Exception:
+            pass
+        per_feature[f_idx]["rho_interp"] = rho_interp
 
+    # ── Assemblage ──────────────────────────────────────────────────────────
+    for f_idx in live_features:
+        pf = per_feature[f_idx]
         results[f_idx] = {
-            **label_data,
-            "interp_score": interp_score,
-            "rho_interp": rho_interp,
-            "pos_examples": pos_examples,
-            "neg_example": neg_example,  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
+            **pf["label_data"],
+            "interp_score": pf["interp_score"],
+            "rho_interp": pf.get("rho_interp", float("nan")),
+            "pos_examples": pf["pos_examples"],
+            "neg_example": pf["neg_example"],  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
         }
 
     return results
@@ -415,11 +494,14 @@ def local_gemma_judge(
     phrase_acts: torch.Tensor,
     phrase_to_doc: Optional[np.ndarray] = None,
     n_pos: int = 9,
+    batch_size: int = 16,
 ) -> dict:
     """
     Labellisation locale (Gemma-3) des features du Phrase-Level SAE (Pipeline 2).
     Même protocole odd-one-out + ρ_interp que odd_one_out_judge (Pipeline 1),
     mais construit directement sur les phrases (pas de fragments tokens à charger).
+    Même batching en 3 passes par sous-ensemble décroissant, cf. docstring
+    d'odd_one_out_judge (audit perf §2.6, item 1).
 
     `phrase_to_doc` n'est pas requis pour la labellisation elle-même (conservé
     pour compat/signature future si besoin de contexte inter-phrase).
@@ -428,7 +510,9 @@ def local_gemma_judge(
 
     model.eval()
     results = {}
+    per_feature = {}
 
+    # ── Étape 0 : construction des exemples (CPU, inchangée) ──────────────
     for f_idx in feature_indices:
         pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_phrase_examples_with_control(
             f_idx, phrase_texts, phrase_acts, n_pos=n_pos, return_magnitudes=True,
@@ -450,7 +534,20 @@ def local_gemma_judge(
         shuffled = [all_examples[i] for i in indices]
         correct_answer = indices.index(neg_position) + 1 if neg_example else None
 
-        examples_text = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(shuffled))
+        per_feature[f_idx] = {
+            "pos_examples": pos_examples, "neg_example": neg_example,
+            "pos_magnitudes": pos_magnitudes, "neg_magnitude": neg_magnitude,
+            "shuffled": shuffled, "indices": indices, "correct_answer": correct_answer,
+        }
+
+    live_features = list(per_feature.keys())
+    if not live_features:
+        return results
+
+    # ── Étape 1 : Odd-one-out, batché sur toutes les features vivantes ────
+    ood_messages = []
+    for f_idx in live_features:
+        examples_text = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(per_feature[f_idx]["shuffled"]))
         prompt_ood = (
             "Voici des phrases où une feature neuronale est fortement activée "
             "(sauf une, qui est un contrôle négatif). Le mot/groupe déclencheur "
@@ -459,75 +556,88 @@ def local_gemma_judge(
             "Quel numéro est l'intrus (celui qui ne partage pas le concept commun des autres) ? "
             "Réponds uniquement avec le numéro."
         )
-        inputs = _apply_chat_and_extract(
-            tokenizer, [{"role": "user", "content": prompt_ood}],
-            device=model.device, add_generation_prompt=True, return_tensors="pt",
-        )
-        with torch.no_grad():
-            out = model.generate(input_ids=inputs, max_new_tokens=8, do_sample=False)
-            resp_ood = tokenizer.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True).strip()
+        ood_messages.append([{"role": "user", "content": prompt_ood}])
+
+    ood_responses = _batched_generate(model, tokenizer, ood_messages, max_new_tokens=8, batch_size=batch_size)
+
+    interp_features = []
+    for f_idx, resp_ood in zip(live_features, ood_responses):
         try:
             predicted = int(re.search(r"\d+", resp_ood).group())
         except Exception:
             predicted = -1
+        correct_answer = per_feature[f_idx]["correct_answer"]
         interp_score = int(predicted == correct_answer) if correct_answer is not None else 0
-
-        label_data = {"label": f"Feature_{f_idx}", "brief_description": "Non interprétable."}
+        per_feature[f_idx]["interp_score"] = interp_score
+        per_feature[f_idx]["label_data"] = {"label": f"Feature_{f_idx}", "brief_description": "Non interprétable."}
         if interp_score == 1:
-            formatted = "\n".join(f"- {ex}" for ex in pos_examples)
-            prompt_label = (
-                "Ces phrases activent toutes fortement une même feature neuronale "
-                "(les mots/groupes déclencheurs sont entre << >>).\n\n"
-                f"{formatted}\n\n"
-                "Génère un objet JSON avec un label court en français (≤3 mots) et une description concise :\n"
-                '{"label": "...", "brief_description": "..."}'
-            )
-            inputs_l = _apply_chat_and_extract(
-                tokenizer, [{"role": "user", "content": prompt_label}],
-                device=model.device, add_generation_prompt=True, return_tensors="pt",
-            )
-            with torch.no_grad():
-                out_l = model.generate(input_ids=inputs_l, max_new_tokens=128, do_sample=False)
-                resp_l = tokenizer.decode(out_l[0][inputs_l.shape[-1]:], skip_special_tokens=True)
-            try:
-                label_data = json.loads(re.search(r"\{.*?\}", resp_l, re.DOTALL).group())
-            except Exception:
-                pass
+            interp_features.append(f_idx)
 
+    # ── Étape 2 : Label, batché sur les features interprétables uniquement ─
+    label_messages = []
+    for f_idx in interp_features:
+        formatted = "\n".join(f"- {ex}" for ex in per_feature[f_idx]["pos_examples"])
+        prompt_label = (
+            "Ces phrases activent toutes fortement une même feature neuronale "
+            "(les mots/groupes déclencheurs sont entre << >>).\n\n"
+            f"{formatted}\n\n"
+            "Génère un objet JSON avec un label court en français (≤3 mots) et une description concise :\n"
+            '{"label": "...", "brief_description": "..."}'
+        )
+        label_messages.append([{"role": "user", "content": prompt_label}])
+
+    label_responses = (
+        _batched_generate(model, tokenizer, label_messages, max_new_tokens=128, batch_size=batch_size)
+        if label_messages else []
+    )
+    for f_idx, resp_l in zip(interp_features, label_responses):
+        try:
+            per_feature[f_idx]["label_data"] = json.loads(re.search(r"\{.*?\}", resp_l, re.DOTALL).group())
+        except Exception:
+            pass
+
+    # ── Étape 3 : ρ_interp, batché sur interp + neg_example ────────────────
+    score_features = [f for f in interp_features if per_feature[f]["neg_example"]]
+    score_messages = []
+    for f_idx in score_features:
+        label_str = per_feature[f_idx]["label_data"].get("label", "")
+        score_prompts = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(per_feature[f_idx]["shuffled"]))
+        prompt_score = (
+            f"Concept : « {label_str} »\n\n"
+            "Pour chaque exemple ci-dessous, note de 0 (non lié) à 10 (fortement lié) "
+            "l'intensité du lien avec ce concept. "
+            "Réponds uniquement avec un JSON : {\"scores\": [s1, s2, ...]}\n\n"
+            f"{score_prompts}"
+        )
+        score_messages.append([{"role": "user", "content": prompt_score}])
+
+    score_responses = (
+        _batched_generate(model, tokenizer, score_messages, max_new_tokens=128, batch_size=batch_size)
+        if score_messages else []
+    )
+    for f_idx, resp_s in zip(score_features, score_responses):
         rho_interp = float("nan")
-        if interp_score == 1 and neg_example:
-            label_str = label_data.get("label", "")
-            score_prompts = "\n".join(f"{i+1}. {ex}" for i, ex in enumerate(shuffled))
-            prompt_score = (
-                f"Concept : « {label_str} »\n\n"
-                "Pour chaque exemple ci-dessous, note de 0 (non lié) à 10 (fortement lié) "
-                "l'intensité du lien avec ce concept. "
-                "Réponds uniquement avec un JSON : {\"scores\": [s1, s2, ...]}\n\n"
-                f"{score_prompts}"
-            )
-            inputs_s = _apply_chat_and_extract(
-                tokenizer, [{"role": "user", "content": prompt_score}],
-                device=model.device, add_generation_prompt=True, return_tensors="pt",
-            )
-            with torch.no_grad():
-                out_s = model.generate(input_ids=inputs_s, max_new_tokens=128, do_sample=False)
-                resp_s = tokenizer.decode(out_s[0][inputs_s.shape[-1]:], skip_special_tokens=True)
-            try:
-                scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
-                # Magnitude réelle, pas un rang synthétique (B.5) -- cf. odd_one_out_judge.
-                all_magnitudes = pos_magnitudes + ([neg_magnitude] if neg_example else [])
-                act_ground = [all_magnitudes[orig_idx] for orig_idx in indices]
-                if len(scores_llm) == len(act_ground):
-                    rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
-            except Exception:
-                pass
+        try:
+            scores_llm = json.loads(re.search(r"\{.*?\}", resp_s, re.DOTALL).group())["scores"]
+            # Magnitude réelle, pas un rang synthétique (B.5) -- cf. odd_one_out_judge.
+            neg_example = per_feature[f_idx]["neg_example"]
+            all_magnitudes = per_feature[f_idx]["pos_magnitudes"] + ([per_feature[f_idx]["neg_magnitude"]] if neg_example else [])
+            act_ground = [all_magnitudes[orig_idx] for orig_idx in per_feature[f_idx]["indices"]]
+            if len(scores_llm) == len(act_ground):
+                rho_interp = float(spearmanr(scores_llm, act_ground).statistic)
+        except Exception:
+            pass
+        per_feature[f_idx]["rho_interp"] = rho_interp
 
+    # ── Assemblage ──────────────────────────────────────────────────────────
+    for f_idx in live_features:
+        pf = per_feature[f_idx]
         results[str(f_idx)] = {
-            **label_data,
-            "interp_score": interp_score,
-            "rho_interp": rho_interp,
-            "pos_examples": pos_examples,
-            "neg_example": neg_example,  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
+            **pf["label_data"],
+            "interp_score": pf["interp_score"],
+            "rho_interp": pf.get("rho_interp", float("nan")),
+            "pos_examples": pf["pos_examples"],
+            "neg_example": pf["neg_example"],  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
         }
 
     return results
