@@ -278,7 +278,7 @@ from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
-    EXTRACTION_CHECKPOINT_INTERVAL,
+    EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -1297,6 +1297,7 @@ def run_llm_max_pool_pipeline(
                     acts_train=raw_residuals,
                     epochs=EPOCHS_EXTRA, lr=LR_EXTRA,
                     save_dir=SAVE_DIR, device=DEVICE,
+                    batch_size=BATCH_SIZE_EXTRA,
                 )
                 ckpt = {"state_dict": {k: v.cpu() for k, v in ext_sae.state_dict().items()},
                         "config": {"d_extra": D_EXTRA, "k_extra": K_EXTRA, "layer": LAYER,

@@ -51,6 +51,15 @@ D_EXTRA      = int(os.environ.get("D_EXTRA", "1024"))
 K_EXTRA      = int(os.environ.get("K_EXTRA", "5"))
 EPOCHS_EXTRA = int(os.environ.get("EPOCHS_EXTRA", "10"))
 LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
+# Taille de batch d'entraînement de SAEBoostResidualSAE/FrozenCoreResidualSAE
+# (sae_shared.py::load_or_train_extended_sae) -- 1024 codé en dur jusqu'ici.
+# Sous BatchTopK (src/sae/batch.py), le budget top-k est PARTAGÉ sur le batch
+# (top k·B pré-activations du batch aplati) : changer BATCH_SIZE_EXTRA change
+# le régime de sparsité vu à l'entraînement (variance de L0 par échantillon),
+# pas seulement la vitesse -- ne pas remonter le défaut sans ablation
+# comparant la fidélité de reconstruction avant/après (AUDIT_SAE_2026-08.md
+# §2.9, item 7).
+BATCH_SIZE_EXTRA = int(os.environ.get("BATCH_SIZE_EXTRA", "1024"))
 USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
 N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
 # Taille de batch pour l'extraction Gemma-3 (saev5.py, boucle "Extraction P1") --

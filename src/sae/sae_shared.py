@@ -155,6 +155,7 @@ def load_or_train_extended_sae(
     lr: float,
     save_dir: str,
     device: str,
+    batch_size: int = 1024,
 ) -> Tuple[nn.Module, Dict[str, List[float]]]:
     """
     Harnais d'entraînement et de restauration pour l'extension sémantique
@@ -193,7 +194,11 @@ def load_or_train_extended_sae(
     # si acts_train est un tenseur memmap disque (open_mmap_reservoir, saev5.py),
     # où chaque accès individuel déclenche sa propre lecture au lieu d'un seul
     # gather. Même pattern que Pipeline 2 (phrase_sae.py::load_or_train_sae).
-    BATCH_SIZE = 1024
+    # batch_size affecte aussi le régime de sparsité BatchTopK (budget partagé
+    # sur le batch, src/sae/batch.py) -- paramétré (au lieu d'une constante en
+    # dur) pour permettre l'ablation avant tout changement de défaut
+    # (AUDIT_SAE_2026-08.md §2.9, item 7).
+    BATCH_SIZE = batch_size
 
     # Historique PAR STEP (pas par époque), aligné avec la convention du
     # Pipeline 2 (phrase_sae.py::load_or_train_sae) -- permet de tracer des
