@@ -1,0 +1,23 @@
+{
+  "layer": 24,
+  "n_layers_full": 48,
+  "model_id": "/home/h21486/SAE/models/gemma-3-12b-it",
+  "batch_size": 8,
+  "n_timed_batches": 8,
+  "equivalence": {
+    "torch_equal": false,
+    "max_abs_diff": 626687.75
+  },
+  "full": {
+    "docs_per_sec": 14.466180645481883,
+    "peak_vram_gb": 27.9802112,
+    "elapsed_s": 4.424111765809357
+  },
+  "truncated": {
+    "docs_per_sec": 28.57517147882234,
+    "peak_vram_gb": 15.690873856,
+    "elapsed_s": 2.2397065944969654
+  },
+  "speedup": 1.975308630460592,
+  "vram_saved_gb": 12.289337344
+}

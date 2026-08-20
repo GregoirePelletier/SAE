@@ -3,7 +3,11 @@ frozen_core.py — FrozenCoreResidualSAE / ExtendedSAE : extension résiduelle
 avec BatchTopKEncoder (seuil θ persistant) et AuxK sur la branche extra.
 
 encode/decode concaténés [core | extra], core gelé, décodeur normalisé,
-branche extra en fp32, initialisation PCA sur le résidu.
+branche extra en fp32. Encodeur extra sur x (SAE Boost, Koriagin 2025, §3.1 :
+ê = W_dec^res · σ(W_enc^res · x + b_enc^res)), cible de reconstruction = e =
+x - x̂_core (inchangée). Décodeur initialisé par PCA sur e ; encoder_input_scale
+calibré séparément sur x (échelles très différentes -- x porte les activations
+massives de Gemma-3, e beaucoup moins).
 """
 
 import torch
@@ -37,10 +41,29 @@ class FrozenCoreResidualSAE(nn.Module):
         self.b_enc_extra = nn.Parameter(torch.zeros(d_extra))
         self.topk_extra = BatchTopKEncoder(k_extra)
         self.register_buffer("steps_since_active_extra", torch.zeros(d_extra))
+        # input_scale : normalise la SORTIE du décodeur extra, calibré sur la
+        # distribution du résidu e = x - x̂_core (target de reconstruction,
+        # inchangé). encoder_input_scale : normalise l'ENTRÉE de l'encodeur
+        # extra, calibré sur x (SAE Boost §3.1, Koriagin 2025 : l'encodeur
+        # résiduel lit x, pas e -- cf. _pre_extra ci-dessous) -- deux échelles
+        # séparées car x porte les activations massives de Gemma-3 (norme
+        # ~1e5) alors que e n'en porte presque plus (le core les capture),
+        # utiliser la même échelle pour les deux ferait exploser les
+        # pré-activations de l'encodeur.
         self.register_buffer("input_scale", torch.tensor(1.0))
+        self.register_buffer("encoder_input_scale", torch.tensor(1.0))
 
     def _pre_extra(self, x: torch.Tensor) -> torch.Tensor:
-        return (x.float() / self.input_scale) @ self.W_enc_extra.float() + self.b_enc_extra.float()
+        return (x.float() / self.encoder_input_scale) @ self.W_enc_extra.float() + self.b_enc_extra.float()
+
+    @torch.no_grad()
+    def _calibrate_encoder_scale(self, inputs: torch.Tensor) -> None:
+        """Calibre encoder_input_scale sur la médiane des normes de x (pas de
+        e) -- l'encodeur extra lit x (SAE Boost §3.1). Ne touche à aucun poids,
+        seulement à l'échelle : safe à appeler même quand le décodeur doit
+        rester à une init pseudo-aléatoire non data-informed (FrozenDecoderExtendedSAE)."""
+        sample = inputs[:min(8192, len(inputs))].float()
+        self.encoder_input_scale = sample.norm(dim=-1).median().to(self.encoder_input_scale.dtype)
 
     def _encode_extra_acts(self, x: torch.Tensor) -> torch.Tensor:
         return self.topk_extra(self._pre_extra(x))
@@ -49,8 +72,13 @@ class FrozenCoreResidualSAE(nn.Module):
         x_bf16 = x.to(torch.bfloat16)
         with torch.no_grad():
             core_acts = self.core_sae.encode(x_bf16)
-            core_out = self.core_sae.decode(core_acts)
-        extra_acts = self._encode_extra_acts(x_bf16 - core_out)
+        # L'encodeur extra lit x directement (SAE Boost §3.1 : ê = W_dec^res ·
+        # σ(W_enc^res · x + b_enc^res)), pas x - x̂_core -- core_out n'est donc
+        # plus nécessaire ici (contrairement à avant ce correctif) : un decode
+        # complet du core en moins à chaque encode(), ce qui supprime aussi le
+        # besoin de decode_core_sparse au ré-encodage (audit perf, cause racine
+        # du doublon de stockage raw_acts documentée dans AUDIT_SAE_2026-08.md §1.3).
+        extra_acts = self._encode_extra_acts(x_bf16.float())
         return torch.cat([core_acts.float(), extra_acts.float()], dim=-1)
 
     def decode(self, acts: torch.Tensor) -> torch.Tensor:
@@ -74,7 +102,7 @@ class FrozenCoreResidualSAE(nn.Module):
         e_hat = (f_aux @ self.W_dec_extra.float()) * self.input_scale
         return F.mse_loss(e_hat, err) / (err.pow(2).mean() + 1e-8)
 
-    def forward(self, x: torch.Tensor) -> dict:
+    def forward(self, x: torch.Tensor, return_feature_acts: bool = True) -> dict:
         x_bf16 = x.to(torch.bfloat16)
         with torch.no_grad():
             core_acts = self.core_sae.encode(x_bf16)
@@ -94,7 +122,11 @@ class FrozenCoreResidualSAE(nn.Module):
         # la récupère pas. Mesuré empiriquement (`RESULTS_TESTS.md` §61) : ~6-7%
         # d'erreur relative injectée dans le résidu que l'extension apprend.
         residual = x_bf16.float() - core_out.float()
-        pre = self._pre_extra(residual)
+        # L'encodeur lit x (SAE Boost §3.1), la cible de reconstruction reste e
+        # = residual (inchangé ci-dessous, mse_loss/aux_loss visent toujours
+        # residual) -- x_bf16.float() déjà calculé plus haut pour residual,
+        # même valeur, pas de calcul supplémentaire.
+        pre = self._pre_extra(x_bf16.float())
         extra_acts = self.topk_extra(pre)
         extra_out = (extra_acts @ self.W_dec_extra.float()) * self.input_scale
 
@@ -110,9 +142,8 @@ class FrozenCoreResidualSAE(nn.Module):
                 self.steps_since_active_extra[~active] += 1
             aux = self._aux_loss(pre, (residual - extra_out).detach())
 
-        return {
+        result = {
             "sae_out": core_out + extra_out,
-            "feature_acts": torch.cat([core_acts, extra_acts], dim=-1),
             "core_acts": core_acts,
             "extra_acts": extra_acts,
             "normalized_mse": nmse,
@@ -121,6 +152,15 @@ class FrozenCoreResidualSAE(nn.Module):
             "l0_extra": (extra_acts.abs() > 1e-6).float().sum(dim=-1).mean(),
             "dead_frac": (self.steps_since_active_extra > self.dead_steps_threshold).float().mean(),
         }
+        if return_feature_acts:
+            # [B, d_core + d_extra] fp32 (16384+ colonnes) -- inutile pendant
+            # l'entraînement (le harnais de sae_shared.py ne le lit jamais),
+            # coûteux à chaque step sur des centaines de milliers de steps
+            # (audit perf §2.4). Optionnel, activé par défaut pour ne rien
+            # casser des appelants existants (analyse post-entraînement,
+            # tests) ; désactivé explicitement dans la boucle d'entraînement.
+            result["feature_acts"] = torch.cat([core_acts, extra_acts], dim=-1)
+        return result
 
     @torch.no_grad()
     def normalize_decoder(self):
@@ -151,9 +191,18 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
     informées par les données), ce qui affaiblirait le test — la baseline de
     référence doit partir d'un décodeur ALÉATOIRE, pas data-informed."""
 
-    def __init__(self, core_sae, d_extra: int = 1024, k_extra: int = 32):
+    def __init__(self, core_sae, d_extra: int = 1024, k_extra: int = 32, domain_inputs=None):
         super().__init__(core_sae, d_extra, k_extra)
         self.W_dec_extra.requires_grad_(False)
+        # Calibre uniquement encoder_input_scale (un scalaire, pas des
+        # directions) sur la médiane des normes de x -- reste cohérent avec le
+        # docstring de la classe (décodeur ALÉATOIRE, pas data-informed) : une
+        # échelle n'est pas une direction apprise, sans elle encoder_input_scale
+        # resterait à 1.0 alors que x porte des activations massives (~1e5),
+        # ce qui ferait exploser les pré-activations de l'encodeur (qui, lui,
+        # reste entraîné normalement dans cette baseline).
+        if domain_inputs is not None:
+            self._calibrate_encoder_scale(domain_inputs)
 
     @torch.no_grad()
     def normalize_decoder(self):
@@ -166,12 +215,18 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
 
 
 class ExtendedSAE(FrozenCoreResidualSAE):
-    def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32, domain_residuals=None):
+    def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32,
+                 domain_residuals=None, domain_inputs=None):
         super().__init__(core_sae, d_extra, k_extra)
         if domain_residuals is not None:
-            self._init_from_residual_pca(domain_residuals)
+            self._init_from_residual_pca(domain_residuals, domain_inputs)
 
-    def _init_from_residual_pca(self, residuals: torch.Tensor) -> None:
+    def _init_from_residual_pca(self, residuals: torch.Tensor, inputs: torch.Tensor = None) -> None:
+        """`residuals` (e = x - x̂_core) : cible de reconstruction, calibre
+        input_scale (sortie du décodeur) et les directions PCA du décodeur.
+        `inputs` (x, échantillons appariés aux mêmes tokens que `residuals`) :
+        calibre encoder_input_scale et le biais de l'encodeur, qui lit x
+        (SAE Boost §3.1) -- sans eux, repli dégradé sur l'échelle du résidu."""
         print("  [ExtendedSAE] Initialisation PCA sur la distribution d'erreurs locale...")
         sample = residuals[:min(8192, len(residuals))].float()
         self.input_scale = sample.norm(dim=-1).median().to(self.input_scale.dtype)
@@ -185,9 +240,18 @@ class ExtendedSAE(FrozenCoreResidualSAE):
                 W_init = torch.cat([W_init, pad], dim=0)
             self.W_dec_extra.data.copy_(W_init.to(self.W_dec_extra.dtype))
             self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
-            mean_residual = sample.mean(dim=0)
+
+            if inputs is not None:
+                self._calibrate_encoder_scale(inputs)
+                mean_input = inputs[:min(8192, len(inputs))].float().mean(dim=0)
+            else:
+                print("  [ExtendedSAE] ATTENTION : pas d'échantillons x fournis pour "
+                      "calibrer encoder_input_scale -- repli sur l'échelle du résidu, "
+                      "sous-optimal pour un encodeur qui lit x (SAE Boost §3.1).")
+                self.encoder_input_scale = self.input_scale.clone()
+                mean_input = sample.mean(dim=0)
             self.b_enc_extra.data.copy_(
-                (-(mean_residual / self.input_scale) @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
+                (-(mean_input / self.encoder_input_scale) @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
             print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
         except Exception as e:
             print(f"  [ExtendedSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")

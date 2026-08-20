@@ -38,6 +38,7 @@ try:
         prepare_domain_dataset,
         sample_fineweb2_chunks,
         split_into_phrases,
+        group_indices_by_doc,
         load_and_clean_emails,
         build_email_train_test_corpus,
         url_match,
@@ -48,6 +49,7 @@ except ImportError:
         prepare_domain_dataset,
         sample_fineweb2_chunks,
         split_into_phrases,
+        group_indices_by_doc,
         load_and_clean_emails,
         build_email_train_test_corpus,
         url_match,
@@ -196,14 +198,28 @@ def load_or_train_extended_sae(
                "val_epoch": [], "val_loss": []}
     step = 0
 
+    def _as_device_tensor(v):
+        return v.detach() if torch.is_tensor(v) else torch.tensor(float(v), device=device)
+
     for epoch in range(epochs):
         model.train()
         epoch_perm = train_idx[torch.randperm(len(train_idx))]
+        # Métriques accumulées comme tenseurs GPU pendant l'époque, converties en
+        # Python UNE SEULE FOIS à la fin (un seul sync CPU<->GPU par époque) plutôt
+        # qu'à chaque step (audit perf §2.4 : 4x .item()/float() par step = 4x
+        # cudaStreamSynchronize par step, alors qu'un step dure <1ms -- le step est
+        # dominé par la synchro, pas le calcul). Valeurs identiques à l'ancien code,
+        # seul le moment du sync change.
+        step_losses, step_l0, step_dead, step_aux = [], [], [], []
         for i in range(0, len(epoch_perm), BATCH_SIZE):
             batch_idx = epoch_perm[i:i + BATCH_SIZE]
             b = acts_train[batch_idx].to(device).to(torch.bfloat16)
             optimizer.zero_grad()
-            out = model(b)
+            # return_feature_acts=False : ce harnais est scopé à ExtendedSAE/
+            # FrozenCoreResidualSAE (docstring ci-dessus), dont forward() n'alloue
+            # feature_acts ([B, d_core+d_extra] fp32) que si demandé -- jamais lu
+            # dans cette boucle, coûteux à chaque step (audit perf §2.4).
+            out = model(b, return_feature_acts=False) if hasattr(model, "core_sae") else model(b)
             loss = out["loss"]
             loss.backward()
 
@@ -213,13 +229,18 @@ def load_or_train_extended_sae(
             if hasattr(model, "normalize_decoder"):
                 model.normalize_decoder()   # renormalise après le step
 
-            history["loss"].append(loss.item())
-            history["l0"].append(out.get("l0_extra", out.get("l0", torch.tensor(0.0))).item())
-            history["dead_frac"].append(out.get("dead_frac", torch.tensor(0.0)).item())
-            history["aux_loss"].append(float(out.get("aux_loss", 0.0)))
+            step_losses.append(loss.detach())
+            step_l0.append(_as_device_tensor(out.get("l0_extra", out.get("l0", 0.0))))
+            step_dead.append(_as_device_tensor(out.get("dead_frac", 0.0)))
+            step_aux.append(_as_device_tensor(out.get("aux_loss", 0.0)))
             history["epoch"].append(epoch)
             history["step"].append(step)
             step += 1
+
+        history["loss"].extend(torch.stack(step_losses).tolist())
+        history["l0"].extend(torch.stack(step_l0).tolist())
+        history["dead_frac"].extend(torch.stack(step_dead).tolist())
+        history["aux_loss"].extend(torch.stack(step_aux).tolist())
 
         model.eval()
         with torch.no_grad():

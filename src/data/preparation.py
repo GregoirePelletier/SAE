@@ -211,6 +211,18 @@ def split_into_phrases(
     return all_phrases, phrase_to_doc
 
 
+def group_indices_by_doc(doc_ids) -> dict:
+    """Inverse de `phrase_to_doc` : {doc_idx: [indices de phrase, ordre croissant]}.
+    O(n) une seule fois, à calculer avant toute boucle sur les documents --
+    remplacer `np.where(doc_ids == doc_idx)` par document (O(n_docs * n)) par
+    un lookup dans le dict retourné ici est équivalent (même ensemble
+    d'indices, même ordre croissant) mais O(n) au total."""
+    groups: dict = {}
+    for i, d in enumerate(doc_ids):
+        groups.setdefault(int(d), []).append(i)
+    return groups
+
+
 def build_email_train_test_corpus(
     mails_tsv_path: str,
     augmented_jsonl_path: str,

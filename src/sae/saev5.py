@@ -142,7 +142,7 @@ def open_mmap_reservoir(path, n_rows, d_in, dtype):
 from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
     ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
-    prepare_domain_dataset, sample_fineweb2_chunks, split_into_phrases,
+    prepare_domain_dataset, sample_fineweb2_chunks, split_into_phrases, group_indices_by_doc,
     compute_metrics, compute_rho_sae,
     downstream_classification,
     steer_activations, steer_and_decode,
@@ -828,26 +828,55 @@ def run_llm_max_pool_pipeline(
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
 
-        # output_hidden_states n'expose QUE le residual stream (HF standard) --
-        # attn_out/mlp_out n'existent nulle part dans cette API, il faut un hook
-        # direct sur le sous-module concerné. Points de hook vérifiés
-        # empiriquement sur les config.json GemmaScope-2 réels :
-        #   attn_out : entrée de self_attn.o_proj (pré-projection de sortie)
-        #   mlp_out  : sortie de post_feedforward_layernorm (après le MLP, avant l'add résiduel)
+        # G1 (AUDIT_SAE_2026-08.md §2.2) : troncature des blocs décodeur
+        # au-delà de LAYER, VÉRIFIÉE sur GPU avant déploiement
+        # (scripts/audit_2026_08_layer_truncation_equivalence_and_speedup.py) :
+        # - V1 (troncature `layers[:LAYER]` + `output_hidden_states=True` +
+        #   `hidden_states[LAYER]`, job 44536) a ÉCHOUÉ : torch.equal=False,
+        #   écart max ~6e5. Cause confirmée en lisant
+        #   transformers/utils/output_capturing.py : `output_hidden_states=True`
+        #   passe par un mécanisme générique (`_can_record_outputs`) qui
+        #   remplace INCONDITIONNELLEMENT la DERNIÈRE entrée de `hidden_states`
+        #   par `last_hidden_state` (post-RMSNorm final,
+        #   `tie_last_hidden_states=True`) -- invisible sur le modèle complet
+        #   (LAYER n'est jamais la dernière entrée sur 49), silencieusement
+        #   faux une fois LAYER devenu la dernière entrée par troncature.
+        # - V2 (ce code, job 44540) : hook DIRECT sur `layers[LAYER-1]`, jamais
+        #   `output_hidden_states` -- ne passe jamais par ce mécanisme.
+        #   Vérifié : torch.equal=True, écart max = 0.0 bit-à-bit, 1,98× sur
+        #   le débit, 13 Go de VRAM en moins (28,0 -> 15,0 Go).
+        # attn_out/mlp_out utilisaient déjà un hook direct (jamais affectés par
+        # ce piège) mais laissaient tourner les blocs après LAYER pour rien --
+        # même troncature appliquée ici, mécanisme de hook inchangé pour eux.
+        # Points de hook vérifiés empiriquement sur les config.json
+        # GemmaScope-2 réels :
+        #   resid_post : sortie de layers[LAYER-1] (= hidden_states[LAYER] du
+        #                modèle complet, non tronqué)
+        #   attn_out   : entrée de self_attn.o_proj (pré-projection de sortie)
+        #   mlp_out    : sortie de post_feedforward_layernorm (après le MLP, avant l'add résiduel)
         _hook_capture = {}
         _hook_handle = None
-        if HOOK_TYPE == "attn_out":
+        if HOOK_TYPE == "resid_post":
+            def _capture_resid_post(module, args, output):
+                _hook_capture["acts"] = output
+            _n_layers_needed = LAYER
+            _hook_handle = llm.model.language_model.layers[LAYER - 1].register_forward_hook(
+                _capture_resid_post)
+        elif HOOK_TYPE == "attn_out":
             def _capture_attn_in(module, args, kwargs):
                 _hook_capture["acts"] = args[0] if args else kwargs["input"]
+            _n_layers_needed = LAYER + 1
             _hook_handle = llm.model.language_model.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
                 _capture_attn_in, with_kwargs=True)
         elif HOOK_TYPE == "mlp_out":
             def _capture_mlp_out(module, args, output):
                 _hook_capture["acts"] = output
+            _n_layers_needed = LAYER + 1
             _hook_handle = llm.model.language_model.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
                 _capture_mlp_out)
-        elif HOOK_TYPE != "resid_post":
+        else:
             raise ValueError(f"HOOK_TYPE={HOOK_TYPE!r} non supporté (resid_post/attn_out/mlp_out).")
+        llm.model.language_model.layers = llm.model.language_model.layers[:_n_layers_needed]
 
         all_doc_sae_acts = []
         n_residuals_collected = 0
@@ -871,21 +900,20 @@ def run_llm_max_pool_pipeline(
                     batch, return_tensors="pt", padding=True,
                     truncation=True, max_length=512,
                 ).to(DEVICE)
-                # logits_to_keep=1 : seul hidden_states nous intéresse ici ; sans ça,
-                # le forward calcule par défaut les logits sur TOUTE la séquence et le
+                # logits_to_keep=1 : seul le hook nous intéresse ici ; sans ça, le
+                # forward calcule par défaut les logits sur TOUTE la séquence et le
                 # vocabulaire Gemma-3 (~262k), un gaspillage mémoire GPU inutile qui
-                # peut mener à l'OOM CUDA à grande échelle.
-                if HOOK_TYPE == "resid_post":
-                    outputs = llm(**inputs, output_hidden_states=True, logits_to_keep=1)
-                    acts_raw = outputs.hidden_states[LAYER].detach().to(TORCH_DTYPE)
-                else:
-                    llm(**inputs, logits_to_keep=1)
-                    acts_raw = _hook_capture["acts"].detach().to(TORCH_DTYPE)
-                    assert acts_raw.shape[-1] == pretrained_sae.cfg.d_in, (
-                        f"HOOK_TYPE={HOOK_TYPE} : shape captée {acts_raw.shape} != "
-                        f"d_in SAE préentraîné={pretrained_sae.cfg.d_in} "
-                        "-- mauvais point de hook, à corriger avant de faire confiance au run."
-                    )
+                # peut mener à l'OOM CUDA à grande échelle. output_hidden_states
+                # jamais utilisé (les trois HOOK_TYPE passent par _hook_capture) --
+                # cf. commentaire de mise en place des hooks ci-dessus pour la
+                # raison (piège tie_last_hidden_states de output_hidden_states).
+                llm(**inputs, logits_to_keep=1)
+                acts_raw = _hook_capture["acts"].detach().to(TORCH_DTYPE)
+                assert acts_raw.shape[-1] == pretrained_sae.cfg.d_in, (
+                    f"HOOK_TYPE={HOOK_TYPE} : shape captée {acts_raw.shape} != "
+                    f"d_in SAE préentraîné={pretrained_sae.cfg.d_in} "
+                    "-- mauvais point de hook, à corriger avant de faire confiance au run."
+                )
 
                 acts = acts_raw
                 # Masquage (special tokens + skip-first + σ-clip) : implémentation
@@ -987,6 +1015,24 @@ def run_llm_max_pool_pipeline(
             else:
                 ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
+            # L'encodeur extra lit désormais x, pas le résidu e (SAE Boost §3.1,
+            # correctif AUDIT_SAE_2026-08.md §1.3) -- un checkpoint entraîné avant
+            # ce correctif a des poids W_enc_extra/b_enc_extra/encoder_input_scale
+            # ajustés pour un INPUT DIFFÉRENT (e, dont l'échelle et la distribution
+            # n'ont rien à voir avec x). `load_state_dict(strict=False)` les
+            # chargerait quand même silencieusement (mêmes noms/formes de
+            # paramètres, même piège de clé de cache que CLAUDE.md documente déjà
+            # pour ce loader) -- refus explicite plutôt qu'un résultat
+            # silencieusement faux.
+            ckpt_encoder_input = ckpt.get("config", {}).get("encoder_input")
+            if ckpt_encoder_input != "x":
+                raise RuntimeError(
+                    f"{frozen_core_path} a été entraîné avant le correctif SAE Boost "
+                    f"(encoder_input={ckpt_encoder_input!r}, attendu 'x') -- l'encodeur "
+                    "extra lisait alors le résidu e, pas x : les poids ne sont pas "
+                    "compatibles avec le forward actuel. Supprimer ce fichier et "
+                    "réentraîner (--retrain), pas de chargement partiel possible ici."
+                )
             missing, unexpected = ext_sae.load_state_dict(ckpt["state_dict"], strict=False)
             if missing or unexpected:
                 print(f"  [P1] Checkpoint sans certains buffers ({missing}) — "
@@ -1013,6 +1059,10 @@ def run_llm_max_pool_pipeline(
                     core_acts = pretrained_sae.encode(sample)
                     core_out  = pretrained_sae.decode(core_acts)
                     domain_residuals_cpu = (sample - core_out).cpu().float()
+                    # x lui-même (appairé aux mêmes tokens que domain_residuals_cpu) : requis
+                    # pour calibrer encoder_input_scale, l'encodeur extra lisant x et non plus
+                    # le résidu (SAE Boost §3.1, cf. frozen_core.py::ExtendedSAE).
+                    domain_inputs_cpu = sample.cpu().float()
                     del sample, core_acts, core_out
                     gc.collect(); torch.cuda.empty_cache()
 
@@ -1020,15 +1070,19 @@ def run_llm_max_pool_pipeline(
                 # la branche "extra" reste fp32, seul core_sae (déjà casté) est en TORCH_DTYPE.
                 # SANITY_CHECK_FROZEN_DECODER (Korznikov et al. 2026) : décodeur ALÉATOIRE
                 # figé, pas d'init PCA sur le résidu (affaiblirait le test, cf. frozen_core.py) —
-                # domain_residuals délibérément PAS transmis dans cette branche.
+                # domain_residuals délibérément PAS transmis dans cette branche. domain_inputs
+                # (x) l'est : ça ne calibre qu'un scalaire d'échelle pour l'encodeur (toujours
+                # entraîné normalement dans cette baseline), pas une direction data-informée —
+                # ne contredit pas le principe du sanity-check.
                 if SANITY_CHECK_FROZEN_DECODER:
                     ext_sae = FrozenDecoderExtendedSAE(
                         pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
+                        domain_inputs=domain_inputs_cpu,
                     ).to(DEVICE)
                 else:
                     ext_sae = ExtendedSAE(
                         pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
-                        domain_residuals=domain_residuals_cpu
+                        domain_residuals=domain_residuals_cpu, domain_inputs=domain_inputs_cpu,
                     ).to(DEVICE)
 
                 from sae_shared import load_or_train_extended_sae as load_or_train
@@ -1039,10 +1093,11 @@ def run_llm_max_pool_pipeline(
                     save_dir=SAVE_DIR, device=DEVICE,
                 )
                 ckpt = {"state_dict": {k: v.cpu() for k, v in ext_sae.state_dict().items()},
-                        "config": {"d_extra": D_EXTRA, "k_extra": K_EXTRA, "layer": LAYER}}
+                        "config": {"d_extra": D_EXTRA, "k_extra": K_EXTRA, "layer": LAYER,
+                                   "encoder_input": "x"}}
                 torch.save(ckpt, frozen_core_path)
                 print(f"  [P1] ExtendedSAE sauvegardé : {frozen_core_path}")
-                del raw_residuals, domain_residuals_cpu
+                del raw_residuals, domain_residuals_cpu, domain_inputs_cpu
                 gc.collect(); torch.cuda.empty_cache()
             else:
                 ext_sae = None
@@ -1506,10 +1561,14 @@ def run_f2llm_pipeline(
     label_map_p2 = {int(idx): entry.get("label", f"F{idx}") for idx, entry in feature_labels_p2.items()}
 
     activating_phrases_map = {}
+    # Regroupement O(n) une seule fois -- remplace le np.where(test_p2d_arr ==
+    # doc_idx) par document, O(n_docs * n_phrases) sur le nombre total de
+    # comparaisons (audit perf, item 10).
+    doc_to_phrase_indices = group_indices_by_doc(test_p2d_arr.tolist())
     sae.eval()
     with torch.no_grad():
         for doc_idx in range(len(test_texts)):
-            phrase_indices = np.where(test_p2d_arr == doc_idx)[0].tolist()
+            phrase_indices = doc_to_phrase_indices.get(doc_idx, [])
             if not phrase_indices: continue
             row_acts = doc_acts[doc_idx]
             top_vals, top_f_ids = row_acts.topk(min(3, row_acts.shape[0]))

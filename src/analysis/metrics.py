@@ -127,18 +127,28 @@ def downstream_classification(
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
     from sklearn.metrics import accuracy_score
+    from scipy import sparse as sp
 
+    # X_sae passé en CSR sparse à LogisticRegression, jamais dense : les
+    # activations SAE sont ~99,9% de zéros (BatchTopK), et sklearn recopie tout
+    # tableau dense fp32 en fp64 en interne -- dense upcasté fp64 sur [n, d_sae]
+    # (d_sae=17408+ en Pipeline 1) est ce qui rendait `downstream_classification`
+    # compute-bound au point de tourner indéfiniment sans sortie (CLAUDE.md,
+    # rule "cpus-per-task=32"). CSR réduit le travail de deux à trois ordres de
+    # grandeur (`liblinear`/`lbfgs` supportent tous deux un X sparse nativement)
+    # -- 32 coeurs n'est un correctif que si le profil montre un coût réellement
+    # dense après ce changement, pas un point de départ.
     X_sae_list, X_raw_list, y_list, groups_list = [], [], [], []
     for label_id, (label_name, sae_acts) in enumerate(acts_by_label.items()):
         sae_np = sae_acts.float().detach().cpu().numpy()
-        X_sae_list.append(sae_np)
+        X_sae_list.append(sp.csr_matrix(sae_np))
         y_list.append(np.full(sae_np.shape[0], label_id))
         if raw_emb_by_label and label_name in raw_emb_by_label:
             X_raw_list.append(raw_emb_by_label[label_name].float().detach().cpu().numpy())
         if groups_by_label is not None:
             groups_list.append(np.asarray(groups_by_label[label_name]))
 
-    X_sae = np.concatenate(X_sae_list, axis=0)
+    X_sae = sp.vstack(X_sae_list, format="csr")
     y = np.concatenate(y_list, axis=0)
     groups = np.concatenate(groups_list, axis=0) if groups_by_label is not None else None
 

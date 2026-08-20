@@ -68,6 +68,7 @@ except ImportError:  # exécution à plat
     from config import D_SAE, K_SPARSE, SAVE_DIR, CACHE_DIR, EMB_MODEL, LOCAL_DATASET_PATH
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+torch.set_float32_matmul_precision("high")  # TF32 pour les matmuls fp32 de LatentTermsSAE (Table 4)
 AUX_ALPHA = 1.0 / 32.0  # Gao et al. 2024, coefficient recommandé pour l'AuxK
                         # (déjà validé dans ce dépôt, src/sae/phrase_sae.py)
 TRAIN_TOKENS = int(os.environ.get("LT_TRAIN_TOKENS", 33_000_000))
@@ -171,8 +172,16 @@ class LatentTermsSAE(nn.Module):
 
 
 def load_f2llm():
+    # torch_dtype=bfloat16 explicite : sans lui AutoModel.from_pretrained charge en
+    # fp32 (comportement par défaut de transformers), et les activations sont de
+    # toute façon recastées en bf16 juste après (_batch_token_activations) -- le
+    # forward tournait donc en fp32 pour rien (même bug qu'audit perf §2.7 item 5,
+    # présent ici aussi, hors périmètre initial de l'audit qui ne couvrait que
+    # phrase_sae.py).
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
-    model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEVICE).eval()
+    model = AutoModel.from_pretrained(
+        EMB_MODEL, local_files_only=True, torch_dtype=torch.bfloat16,
+    ).to(DEVICE).eval()
     return tokenizer, model
 
 
@@ -225,12 +234,24 @@ def build_token_training_pool(target_tokens: int, tokenizer, model, cache_path: 
     """Corpus d'entraînement du SAE : texte générique FineWeb2-fr HORS
     domaine (§3.1), jamais Mails.tsv. Lu en streaming (cf.
     `_stream_generic_texts`), arrêt dès que la cible de tokens est
-    atteinte -- pas de matérialisation du corpus source en RAM."""
+    atteinte -- pas de matérialisation du corpus source en RAM.
+
+    Écrit directement dans un buffer PRÉALLOUÉ de taille `target_tokens` via un
+    curseur d'écriture, plutôt que d'accumuler une liste Python de tenseurs
+    puis `torch.cat` -- cette dernière approche a fait OOM deux fois de suite
+    en production (jobs 44434 --mem=96G, puis 44438 --mem=110G après le passage
+    au streaming ci-dessus) : `torch.cat(pool, dim=0)` alloue un second tenseur
+    contigu de la taille du pool (~59 Go pour 33M tokens x hidden_size=896 x 2o
+    bf16) PENDANT que la liste `pool` reste référencée -- rien ne la libère
+    avant le `return` de la fonction, donc le pic RSS atteignait environ 2x la
+    taille cible. Ici la mémoire est bornée à ~1x, jamais 2x."""
     if cache_path and os.path.exists(cache_path + ".pt"):
         print(f"  [LatentTerms] Restauration du pool d'entraînement : {cache_path}.pt")
         return torch.load(cache_path + ".pt", map_location="cpu")
 
-    pool, n_tok, n_docs = [], 0, 0
+    d_in = model.config.hidden_size
+    pool = torch.empty(target_tokens, d_in, dtype=torch.bfloat16)
+    n_tok, n_docs = 0, 0
     buffer = []
 
     def _flush(buf):
@@ -238,7 +259,12 @@ def build_token_training_pool(target_tokens: int, tokenizer, model, cache_path: 
         for tok in _batch_token_activations(buf, tokenizer, model, max_length, batch_size=stream_batch_size):
             if tok.shape[0] == 0:
                 continue
-            pool.append(tok)
+            remaining = target_tokens - n_tok
+            if remaining <= 0:
+                return
+            if tok.shape[0] > remaining:
+                tok = tok[:remaining]
+            pool[n_tok:n_tok + tok.shape[0]] = tok
             n_tok += tok.shape[0]
             if n_tok >= target_tokens:
                 return
@@ -254,11 +280,12 @@ def build_token_training_pool(target_tokens: int, tokenizer, model, cache_path: 
     if buffer and n_tok < target_tokens:
         _flush(buffer)
 
-    if not pool:
+    if n_tok == 0:
         raise RuntimeError(f"Corpus générique FineWeb2-fr introuvable ({LOCAL_DATASET_PATH}) "
                             "-- requis pour entraîner le SAE hors-domaine (§3.1 du papier).")
-    embeddings = torch.cat(pool, dim=0)[:target_tokens]
-    if embeddings.shape[0] < 0.9 * target_tokens:
+    embeddings = pool[:n_tok]
+    if n_tok < target_tokens:
+        embeddings = embeddings.clone()  # libère le buffer surdimensionné (corpus épuisé avant la cible)
         print(f"  [LatentTerms] ATTENTION : pool d'entraînement sous la cible "
               f"({embeddings.shape[0]} / {target_tokens} tokens, corpus FineWeb2-fr épuisé "
               f"après {n_docs} documents).")
@@ -367,18 +394,23 @@ class LatentTermsIndex:
 
     def __init__(self, W_docs: sparse.csr_matrix, k1: float = 8.0, b: float = 0.7):
         # Défauts non tunés du papier (App. D) : k1=8, b=0.7, ϕ=√ des deux côtés.
-        self.W, self.k1, self.b = W_docs, k1, b
+        self.k1, self.b = k1, b
         N = W_docs.shape[0]
         df = np.asarray((W_docs > 0).sum(axis=0)).ravel()             # n(t)
         self.idf = np.log((N - df + 0.5) / (df + 0.5)).clip(min=0.0)  # Eq. 4
         dl = np.asarray(W_docs.sum(axis=1)).ravel()                   # |D| = ||w(d)||₁
         self.K = 1.0 - b + b * dl / (dl.mean() + 1e-9)                # [N]
+        # CSC une seule fois ici (pas CSR) : search() n'accède qu'à des colonnes
+        # (un terme -> tous les documents), `getcol` sur une CSR est O(nnz) par
+        # appel (parcourt tout le tableau pour filtrer la colonne) contre O(nnz
+        # de la colonne) sur une CSC (audit perf §1.4, item 5).
+        self.W = W_docs.tocsc()
 
     def search(self, w_q: np.ndarray, top_k: int = 10) -> list[tuple[int, float]]:
         q_idx = np.nonzero(w_q > 0)[0]
         scores = np.zeros(self.W.shape[0], dtype=np.float64)
         for j in q_idx:
-            col = self.W.getcol(j)                                    # f(j, D) = w_j(D)
+            col = self.W.getcol(j)                                    # f(j, D) = w_j(D), O(nnz colonne) sur CSC
             d_idx, f = col.indices, col.data.astype(np.float64)
             contrib = self.idf[j] * f * (self.k1 + 1) / (f + self.k1 * self.K[d_idx])
             scores[d_idx] += float(w_q[j]) * contrib                  # poids requête explicite

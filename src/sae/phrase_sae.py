@@ -27,6 +27,14 @@ except ImportError:
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 AUX_ALPHA = 1.0 / 32.0
 
+# Le backbone F2LLM tourne en bf16 (embeddings L2-normalisés, bornés à 1.0 --
+# aucun risque d'overflow, contrairement au residual stream Gemma-3 où bf16
+# est requis pour d'autres raisons). PyTorch désactive TF32 par défaut pour
+# les matmuls fp32 depuis 1.12 ; sans ces deux lignes, `AutoModel.from_pretrained`
+# charge en fp32 plein (torch_dtype non précisé) et les rares matmuls fp32
+# restants (ex. sur CPU) n'utilisent pas TF32 non plus (audit perf §2.7, item 5).
+torch.set_float32_matmul_precision("high")
+
 
 def _mean_pool(model_output, attention_mask):
     token_emb = model_output.last_hidden_state
@@ -128,7 +136,9 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
     print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} (pooling={EMB_POOLING}, "
           f"{len(texts)} phrases)...")
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL, local_files_only=True)
-    model = AutoModel.from_pretrained(EMB_MODEL, local_files_only=True).to(DEFAULT_DEVICE).eval()
+    model = AutoModel.from_pretrained(
+        EMB_MODEL, local_files_only=True, torch_dtype=torch.bfloat16,
+    ).to(DEFAULT_DEVICE).eval()
 
     all_embs, batch_size = [], 128
     with torch.no_grad():
@@ -189,7 +199,6 @@ def encode_documents_with_phrase_sae(
 def load_or_train_sae(d_in: int, d_sae: int, k: int, embeddings: torch.Tensor,
                       save_path: str, epochs: int = 20, lr: float = 1e-3) -> tuple[PhraseLevelSAE, dict]:
     sae = PhraseLevelSAE(d_in, d_sae, k).to(DEFAULT_DEVICE)
-    sae.init_from_data(embeddings)
 
     if os.path.exists(save_path):
         print(f"  [Phrase] Restauration du Phrase-Level SAE : {save_path}")
@@ -200,6 +209,7 @@ def load_or_train_sae(d_in: int, d_sae: int, k: int, embeddings: torch.Tensor,
                   f"TopK per-sample en eval. Clés manquantes : {missing}")
         return sae, ckpt.get("history", {})
 
+    sae.init_from_data(embeddings)
     print(f"  [Phrase] Entraînement du Phrase-Level SAE sur {embeddings.shape[0]} phrases...")
     optimizer = torch.optim.Adam(sae.parameters(), lr=lr)
     # BATCH_TRAIN (config.py), pas une constante locale -- même valeur par défaut
@@ -255,7 +265,13 @@ def compute_sae_metrics(sae: PhraseLevelSAE, embeddings: torch.Tensor, batch_siz
     active_counts = torch.zeros(sae.d_sae)
     with torch.no_grad():
         for i in range(0, embeddings.shape[0], batch_size):
-            b = embeddings[i:i + batch_size].to(DEFAULT_DEVICE).to(torch.bfloat16)
+            # PhraseLevelSAE est fp32 (embeddings F2LLM déjà L2-normalisés, bornés à
+            # 1.0 -- aucun risque d'overflow, bf16 n'y apporte rien, cf. CLAUDE.md
+            # règle bf16). Caster l'entrée en bf16 ici la dégraderait avant même
+            # d'atteindre un SAE fp32 : les métriques publiées (NMSE/L0/dead_pct)
+            # seraient calculées sur une entrée moins précise que celle utilisée à
+            # l'entraînement (audit perf §2.7).
+            b = embeddings[i:i + batch_size].to(DEFAULT_DEVICE).float()
             out = sae(b)
             n_b = b.shape[0]
             nmse_acc += out["normalized_mse"].item() * n_b

@@ -88,14 +88,18 @@ CPU-only sur cache. Le hook post-edit (`pytest tests/ -q` en tâche de fond)
 reste la seule exécution tolérée hors `sbatch`, car géré par le harness et
 déjà borné en ressources.
 
-**`LogisticRegression(solver="lbfgs")` sur les activations SAE pleine largeur
-(17k+ dimensions, ex. `downstream_classification`, `clf_acc_email_axes`) est
-compute-bound, pas memory-bound** — un job sous-dimensionné en CPU ne plante
-pas, il tourne indéfiniment sans sortie ni erreur (observé deux fois :
-`run_core_vs_extension_ablation.slurm` puis l'audit 2026-08). Partir
-directement de `--cpus-per-task=32` + `OMP_NUM_THREADS`/`OPENBLAS_NUM_THREADS`/
-`MKL_NUM_THREADS=32` explicites pour tout script de ce type, pas d'un essai à
-moins de cœurs. Poser aussi `PYTHONUNBUFFERED=1` sur tout script d'audit qui
+**Les activations SAE (17k+ dimensions, ~99,9% de zéros) se passent en CSR
+sparse à `LogisticRegression`, jamais en tableau dense.** `sklearn` recopie
+tout `X` dense fp32 en fp64 en interne ; sur une matrice quasi-vide de cette
+largeur, c'est ce qui rendait `downstream_classification`/`clf_acc_email_axes`
+compute-bound au point de tourner indéfiniment sans sortie ni erreur (observé
+deux fois avant correctif : `run_core_vs_extension_ablation.slurm` puis
+l'audit 2026-08). `liblinear` et `lbfgs` acceptent tous deux un `X`
+`scipy.sparse.csr_matrix` nativement — `downstream_classification`
+(`src/analysis/metrics.py`) le fait déjà. `--cpus-per-task=32` n'est un
+correctif que si le profil montre, après passage en CSR, un coût réellement
+dense (ex. l'agrégation en aval, pas le fit lui-même) — ne pas repartir de 32
+cœurs par défaut. Poser `PYTHONUNBUFFERED=1` sur tout script d'audit qui
 imprime une progression avant un calcul long — sans ça, le log reste identique
 entre deux vérifications qu'un job soit bloqué ou juste en train de calculer,
 ce qui rend impossible de diagnostiquer lequel des deux se passe.
