@@ -340,13 +340,29 @@ au lieu de `x`**.
 Aplatir le batch (masque + `nonzero` global, split par `doc_ids` à la fin) supprime 4× l'overhead
 de lancement de kernels et de conversion CSR. Gain modeste seul, mais nécessaire pour que G2 tienne.
 
-**G5 — Écritures aléatoires dans un memmap de 768 Go.**
+**G5 — Écritures aléatoires dans un memmap de 768 Go — CORRIGÉ.**
 `saev5.py:949` : `reservoir[j[hit]] = x_new[hit]` avec `j` uniforme sur [0, N). Chaque écriture
 touche une page de 15 Ko dispersée dans un fichier de 768 Go. En phase 2 du réservoir (dès que
 100 M tokens sont vus), c'est du **write-amplification aléatoire pur** sur un volume réseau.
-Correctif : accumuler les remplacements dans un buffer trié par offset et les appliquer par blocs
-(`np.argsort(j)` puis écriture séquentielle), ou passer à un réservoir **par bloc** (Algorithm L
-sur des chunks de 64 k tokens) qui ne casse pas la localité.
+Corrigé par accumulation en buffer (`_pending_j`/`_pending_x`, seuil `_RESERVOIR_FLUSH_SIZE =
+50 000`) : les remplacements de phase 2 s'accumulent au lieu d'écrire immédiatement, et sont
+appliqués par blocs triés par offset dès que le seuil est atteint
+(`torch.argsort(j_cat, stable=True)` puis `reservoir[j_cat[order]] = x_cat[order]`) — écriture
+séquentielle plutôt que dispersée. Point de correction attendu par rapport à l'écriture immédiate :
+en cas de collision (deux remplacements du buffer visant le même offset `j`), c'est la **dernière
+entrée temporelle** qui doit l'emporter, comme le ferait une suite d'écritures immédiates non
+triées — garanti par `stable=True` (le tri préserve l'ordre relatif des éléments égaux, donc parmi
+deux entrées de même offset, la plus récente dans le buffer reste la dernière après tri, donc la
+dernière appliquée). `_flush_pending_reservoir_writes()` est appelé avant tout checkpoint de
+reprise (§2.3) et à la fin de la boucle, même discipline "flush avant checkpoint" que G2/`AsyncFragmentWriter`
+— un buffer non vidé au moment d'un checkpoint casserait l'invariant de reprise (checkpoint avancé,
+écritures pas encore appliquées). Testé (CPU, `tests/test_reservoir_write_batching.py`) :
+équivalence bit-exacte buffer trié vs écriture immédiate sur un cas aléatoire (50 batches, flush
+à 17), et cas de collision construit à la main (deux batches visant le même offset avec des
+valeurs différentes, y compris quand les deux se retrouvent dans le même buffer avant flush).
+Le réservoir lui-même reste identique au tirage aléatoire près (mêmes indices `j`, mêmes valeurs
+`x_new`, seul l'ORDRE et le REGROUPEMENT des écritures physiques changent) — aucun impact sur la
+statistique de l'échantillonnage par réservoir (Algorithm R), uniquement sur la localité I/O.
 
 **G6 — Options PyTorch standard absentes.**
 Aucune occurrence dans tout le dépôt de : `attn_implementation` (SDPA/FA2 non forcé),
@@ -633,7 +649,7 @@ est précisément la direction annoncée.
 |---|---|---|---|---|---|
 | 1 | Batcher les prompts du juge (16–32) | `judge.py:210-340` | 8–16× sur le juge (33 min → 3 min) | 2 h | **fait, restructuré en 3 passes** (`_batched_generate`, `odd_one_out_judge`/`local_gemma_judge` unifiés) — testé sur GPU (job 44570) : **6,51× confirmé** (49,7s → 7,6s, 24 prompts), mais **1/24 désaccord texte-à-texte**, pas 0. Cause identifiée : non-associativité flottante des kernels batchés GPU (matmul/attention), pas un bug de masque — connue et documentée dans la littérature ML systems, affecte potentiellement tout service LLM batché, greedy (`do_sample=False`) n'élimine que l'aléa du sampling, pas cet effet. Le désaccord observé porte sur un prompt de test long (32 tokens, résumé ouvert) ; le stade le plus sensible en production (odd-one-out, 8 tokens, un seul chiffre à extraire) n'a pas été testé séparément — à faire avant de faire confiance à `interp_score` en routine. Point de comparaison : le protocole odd-one-out lui-même est déjà bruité à 31% par feature isolée (`CLAUDE.md`, §13.1) — ce bruit de batching s'ajoute à un bruit déjà accepté et plus grand, pas une nouvelle classe de risque. Code conservé (pas de régression comme G1), caveat documenté au lieu d'un revert. |
 | 2 | Troncature `layers[:LAYER]`/`layers[:LAYER+1]` + hook direct, jamais `output_hidden_states` | `saev5.py` | 1,4–2,0× sur le forward P1 | 3 h | **fait, vérifié GPU** (job 44540, `torch.equal`=True, écart=0,0, 1,98×, -13 Go VRAM) — une première variante (`output_hidden_states=True` + troncature) a échoué à l'équivalence et a été identifiée avant déploiement, cf. §2.2 |
-| 3 | Fragments shardés + écriture asynchrone | `fragment_store.py`, `saev5.py:920` | 2–2,5× sur le wall-clock d'extraction | 1 j | à faire — tenu à l'écart tant que le run en cours (job 44211) n'est pas terminé, changerait le format sur disque |
+| 3 | Fragments shardés + écriture asynchrone | `fragment_store.py`, `saev5.py:920` | 2–2,5× sur le wall-clock d'extraction | 1 j | **partiellement fait** : écriture en arrière-plan faite et testée (`AsyncFragmentWriter`, CPU, `tests/test_async_fragment_writer.py`), avec discipline `flush()` avant tout checkpoint de reprise (§2.3). Sharding (1 fichier pour 1 000 docs) non touché — changerait le format sur disque, tenu à l'écart tant qu'un run de référence n'est pas relancé avec le nouveau format |
 | 4 | Reprise incrémentale (P1 et P2) | `saev5.py:783`, `phrase_sae.py:117` | supprime le risque de 20 h perdues | 1 j | à faire |
 | 5 | `torch_dtype=bfloat16` pour F2LLM | `phrase_sae.py:126` | jusqu'à ~10× sur l'extraction P2 | 5 min | **fait** (même correctif appliqué aussi à `latent_terms.py:load_f2llm`, hors périmètre initial, même bug) |
 | 6 | Stocker `e` en int8 au lieu de `x` | `saev5.py`, `fragment_store.py` | disque 1,6 To → 0,4 To ; entraînement ×3,4 | 2 j | à faire — la fidélité SAE Boost (§1.3, encodeur sur `x`) qui forçait ce doublon est corrigée, ce n'est plus qu'un choix de perf, tenu à l'écart tant que le run en cours n'est pas terminé |
@@ -642,7 +658,8 @@ est précisément la direction annoncée.
 | 9 | `LogisticRegression` sur CSR sparse | `metrics.py` | 100–1000× sur la sonde | 1 h | **fait et testé** (CPU) |
 | 10 | Dégroupage O(n log n) de `phrase_to_doc` | `saev5.py:1512` | supprime un O(n²) | 30 min | **fait et testé** (CPU, `group_indices_by_doc`) |
 | 11 | TF32/SDPA/`inference_mode`/`expandable_segments` | global | 3–8 % cumulés | 1 h | partiellement fait (`set_float32_matmul_precision` posé dans `phrase_sae.py`/`latent_terms.py`) ; SDPA/`inference_mode`/`expandable_segments` pas encore |
-| 12 | Exclure le filler du ré-encodage | `saev5.py`, `src/data/preparation.py::build_reencode_targets` | jusqu'à ×13 sur cette passe (92% du corpus sur le run de référence, jamais relu en aval) | 2 h | **fait et testé** (CPU) — trouvé en observant job 44211 tourner dedans en direct. Extraction encore non allégée côté filler (même gain de nature, pas encore appliqué, cf. §2.5) |
+| 12 | Exclure le filler du ré-encodage **et** de l'extraction | `saev5.py`, `src/data/preparation.py::build_reencode_targets`/`is_filler_document` | jusqu'à ×13 sur le ré-encodage, gain GPU+disque proportionné sur l'extraction (92% du corpus sur le run de référence, jamais relu en aval) | 2 h + 2 h | **fait et testé** (CPU) pour les deux passes — ré-encodage (§2.5) trouvé en observant job 44211 tourner dedans en direct, extraction (G7, §2.2) fait ensuite sur confirmation explicite que le premier correctif était sûr. Comparaison contrôlée à trois lancée pour isoler la contribution de chaque correctif (jobs 44560 v1 sans correctif / 44571 v2 ré-encodage seul / 44572 v3 les deux) |
+| 13 | Amortir les écritures aléatoires du réservoir (buffer trié) | `saev5.py` (`_flush_pending_reservoir_writes`) | supprime le write-amplification aléatoire sur le memmap 768 Go en phase 2 de l'échantillonnage par réservoir | 2 h | **fait et testé** (CPU, `tests/test_reservoir_write_batching.py`) — équivalence bit-exacte au chemin d'écriture immédiate, y compris résolution des collisions, vérifiée avant déploiement |
 
 Bout à bout sur un run type : **20 h 57 d'extraction → estimation 5–7 h**, entraînement extra
 divisé par ~5, juge divisé par ~10, empreinte disque divisée par 4. Les items 1, 5 et 10 sont

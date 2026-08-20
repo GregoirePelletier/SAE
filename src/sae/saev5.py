@@ -999,6 +999,39 @@ def run_llm_max_pool_pipeline(
         # AsyncFragmentWriter), sinon un crash pourrait laisser un checkpoint plus
         # avancé que les fragments réellement sur disque.
         _fragment_writer = AsyncFragmentWriter()
+
+        # Écritures aléatoires du réservoir amorties (G5, AUDIT_SAE_2026-08.md
+        # §2.2) : en phase 2 (réservoir déjà plein), `reservoir[j[hit]] = x_new[hit]`
+        # touche une position dispersée sur [0, N_TOKENS_EXTRA_TRAIN) à chaque
+        # remplacement -- write-amplification aléatoire pure sur un volume réseau.
+        # Les remplacements sont accumulés dans un buffer puis appliqués triés par
+        # indice (un seul indexing PyTorch, meilleure coalescence des pages sales
+        # côté OS/filesystem) au lieu d'un par un dans l'ordre temporel d'arrivée.
+        # Buffer volontairement petit devant N_TOKENS_EXTRA_TRAIN (quelques dizaines
+        # de milliers d'entrées, typiquement <1e6) : le biais de collision
+        # intra-buffer (déjà accepté pour un seul batch, cf. commentaire plus bas)
+        # reste négligeable à cette taille (probabilité ~buffer²/(2N)).
+        _RESERVOIR_FLUSH_SIZE = 50_000
+        _pending_j: list[torch.Tensor] = []
+        _pending_x: list[torch.Tensor] = []
+
+        def _flush_pending_reservoir_writes() -> None:
+            if not _pending_j:
+                return
+            j_cat = torch.cat(_pending_j)
+            x_cat = torch.cat(_pending_x)
+            # stable=True : si deux entrées du buffer ciblent le même indice
+            # (collision), leur ordre relatif d'origine (temporel, ordre d'ajout
+            # au buffer) est préservé après le tri par indice -- la dernière
+            # entrée temporelle reste la dernière écrite pour cet indice après
+            # tri, exactement comme le ferait le code non bufferisé (écriture
+            # immédiate, la plus récente écrase la précédente). Sans stable=True,
+            # un tri par indice pourrait faire "gagner" une entrée plus ancienne.
+            order = torch.argsort(j_cat, stable=True)
+            reservoir[j_cat[order]] = x_cat[order]
+            _pending_j.clear()
+            _pending_x.clear()
+
         with torch.no_grad():
             for i in tqdm(range(_resume_from, len(all_texts), EXTRACTION_BATCH_SIZE), desc="Extraction P1"):
                 batch = all_texts[i: i + EXTRACTION_BATCH_SIZE]
@@ -1096,8 +1129,14 @@ def run_llm_max_pool_pipeline(
                             m = n_residuals_seen + torch.arange(1, x_new.shape[0] + 1)
                             j = (torch.rand(x_new.shape[0]) * m).long()
                             hit = j < N_TOKENS_EXTRA_TRAIN
-                            reservoir[j[hit]] = x_new[hit]
+                            # G5 : accumulé plutôt qu'écrit immédiatement -- cf.
+                            # _flush_pending_reservoir_writes ci-dessus pour la
+                            # justification (amortissement des écritures aléatoires).
+                            _pending_j.append(j[hit])
+                            _pending_x.append(x_new[hit])
                             n_residuals_seen += x_new.shape[0]
+                            if sum(t.shape[0] for t in _pending_j) >= _RESERVOIR_FLUSH_SIZE:
+                                _flush_pending_reservoir_writes()
 
                 # Checkpoint (R1) : tous les documents de ce lot sont désormais
                 # traités (fragment + réservoir) -- point cohérent où avancer
@@ -1111,8 +1150,12 @@ def run_llm_max_pool_pipeline(
                         or _GracefulShutdown.requested):
                     # flush() AVANT d'avancer le checkpoint -- sinon celui-ci pourrait
                     # prétendre "traité" un document dont le fragment n'a pas encore
-                    # atteint le disque (cf. docstring AsyncFragmentWriter).
+                    # atteint le disque (cf. docstring AsyncFragmentWriter), OU dont le
+                    # tirage réservoir (G5) est encore dans le buffer en attente --
+                    # sans ce flush, une reprise verrait n_residuals_seen avancé sans
+                    # que le réservoir reflète réellement avoir vu ces tokens.
                     _fragment_writer.flush()
+                    _flush_pending_reservoir_writes()
                     _write_extraction_progress(CACHE_DIR, _doc_done_through,
                                                 n_residuals_seen, n_residuals_collected)
                     _last_checkpoint_doc = _doc_done_through
@@ -1127,8 +1170,13 @@ def run_llm_max_pool_pipeline(
             _fragment_writer.close()
             if _hook_handle is not None:
                 _hook_handle.remove()
-            sys.exit(0)
+            sys.exit(0)  # _flush_pending_reservoir_writes() déjà appelé dans le bloc checkpoint ci-dessus
         _fragment_writer.close()
+        # Écritures réservoir en attente : le dernier lot peut être resté sous le
+        # seuil _RESERVOIR_FLUSH_SIZE sans jamais avoir déclenché de flush --
+        # sans celui-ci, les derniers documents seraient sous-représentés dans
+        # le réservoir final (leurs tirages de remplacement jamais appliqués).
+        _flush_pending_reservoir_writes()
 
         # Extraction complète : le checkpoint n'a plus lieu d'être, la prochaine
         # invocation doit se fier au test fragments-complets standard (ligne
