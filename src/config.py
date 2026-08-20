@@ -58,9 +58,16 @@ N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
 # (12B en simple passe avant, marge VRAM probable). Configurable pour permettre
 # un balayage empirique avant le run de référence à grande échelle.
 EXTRACTION_BATCH_SIZE = int(os.environ.get("EXTRACTION_BATCH_SIZE", "4"))
+# Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : nombre de documents
+# entre deux checkpoints de progression de l'extraction P1 (compteurs du
+# réservoir de Vitter + indice du prochain document à traiter). Borne le
+# travail reperdu en cas de crash/SIGKILL à ce nombre de documents, pas à
+# l'extraction entière -- ne pas descendre trop bas (checkpoint = écriture
+# disque, même légère) ni trop haut (perte de travail proportionnelle).
+EXTRACTION_CHECKPOINT_INTERVAL = int(os.environ.get("EXTRACTION_CHECKPOINT_INTERVAL", "2000"))
 # Sanity-check (Korznikov et al. 2026, "Sanity Checks for Sparse Autoencoders : Do SAEs
 # Beat Random Baselines?") : construit un FrozenDecoderExtendedSAE (décodeur figé,
-# initialisation aléatoire jamais entraînée) à la place d'ExtendedSAE, pour tester si nos
+# initialisation aléatoire jamais entraînée) à la place de SAEBoostResidualSAE, pour tester si nos
 # métriques (juge odd-one-out, sondes de classification) distinguent un apprentissage de
 # features significatif d'un simple ajustement de l'encodeur à des directions arbitraires.
 SANITY_CHECK_FROZEN_DECODER = os.environ.get("SANITY_CHECK_FROZEN_DECODER", "0").strip() in ("1", "true", "True")
@@ -112,7 +119,7 @@ SAE_SNAPSHOT   = os.environ.get("SAE_SNAPSHOT", "0" * 40)
 # bf16 par défaut, y compris en local. Testé empiriquement : Gemma-3 a des activations
 # "massives" documentées dans le residual stream (outliers ~1e5) qui dépassent le max
 # représentable en fp16 (~65504) -> overflow silencieux vers inf/nan, qui contamine tout
-# l'entraînement de ExtendedSAE (Loss=nan dès l'epoch 1, confirmé sur run local 270m).
+# l'entraînement de SAEBoostResidualSAE (Loss=nan dès l'epoch 1, confirmé sur run local 270m).
 # bf16 a le même exposant 8 bits que fp32 (plage jusqu'à ~3e38) donc pas d'overflow, au
 # prix d'un calcul plus lent sur Turing (pas de tensor cores bf16 natifs, upcast logiciel)
 # — acceptable ici vu la taille de 270M. fp16 reste possible via env si un futur modèle

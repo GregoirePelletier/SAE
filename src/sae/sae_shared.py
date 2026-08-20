@@ -1,5 +1,5 @@
 """
-sae_shared.py — Harnais d'entraînement ExtendedSAE + steering + ré-exports
+sae_shared.py — Harnais d'entraînement SAEBoostResidualSAE + steering + ré-exports
 partagés entre les deux pipelines.
 """
 
@@ -39,6 +39,8 @@ try:
         sample_fineweb2_chunks,
         split_into_phrases,
         group_indices_by_doc,
+        build_reencode_targets,
+        is_filler_document,
         load_and_clean_emails,
         build_email_train_test_corpus,
         url_match,
@@ -50,6 +52,8 @@ except ImportError:
         sample_fineweb2_chunks,
         split_into_phrases,
         group_indices_by_doc,
+        build_reencode_targets,
+        is_filler_document,
         load_and_clean_emails,
         build_email_train_test_corpus,
         url_match,
@@ -69,9 +73,9 @@ except ImportError:
     )
 
 try:
-    from src.sae.frozen_core import ExtendedSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
+    from src.sae.frozen_core import SAEBoostResidualSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
 except ImportError:
-    from frozen_core import ExtendedSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
+    from frozen_core import SAEBoostResidualSAE, FrozenCoreResidualSAE, FrozenDecoderExtendedSAE
 
 try:
     from src.sae.phrase_sae import (
@@ -154,7 +158,7 @@ def load_or_train_extended_sae(
 ) -> Tuple[nn.Module, Dict[str, List[float]]]:
     """
     Harnais d'entraînement et de restauration pour l'extension sémantique
-    ExtendedSAE (Pipeline 1).
+    SAEBoostResidualSAE (Pipeline 1).
     """
     save_path = os.path.join(save_dir, f"{model_name}.pt")
     history_path = save_path.replace(".pt", "_history.json")
@@ -215,7 +219,7 @@ def load_or_train_extended_sae(
             batch_idx = epoch_perm[i:i + BATCH_SIZE]
             b = acts_train[batch_idx].to(device).to(torch.bfloat16)
             optimizer.zero_grad()
-            # return_feature_acts=False : ce harnais est scopé à ExtendedSAE/
+            # return_feature_acts=False : ce harnais est scopé à SAEBoostResidualSAE/
             # FrozenCoreResidualSAE (docstring ci-dessus), dont forward() n'alloue
             # feature_acts ([B, d_core+d_extra] fp32) que si demandé -- jamais lu
             # dans cette boucle, coûteux à chaque step (audit perf §2.4).

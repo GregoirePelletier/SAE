@@ -12,6 +12,8 @@ Une feature est "morte" si inactive depuis dead_steps_threshold steps
 import gc
 import json
 import os
+import shutil
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -121,7 +123,17 @@ class PhraseLevelSAE(nn.Module):
         self.W_dec.data = F.normalize(self.W_dec.data, dim=1)
 
 
-def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path: str = None) -> tuple[torch.Tensor, int]:
+def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path: str = None,
+                              shard_size: int = 100_000) -> tuple[torch.Tensor, int]:
+    """Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : sans
+    `cache_path`, comportement inchangé (pas de reprise possible, appelant
+    ponctuel type encodage d'une seule requête). Avec `cache_path`, les
+    embeddings sont shardés tous les `shard_size` phrases sur disque
+    (`{cache_path}_shards/shard_NNNNN.pt`) avec un checkpoint de progression
+    (`next_idx`) -- un crash/SIGKILL perd au plus `shard_size` phrases de
+    calcul GPU, jamais l'extraction entière. Le cache final
+    (`{cache_path}.pt`) et le comportement de restauration en tête de fonction
+    sont inchangés pour tout appelant existant."""
     if cache_path and os.path.exists(cache_path + ".pt"):
         print(f"  [Phrase] Restauration cache d'embeddings : {cache_path}.pt")
         emb = torch.load(cache_path + ".pt", map_location="cpu")
@@ -129,8 +141,10 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
 
     try:
         from src.config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
+        from src.storage.checkpoint import read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown
     except ImportError:
         from config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
+        from checkpoint import read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown
     # EMB_MODEL affiché (pas "F2LLM-v2-80M" figé) : le message était trompeur pour
     # tout run avec un backbone différent (ex. F2LLM-v2-330M, cf. RESULTS_TESTS.md).
     print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} (pooling={EMB_POOLING}, "
@@ -140,9 +154,42 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
         EMB_MODEL, local_files_only=True, torch_dtype=torch.bfloat16,
     ).to(DEFAULT_DEVICE).eval()
 
+    shard_dir = f"{cache_path}_shards" if cache_path else None
+    progress_path = f"{cache_path}_shards.progress.json" if cache_path else None
+
     all_embs, batch_size = [], 128
+    resume_from, n_shards_written = 0, 0
+    if shard_dir is not None:
+        os.makedirs(shard_dir, exist_ok=True)
+        progress = read_checkpoint(progress_path)
+        if progress is not None and 0 < progress["next_idx"] <= len(texts):
+            resume_from = progress["next_idx"]
+            n_shards_written = progress["n_shards"]
+            print(f"  [Phrase] Reprise à la phrase {resume_from}/{len(texts)} "
+                  f"({n_shards_written} shards déjà écrits).")
+            for s in range(n_shards_written):
+                all_embs.append(torch.load(os.path.join(shard_dir, f"shard_{s:05d}.pt"), map_location="cpu"))
+
+    current_shard, current_shard_count = [], 0
+
+    def _flush_shard(next_idx: int):
+        nonlocal current_shard, current_shard_count, n_shards_written
+        if not current_shard:
+            return
+        shard_tensor = torch.cat(current_shard, dim=0)
+        all_embs.append(shard_tensor)
+        if shard_dir is not None:
+            torch.save(shard_tensor, os.path.join(shard_dir, f"shard_{n_shards_written:05d}.pt"))
+        n_shards_written += 1
+        current_shard, current_shard_count = [], 0
+        if progress_path is not None:
+            write_checkpoint(progress_path, next_idx=next_idx, n_shards=n_shards_written)
+
+    if shard_dir is not None:
+        GracefulShutdown.install()
+    _early_exit = False
     with torch.no_grad():
-        for i in range(0, len(texts), batch_size):
+        for i in range(resume_from, len(texts), batch_size):
             enc = tokenizer(texts[i:i + batch_size], padding=True, truncation=True,
                             max_length=max_length, return_tensors="pt")
             input_ids = enc["input_ids"].to(DEFAULT_DEVICE)
@@ -163,11 +210,33 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
             # PhraseLevelSAE est entraîné from-scratch en fp32 : caster ici plutôt que de
             # laisser passer le dtype natif du checkpoint F2LLM (bf16 avec les versions
             # récentes de transformers) qui casse le backward (paramètres fp32 vs grad bf16).
-            all_embs.append(pooled_m.float().cpu())
+            current_shard.append(pooled_m.float().cpu())
+            current_shard_count += pooled_m.shape[0]
+            next_idx = i + pooled_m.shape[0]
+
+            if current_shard_count >= shard_size:
+                _flush_shard(next_idx)
+            if shard_dir is not None and GracefulShutdown.requested:
+                _flush_shard(next_idx)   # shard partiel : sans effet si déjà flushé ci-dessus
+                print(f"  [Phrase] Signal de coupure reçu -- checkpoint écrit à la phrase "
+                      f"{next_idx}/{len(texts)}, arrêt propre (reprise au prochain sbatch).")
+                _early_exit = True
+                break
+
+    if _early_exit:
+        del model, tokenizer
+        gc.collect(); torch.cuda.empty_cache()
+        sys.exit(0)
+
+    _flush_shard(len(texts))  # dernier shard, potentiellement partiel
 
     embeddings = torch.cat(all_embs, dim=0)
     if cache_path:
         torch.save(embeddings, cache_path + ".pt")
+        if progress_path is not None:
+            clear_checkpoint(progress_path)
+        if shard_dir is not None and os.path.isdir(shard_dir):
+            shutil.rmtree(shard_dir)  # cache final écrit : les shards intermédiaires ne servent plus
     del model, tokenizer
     gc.collect(); torch.cuda.empty_cache()
     return embeddings, embeddings.shape[1]

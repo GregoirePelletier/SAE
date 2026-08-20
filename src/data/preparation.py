@@ -223,6 +223,33 @@ def group_indices_by_doc(doc_ids) -> dict:
     return groups
 
 
+def is_filler_document(doc_global_idx: int, n_train: int, n_filler: int) -> bool:
+    """`doc_global_idx` tombe-t-il dans le bloc filler [n_train, n_train+n_filler)
+    de `all_texts = train_texts + volume_filler_texts + test_texts + diff_texts`
+    (saev5.py) ? Utilisé pour alléger l'extraction côté filler (allocation
+    core/fragment économisée, seul le résidu brut compte pour le réservoir,
+    cf. AUDIT_SAE_2026-08.md §2.2) -- distinct de la condition, plus large,
+    "ce document alimente-t-il le réservoir" (train ∪ filler, doc_global_idx <
+    n_train+n_filler), qui reste inchangée ailleurs."""
+    return n_train <= doc_global_idx < n_train + n_filler
+
+
+def build_reencode_targets(n_train: int, n_filler: int, n_total: int) -> list:
+    """Indices de documents à traiter par le ré-encodage ExtendedSAE/
+    SAEBoostResidualSAE (saev5.py), qui doit ignorer le bloc filler
+    [n_train, n_train+n_filler) situé entre train et test dans `all_texts =
+    train_texts + volume_filler_texts + test_texts + diff_texts`.
+
+    Le filler ne sert qu'à nourrir le réservoir de résidus PENDANT
+    L'EXTRACTION (volume de tokens pour entraîner SAEBoostResidualSAE) --
+    aucun consommateur en aval (sélection de features, juge, sondes) ne relit
+    jamais sa tranche de `all_doc_sae_acts`/fragments. Le ré-encoder serait un
+    travail pur perdu, potentiellement la majorité du corpus (filler
+    dominant sur un run à grand volume). Retourne train ∪ (test ∪ diff),
+    filler exclu, dans l'ordre d'origine."""
+    return list(range(n_train)) + list(range(n_train + n_filler, n_total))
+
+
 def build_email_train_test_corpus(
     mails_tsv_path: str,
     augmented_jsonl_path: str,

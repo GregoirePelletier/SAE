@@ -9,7 +9,7 @@ Format (torch.save, .pt) :
   { "token_strings": list[str],
     "rowptr": int64 [T+1], "cols": int32 [nnz], "vals": float16 [nnz],
     "shape": (T, d_total),
-    "raw_acts": bf16 [T, d_in] (optionnel, supprimé après entraînement ExtendedSAE) }
+    "raw_acts": bf16 [T, d_in] (optionnel, supprimé après entraînement SAEBoostResidualSAE) }
 
 Rétro-compat : load_fragment lit aussi les anciens doc_*.pkl denses et les
 convertit en CSR en mémoire (mêmes helpers utilisables partout).
@@ -19,9 +19,63 @@ from __future__ import annotations
 import os
 import glob
 import pickle
+import queue
+import threading
 
 import numpy as np
 import torch
+
+
+class AsyncFragmentWriter:
+    """Écriture de fragments en arrière-plan (audit perf G2,
+    AUDIT_SAE_2026-08.md §2.2) : `torch.save` est libérateur du GIL (I/O), un
+    seul thread consommateur suffit -- le débit est dominé par la latence de
+    métadonnées d'un volume réseau partagé (~1-5 ms/fichier), pas par le CPU
+    d'écriture. Le GPU ne doit jamais attendre le disque pour continuer.
+
+    IMPORTANT pour la reprise (R1) : `flush()` DOIT être appelé avant tout
+    checkpoint de progression qui prétend "ces documents sont traités" --
+    sinon un crash entre le checkpoint et l'écriture réelle du fragment
+    laisserait un état incohérent (checkpoint avancé, fragment absent),
+    invisible tant qu'on ne tente pas de relire ce fragment à la reprise."""
+
+    def __init__(self, maxsize: int = 64):
+        self._queue: "queue.Queue" = queue.Queue(maxsize=maxsize)
+        self._error: Exception | None = None
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def _worker(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is None:
+                self._queue.task_done()
+                break
+            path, payload = item
+            try:
+                torch.save(payload, path)
+            except Exception as e:  # noqa: BLE001 -- remonté à submit()/flush(), pas avalé
+                self._error = e
+            finally:
+                self._queue.task_done()
+
+    def submit(self, path: str, payload: dict) -> None:
+        if self._error is not None:
+            raise RuntimeError(f"Écriture de fragment en arrière-plan échouée : {self._error}") from self._error
+        self._queue.put((path, payload))
+
+    def flush(self) -> None:
+        """Bloque jusqu'à ce que toutes les écritures déjà soumises soient
+        terminées sur disque -- point de synchronisation nécessaire (et
+        suffisant) avant d'avancer un checkpoint de reprise."""
+        self._queue.join()
+        if self._error is not None:
+            raise RuntimeError(f"Écriture de fragment en arrière-plan échouée : {self._error}") from self._error
+
+    def close(self) -> None:
+        self.flush()
+        self._queue.put(None)
+        self._thread.join()
 
 
 # ─── chemins ───
@@ -68,6 +122,7 @@ def save_fragment(
     csr: tuple = None,                     # (rowptr, cols, vals, shape) déjà construit
     d_total: int = None,                   # largeur logique (core + extra)
     raw_acts: torch.Tensor = None,
+    writer: "AsyncFragmentWriter" = None,  # si fourni, écriture en arrière-plan (audit perf G2)
 ) -> str:
     if csr is None:
         assert acts_dense is not None
@@ -81,9 +136,15 @@ def save_fragment(
         "shape": (T, int(d_total or shape[1])),
     }
     if raw_acts is not None:
+        # .cpu() ici, synchrone : le payload remis à writer.submit() ne doit
+        # plus contenir aucun tenseur GPU (le thread d'écriture tourne
+        # indépendamment de tout contexte CUDA appelant).
         payload["raw_acts"] = raw_acts.detach().to(torch.bfloat16).cpu()
     path = _pt_path(fragments_dir, doc_id)
-    torch.save(payload, path)
+    if writer is not None:
+        writer.submit(path, payload)
+    else:
+        torch.save(payload, path)
     # supprime l'ancien pkl dense s'il existe (migration in-place)
     legacy = _pkl_path(fragments_dir, doc_id)
     if os.path.exists(legacy):

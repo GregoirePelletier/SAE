@@ -8,6 +8,7 @@ embeddings de phrase.
 """
 
 import os
+import sys
 import time
 import urllib3
 import requests
@@ -139,15 +140,54 @@ def open_mmap_reservoir(path, n_rows, d_in, dtype):
     sous pression mémoire, contrairement à une allocation anonyme."""
     return torch.from_file(path, shared=True, size=n_rows * d_in, dtype=dtype).view(n_rows, d_in)
 
+
+# Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) -- brique partagée
+# avec phrase_sae.py (Pipeline 2), cf. docstring de src/storage/checkpoint.py.
+try:
+    from src.storage.checkpoint import (
+        checkpoint_path as _checkpoint_path,
+        read_checkpoint as _read_checkpoint,
+        write_checkpoint as _write_checkpoint,
+        clear_checkpoint as _clear_checkpoint,
+        GracefulShutdown as _GracefulShutdown,
+    )
+except ImportError:
+    from checkpoint import (
+        checkpoint_path as _checkpoint_path,
+        read_checkpoint as _read_checkpoint,
+        write_checkpoint as _write_checkpoint,
+        clear_checkpoint as _clear_checkpoint,
+        GracefulShutdown as _GracefulShutdown,
+    )
+
+
+def _extraction_progress_path(cache_dir: str) -> str:
+    return _checkpoint_path(cache_dir, "p1_extraction")
+
+
+def _read_extraction_progress(cache_dir: str) -> dict | None:
+    return _read_checkpoint(_extraction_progress_path(cache_dir))
+
+
+def _write_extraction_progress(cache_dir: str, next_doc_idx: int, n_residuals_seen: int,
+                                n_residuals_collected: int) -> None:
+    _write_checkpoint(
+        _extraction_progress_path(cache_dir),
+        next_doc_idx=next_doc_idx, n_residuals_seen=n_residuals_seen,
+        n_residuals_collected=n_residuals_collected,
+    )
+
+
 from sae_shared import (
     ENERGY_KEYWORDS, SPORTS_KEYWORDS, SUPPORT_KEYWORDS,
     ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
     prepare_domain_dataset, sample_fineweb2_chunks, split_into_phrases, group_indices_by_doc,
+    build_reencode_targets, is_filler_document,
     compute_metrics, compute_rho_sae,
     downstream_classification,
     steer_activations, steer_and_decode,
     build_email_train_test_corpus,
-    FrozenCoreResidualSAE, ExtendedSAE, FrozenDecoderExtendedSAE,
+    FrozenCoreResidualSAE, SAEBoostResidualSAE, FrozenDecoderExtendedSAE,
     PhraseLevelSAE, extract_f2llm_embeddings,
     encode_documents_with_phrase_sae, load_or_train_sae,
     compute_sae_metrics,
@@ -187,12 +227,12 @@ def _trim_host_memory():
 try:
     from src.storage.fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
-        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra, AsyncFragmentWriter,
     )
 except ImportError:
     from fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
-        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra, AsyncFragmentWriter,
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -238,6 +278,7 @@ from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
+    EXTRACTION_CHECKPOINT_INTERVAL,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -774,26 +815,45 @@ def run_llm_max_pool_pipeline(
     n_train = len(train_texts)
     n_filler = len(volume_filler_texts)
     n_test  = len(test_texts)
+    # Filler jamais fragmenté (allègement extraction, AUDIT_SAE_2026-08.md §2.2/§2.5) :
+    # seul son résidu brut compte, pour le réservoir -- ni encodage core ni fragment
+    # disque. n_fragmented_expected exclut donc la plage filler, contrairement à
+    # len(all_texts).
+    n_fragmented_expected = n_train + n_test + len(diff_texts)
 
     _need_extraction = True
     _need_residuals = USE_FROZEN_CORE and not os.path.exists(cache_residuals_meta_path)
-    
+
     if os.path.exists(cache_acts_path) and os.path.exists(token_fragments_dir):
         fragment_ids = list_fragment_ids(token_fragments_dir)
-        if len(fragment_ids) == len(all_texts):
+        if len(fragment_ids) == n_fragmented_expected:
             print("  [P1] Restauration du cache (activations documents et fragments disques)...")
             all_doc_sae_acts = torch.load(cache_acts_path, map_location="cpu", weights_only=True)
             _need_extraction = False
             
             if _need_residuals:
-                print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
+                # Le filler n'a plus de fragment (allègement extraction ci-dessus) :
+                # cette reconstruction ne peut plus porter que sur le train -- un
+                # réservoir reconstruit ainsi NE contient PAS la contribution du
+                # filler qu'un run frais aurait collectée. Cas déjà marginal avant ce
+                # correctif (fragments complets mais résidus seuls manquants,
+                # typiquement une suppression manuelle) ; --retrain (supprimer
+                # token_fragments_dir) reste la seule voie pour un réservoir
+                # filler-inclusif à l'identique d'un run frais.
+                if n_filler > 0:
+                    print(f"  [P1] ATTENTION : reconstruction de raw_residuals depuis les fragments "
+                          f"locaux limitée au train ({n_train} docs) -- le filler ({n_filler} docs) "
+                          "n'a plus de fragment (allègement extraction), sa contribution au "
+                          "réservoir est absente de cette reconstruction.")
+                else:
+                    print("  [P1] Reconstruction de raw_residuals depuis les fragments de tokens locaux...")
                 # Buffer memmap disque (cf. open_mmap_reservoir) : les écritures
                 # vont directement sur disque par page, jamais de RAM anonyme à
                 # N_TOKENS_EXTRA_TRAIN*d_in*2 octets.
                 _residuals_buf = open_mmap_reservoir(
                     cache_residuals_path, N_TOKENS_EXTRA_TRAIN, pretrained_sae.cfg.d_in, TORCH_DTYPE)
                 n_collected = 0
-                for _fid in fragment_ids[:n_train + n_filler]:
+                for _fid in fragment_ids[:n_train]:
                     frag = load_fragment(token_fragments_dir, _fid)
                     if "raw_acts" in frag:
                         chunk = frag["raw_acts"]
@@ -810,8 +870,30 @@ def run_llm_max_pool_pipeline(
                     _need_residuals = False
                 del _residuals_buf
         else:
-            print("  [P1] Fragments disques incomplets. Re-extraction forcée.")
+            print("  [P1] Fragments disques incomplets.")
             _need_extraction = True
+
+    # Reprise (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : le critère est "quel est le
+    # prochain document non traité", jamais "le run est-il complet". _resume_from>0
+    # signifie qu'un checkpoint valide existe et couvre déjà les documents
+    # [0, _resume_from) -- fragments ET compteurs de réservoir cohérents entre eux
+    # (le checkpoint n'avance qu'après que les deux soient écrits pour un lot
+    # entier, cf. écriture du checkpoint dans la boucle ci-dessous). Les fragments
+    # au-delà de _resume_from, s'il en existe (run précédent tué en plein lot),
+    # sont volontairement ignorés/réécrits -- on ne leur fait pas confiance.
+    _resume_from, _resume_n_seen, _resume_n_collected = 0, 0, 0
+    if _need_extraction:
+        _progress = _read_extraction_progress(CACHE_DIR)
+        if _progress is not None and 0 < _progress["next_doc_idx"] < len(all_texts):
+            _resume_from = _progress["next_doc_idx"]
+            _resume_n_seen = _progress["n_residuals_seen"]
+            _resume_n_collected = _progress["n_residuals_collected"]
+            print(f"  [P1] Reprise au document {_resume_from}/{len(all_texts)} "
+                  f"(checkpoint précédent, {_resume_n_collected} résidus déjà collectés).")
+        elif _progress is not None:
+            print("  [P1] Checkpoint présent mais incohérent avec l'état des fragments "
+                  "-- re-extraction complète forcée plutôt que de faire confiance à un "
+                  "état ambigu.")
 
     if _need_extraction:
         print(f"  [P1] Extraction activations Gemma-3 ({MODEL_ID}, layer {LAYER}, hook {HOOK_TYPE})...")
@@ -878,9 +960,24 @@ def run_llm_max_pool_pipeline(
             raise ValueError(f"HOOK_TYPE={HOOK_TYPE!r} non supporté (resid_post/attn_out/mlp_out).")
         llm.model.language_model.layers = llm.model.language_model.layers[:_n_layers_needed]
 
-        all_doc_sae_acts = []
-        n_residuals_collected = 0
-        n_residuals_seen = 0      # total de tokens train vus (dénominateur réservoir)
+        # Reprise : reconstruit les vecteurs déjà traités [0, _resume_from) depuis
+        # leurs fragments (doc_maxpool, CPU, O(nnz) -- pas de GPU, quasi-instantané
+        # même pour des dizaines de milliers de documents) plutôt que de les
+        # recalculer sur GPU. Compteurs de réservoir repris à leur valeur persistée.
+        # Filler (allègement extraction, §2.2) : aucun fragment -> placeholder,
+        # jamais lu en aval (mêmes garanties que build_reencode_targets).
+        if _resume_from > 0:
+            print(f"  [P1] Reconstruction de {_resume_from} vecteurs déjà extraits depuis les fragments...")
+            all_doc_sae_acts = []
+            for _di in tqdm(range(_resume_from), desc="Reprise (fragments->vecteurs)"):
+                if is_filler_document(_di, n_train, n_filler):
+                    all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))
+                else:
+                    all_doc_sae_acts.append(doc_maxpool(load_fragment(token_fragments_dir, _di)))
+        else:
+            all_doc_sae_acts = []
+        n_residuals_collected = _resume_n_collected
+        n_residuals_seen = _resume_n_seen      # total de tokens train vus (dénominateur réservoir)
         # Buffer préalloué UNE SEULE FOIS à la taille finale (pas de liste de
         # chunks + torch.cat, qui doublerait transitoirement le pic mémoire).
         # Rempli directement par tranches (phase 1) puis par écriture indexée
@@ -893,8 +990,17 @@ def run_llm_max_pool_pipeline(
                                           pretrained_sae.cfg.d_in, TORCH_DTYPE)
                      if USE_FROZEN_CORE else None)
 
+        _GracefulShutdown.install()
+        _last_checkpoint_doc = _resume_from
+        _early_exit = False
+        # Écriture de fragments en arrière-plan (audit perf G2, AUDIT_SAE_2026-08.md
+        # §2.2) : le GPU n'attend plus le disque pour continuer -- flush() OBLIGATOIRE
+        # avant tout checkpoint de reprise qui avance next_doc_idx (cf. docstring
+        # AsyncFragmentWriter), sinon un crash pourrait laisser un checkpoint plus
+        # avancé que les fragments réellement sur disque.
+        _fragment_writer = AsyncFragmentWriter()
         with torch.no_grad():
-            for i in tqdm(range(0, len(all_texts), EXTRACTION_BATCH_SIZE), desc="Extraction P1"):
+            for i in tqdm(range(_resume_from, len(all_texts), EXTRACTION_BATCH_SIZE), desc="Extraction P1"):
                 batch = all_texts[i: i + EXTRACTION_BATCH_SIZE]
                 inputs = tokenizer(
                     batch, return_tensors="pt", padding=True,
@@ -931,29 +1037,45 @@ def run_llm_max_pool_pipeline(
                     if keep.sum() == 0:   # garde-fou doc vidé par le masquage
                         keep = inputs["attention_mask"][b].bool()
                     filtered = acts[b, keep]
-                    filtered_ids = inputs["input_ids"][b, keep]
 
-                    token_sae_acts = pretrained_sae.encode(filtered)
-                    
-                    # Stockage SPARSE (CSR) : ~250 Ko/doc au lieu de ~400 Mo dense a width 262k.
-                    d_total_frag = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
-                    if USE_FROZEN_CORE:
-                        doc_sae_vec = torch.cat([
-                            token_sae_acts.max(dim=0).values,
-                            torch.zeros(D_EXTRA, dtype=token_sae_acts.dtype, device=token_sae_acts.device),
-                        ])
+                    # Allègement filler (AUDIT_SAE_2026-08.md §2.2/§2.5) : le filler ne
+                    # sert qu'à nourrir le réservoir ci-dessous (volume de tokens pour
+                    # entraîner SAEBoostResidualSAE) -- son rôle en aval s'arrête là,
+                    # aucun consommateur ne relit jamais son fragment ni sa case
+                    # d'all_doc_sae_acts (build_reencode_targets l'exclut déjà du
+                    # ré-encodage, §2.5). Ni encodage core (pretrained_sae.encode,
+                    # coût GPU dominant par document) ni écriture de fragment (I/O
+                    # disque) pour ces documents -- seul `filtered` (résidu brut)
+                    # compte, déjà disponible pour la mise à jour du réservoir.
+                    is_filler_doc = is_filler_document(doc_global_idx, n_train, n_filler)
+                    if not is_filler_doc:
+                        filtered_ids = inputs["input_ids"][b, keep]
+                        token_sae_acts = pretrained_sae.encode(filtered)
+
+                        # Stockage SPARSE (CSR) : ~250 Ko/doc au lieu de ~400 Mo dense a width 262k.
+                        d_total_frag = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
+                        if USE_FROZEN_CORE:
+                            doc_sae_vec = torch.cat([
+                                token_sae_acts.max(dim=0).values,
+                                torch.zeros(D_EXTRA, dtype=token_sae_acts.dtype, device=token_sae_acts.device),
+                            ])
+                        else:
+                            doc_sae_vec = token_sae_acts.max(dim=0).values
+
+                        save_fragment(
+                            token_fragments_dir, doc_global_idx,
+                            token_strings=tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
+                            acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_total_frag
+                            d_total=d_total_frag,
+                            raw_acts=filtered,
+                            writer=_fragment_writer,
+                        )
+                        all_doc_sae_acts.append(doc_sae_vec.cpu())
                     else:
-                        doc_sae_vec = token_sae_acts.max(dim=0).values
-
-                    save_fragment(
-                        token_fragments_dir, doc_global_idx,
-                        token_strings=tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                        acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_total_frag
-                        d_total=d_total_frag,
-                        raw_acts=filtered,
-                    )
-
-                    all_doc_sae_acts.append(doc_sae_vec.cpu())
+                        # Placeholder bon marché : garde all_doc_sae_acts aligné sur
+                        # doc_global_idx (liste construite par append, dans l'ordre) --
+                        # jamais lu en aval (cf. slicing train/test/diff plus bas).
+                        all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))
 
                     if USE_FROZEN_CORE and doc_global_idx < n_train + n_filler:
                         # Réservoir (Vitter, Algorithm R) : échantillon uniforme
@@ -976,6 +1098,42 @@ def run_llm_max_pool_pipeline(
                             hit = j < N_TOKENS_EXTRA_TRAIN
                             reservoir[j[hit]] = x_new[hit]
                             n_residuals_seen += x_new.shape[0]
+
+                # Checkpoint (R1) : tous les documents de ce lot sont désormais
+                # traités (fragment + réservoir) -- point cohérent où avancer
+                # next_doc_idx. Périodique (EXTRACTION_CHECKPOINT_INTERVAL) pour
+                # borner le travail reperdu sur un SIGKILL sans handler, ET à
+                # chaque lot si un signal de coupure a été reçu (arrêt imminent :
+                # mieux vaut un léger surcoût d'écriture qu'un lot de travail
+                # perdu juste avant le SIGKILL).
+                _doc_done_through = i + acts.shape[0]
+                if (_doc_done_through - _last_checkpoint_doc >= EXTRACTION_CHECKPOINT_INTERVAL
+                        or _GracefulShutdown.requested):
+                    # flush() AVANT d'avancer le checkpoint -- sinon celui-ci pourrait
+                    # prétendre "traité" un document dont le fragment n'a pas encore
+                    # atteint le disque (cf. docstring AsyncFragmentWriter).
+                    _fragment_writer.flush()
+                    _write_extraction_progress(CACHE_DIR, _doc_done_through,
+                                                n_residuals_seen, n_residuals_collected)
+                    _last_checkpoint_doc = _doc_done_through
+                if _GracefulShutdown.requested:
+                    print(f"  [P1] Signal de coupure reçu -- checkpoint écrit au document "
+                          f"{_doc_done_through}/{len(all_texts)}, arrêt propre "
+                          "(reprise au prochain sbatch).")
+                    _early_exit = True
+                    break
+
+        if _early_exit:
+            _fragment_writer.close()
+            if _hook_handle is not None:
+                _hook_handle.remove()
+            sys.exit(0)
+        _fragment_writer.close()
+
+        # Extraction complète : le checkpoint n'a plus lieu d'être, la prochaine
+        # invocation doit se fier au test fragments-complets standard (ligne
+        # ~845) plutôt qu'à un checkpoint devenu obsolète s'il reste sur disque.
+        _clear_checkpoint(_extraction_progress_path(CACHE_DIR))
 
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
         torch.save(all_doc_sae_acts, cache_acts_path)
@@ -1013,7 +1171,7 @@ def run_llm_max_pool_pipeline(
             if SANITY_CHECK_FROZEN_DECODER:
                 ext_sae = FrozenDecoderExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             else:
-                ext_sae = ExtendedSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
+                ext_sae = SAEBoostResidualSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
             # L'encodeur extra lit désormais x, pas le résidu e (SAE Boost §3.1,
             # correctif AUDIT_SAE_2026-08.md §1.3) -- un checkpoint entraîné avant
@@ -1053,7 +1211,7 @@ def run_llm_max_pool_pipeline(
                 raw_residuals = None
 
             if raw_residuals is not None:
-                print(f"  [P1] Entraînement ExtendedSAE sur {len(raw_residuals)} tokens résidus...")
+                print(f"  [P1] Entraînement SAEBoostResidualSAE sur {len(raw_residuals)} tokens résidus...")
                 with torch.no_grad():
                     sample = raw_residuals[:min(8192, len(raw_residuals))].to(DEVICE).to(TORCH_DTYPE)
                     core_acts = pretrained_sae.encode(sample)
@@ -1061,7 +1219,7 @@ def run_llm_max_pool_pipeline(
                     domain_residuals_cpu = (sample - core_out).cpu().float()
                     # x lui-même (appairé aux mêmes tokens que domain_residuals_cpu) : requis
                     # pour calibrer encoder_input_scale, l'encodeur extra lisant x et non plus
-                    # le résidu (SAE Boost §3.1, cf. frozen_core.py::ExtendedSAE).
+                    # le résidu (SAE Boost §3.1, cf. frozen_core.py::SAEBoostResidualSAE).
                     domain_inputs_cpu = sample.cpu().float()
                     del sample, core_acts, core_out
                     gc.collect(); torch.cuda.empty_cache()
@@ -1080,7 +1238,7 @@ def run_llm_max_pool_pipeline(
                         domain_inputs=domain_inputs_cpu,
                     ).to(DEVICE)
                 else:
-                    ext_sae = ExtendedSAE(
+                    ext_sae = SAEBoostResidualSAE(
                         pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
                         domain_residuals=domain_residuals_cpu, domain_inputs=domain_inputs_cpu,
                     ).to(DEVICE)
@@ -1096,7 +1254,7 @@ def run_llm_max_pool_pipeline(
                         "config": {"d_extra": D_EXTRA, "k_extra": K_EXTRA, "layer": LAYER,
                                    "encoder_input": "x"}}
                 torch.save(ckpt, frozen_core_path)
-                print(f"  [P1] ExtendedSAE sauvegardé : {frozen_core_path}")
+                print(f"  [P1] SAEBoostResidualSAE sauvegardé : {frozen_core_path}")
                 del raw_residuals, domain_residuals_cpu, domain_inputs_cpu
                 gc.collect(); torch.cuda.empty_cache()
             else:
@@ -1111,7 +1269,7 @@ def run_llm_max_pool_pipeline(
             else:
                 all_doc_sae_acts = None
             if all_doc_sae_acts is None:
-                print("  [P1] Re-encodage ExtendedSAE (fragments sparse, O(nnz))...")
+                print("  [P1] Re-encodage SAEBoostResidualSAE (fragments sparse, O(nnz))...")
                 ext_sae.eval()
                 pretrained_sae._W_dec_fp32 = pretrained_sae.W_dec.to(torch.float32)
                 pretrained_sae._b_dec_fp32 = pretrained_sae.b_dec.to(torch.float32)
@@ -1119,17 +1277,83 @@ def run_llm_max_pool_pipeline(
                     (len(all_texts), d_core + D_EXTRA),
                     dtype=torch.float32,
                 )
-                _eval_raw, _EVAL_CAP = [], 4096   # capture x_t brut du split test avant purge (fix B1)
+
+                # Filler jamais ré-encodé (audit perf, section filler) : train_doc_acts/
+                # test_doc_acts/diff_doc_acts (plus bas) n'indexent JAMAIS la plage
+                # [n_train, n_train+n_filler) -- aucun consommateur (sélection de
+                # features, juge, sondes) ne lit cette tranche. Le filler ne sert qu'à
+                # nourrir le réservoir PENDANT L'EXTRACTION (rôle déjà terminé à ce
+                # stade) ; le ré-encoder coûterait jusqu'à ~13x le travail réel utile
+                # sur un run avec un filler dominant (540k/584k documents sur le run de
+                # référence). Les lignes filler d'all_doc_sae_acts restent non
+                # initialisées (jamais lues en aval, cf. slicing ci-dessous) -- pas
+                # d'écriture inutile.
+                re_encode_targets = build_reencode_targets(n_train, n_filler, len(all_texts))
+
+                # Reprise (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : cette passe est une
+                # SECONDE boucle de plusieurs heures sur tout le corpus (aussi longue
+                # que l'extraction elle-même, §2.5) et n'avait aucune reprise avant ce
+                # correctif -- même mécanisme que l'extraction P1 (checkpoint périodique
+                # + reconstruction des documents déjà traités depuis les fragments).
+                # `next_idx` indexe désormais une POSITION dans `re_encode_targets`,
+                # pas un indice de document brut (le filler crée un trou dans la
+                # numérotation des documents traités).
+                # Particularité : un fragment déjà réencodé n'a PLUS `raw_acts` (purgé
+                # intentionnellement, cf. save_fragment ci-dessous) -- doc_maxpool sur
+                # le CSR déjà fusionné (core+extra) suffit à reconstruire le vecteur
+                # document sans avoir besoin de raw_acts pour les documents déjà faits.
+                _reencode_progress_path = _checkpoint_path(CACHE_DIR, "p1_reencode")
+                _eval_raw_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt")
+                _reencode_progress = _read_checkpoint(_reencode_progress_path)
+                _reencode_resume_from = 0
+                _eval_raw = []
+                if _reencode_progress is not None and 0 < _reencode_progress["next_idx"] < len(re_encode_targets):
+                    _reencode_resume_from = _reencode_progress["next_idx"]
+                    print(f"  [P1] Reprise du ré-encodage à la position {_reencode_resume_from}"
+                          f"/{len(re_encode_targets)} (checkpoint précédent, filler exclu).")
+                    for _pos in tqdm(range(_reencode_resume_from),
+                                     desc="Reprise (fragments->vecteurs, ré-encodage)"):
+                        _di = re_encode_targets[_pos]
+                        all_doc_sae_acts[_di].copy_(doc_maxpool(load_fragment(token_fragments_dir, _di)))
+                    # p1_eval_raw_tokens.pt (raw_acts du split test, capturés AVANT purge) :
+                    # si le run précédent a été coupé pendant ou après la fenêtre
+                    # d'évaluation, ce fichier peut déjà contenir une capture partielle --
+                    # la reprendre comme base plutôt que de repartir de zéro (les
+                    # raw_acts des documents déjà réencodés sont, eux, irrécupérables :
+                    # purgés de leur fragment).
+                    if os.path.exists(_eval_raw_path):
+                        _eval_raw = [torch.load(_eval_raw_path, map_location="cpu", weights_only=True)]
+                    # En position dans re_encode_targets (filler exclu), le test
+                    # commence juste après le train, à la position n_train (pas
+                    # n_train+n_filler comme en indice de document brut).
+                    if _reencode_resume_from > n_train and not _eval_raw:
+                        print("  [P1] ATTENTION : reprise après la fenêtre d'évaluation "
+                              "(test) sans p1_eval_raw_tokens.pt préexistant -- ces "
+                              "raw_acts ont été purgés par le run précédent, l'échantillon "
+                              "d'évaluation FVE/rho_SAE sera vide ou incomplet pour ce run.")
+
+                _EVAL_CAP = 4096   # capture x_t brut du split test avant purge (fix B1)
+                _GracefulShutdown.install()
+                _last_checkpoint_reencode = _reencode_resume_from
+                _reencode_early_exit = False
+                _fragment_writer = AsyncFragmentWriter()  # audit perf G2 -- cf. flush() avant checkpoint plus bas
                 with torch.no_grad():
-                    for i in tqdm(range(len(all_texts)), desc="Re-encodage ExtendedSAE (sparse)"):
+                    for _pos in tqdm(range(_reencode_resume_from, len(re_encode_targets)),
+                                     desc="Re-encodage SAEBoostResidualSAE (sparse, filler exclu)"):
+                        i = re_encode_targets[_pos]
                         frag = load_fragment(token_fragments_dir, i)
                         raw_acts = frag["raw_acts"].to(DEVICE).float()
-                        # x_core reconstruit sans densifier [T, d_core] :
-                        core_out_tokens = decode_core_sparse(frag, pretrained_sae, d_core, device=DEVICE)
-                        residual_tokens = raw_acts - core_out_tokens   # fp32 − fp32
-                        token_extra_acts = ext_sae._encode_extra_acts(residual_tokens)
-                        del core_out_tokens
-                        del residual_tokens
+                        # L'encodeur extra lit x directement (SAE Boost §3.1, correctif
+                        # frozen_core.py de cette session) -- PAS le résidu e = x - x̂_core.
+                        # decode_core_sparse (reconstruction du core, O(nnz*d_in)) est donc
+                        # devenu inutile ici : c'était uniquement pour calculer ce résidu,
+                        # que l'encodeur ne consomme plus. Avant ce correctif, cet appel
+                        # passait encore le résidu à _encode_extra_acts alors que
+                        # frozen_core.py avait déjà changé de convention -- régression
+                        # silencieuse détectée en relisant ce site d'appel après coup
+                        # (accès direct à la méthode privée, donc pas couvert par les tests
+                        # de encode()/forward() qui, eux, avaient été mis à jour).
+                        token_extra_acts = ext_sae._encode_extra_acts(raw_acts)
                         if n_train + n_filler <= i < n_train + n_filler + n_test and \
                            sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
                             _eval_raw.append(raw_acts.float().cpu())
@@ -1138,7 +1362,8 @@ def run_llm_max_pool_pipeline(
                         del token_extra_acts
                         save_fragment(token_fragments_dir, i,
                                       token_strings=frag["token_strings"],
-                                      csr=csr, d_total=d_core + D_EXTRA)  # raw_acts non repassé -> purgé
+                                      csr=csr, d_total=d_core + D_EXTRA,  # raw_acts non repassé -> purgé
+                                      writer=_fragment_writer)
                         all_doc_sae_acts[i].copy_(
                             doc_maxpool({
                                 "rowptr": csr[0],
@@ -1148,10 +1373,35 @@ def run_llm_max_pool_pipeline(
                             })
                         )
 
+                        if (_pos + 1 - _last_checkpoint_reencode >= EXTRACTION_CHECKPOINT_INTERVAL
+                                or _GracefulShutdown.requested):
+                            # flush() AVANT le checkpoint -- même raison qu'en extraction
+                            # (cf. docstring AsyncFragmentWriter) : un fragment réencodé
+                            # ENCORE en file d'attente à ce moment est un fragment purgé
+                            # de son raw_acts sans que le core ait été récupéré nulle
+                            # part ailleurs -- perte définitive si le checkpoint le
+                            # marquait "fait" avant que l'écriture n'ait réellement eu lieu.
+                            _fragment_writer.flush()
+                            _write_checkpoint(_reencode_progress_path, next_idx=_pos + 1)
+                            if _eval_raw:   # sauvegarde incrémentale : irrécupérable après purge sinon
+                                torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
+                            _last_checkpoint_reencode = _pos + 1
+                        if _GracefulShutdown.requested:
+                            print(f"  [P1] Signal de coupure reçu -- checkpoint écrit à la position "
+                                  f"{_pos+1}/{len(re_encode_targets)} (filler exclu), arrêt propre "
+                                  "(reprise au prochain sbatch).")
+                            _reencode_early_exit = True
+                            break
+
+                if _reencode_early_exit:
+                    _fragment_writer.close()
+                    sys.exit(0)
+                _fragment_writer.close()
+
+                _clear_checkpoint(_reencode_progress_path)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
                 if _eval_raw:
-                    torch.save(torch.cat(_eval_raw)[:_EVAL_CAP],
-                               os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt"))
+                    torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
                     
             d_total = d_core + D_EXTRA
             active_sae = ext_sae
@@ -1371,7 +1621,7 @@ def run_llm_max_pool_pipeline(
             with torch.no_grad():
                 metrics_ext = compute_metrics(active_sae, token_sample,
                                               is_saelens=False, device=DEVICE)
-            print(f"  FVE (ExtendedSAE, tokens FR) = {metrics_ext['FVE']:.4f} | "
+            print(f"  FVE (SAEBoostResidualSAE, tokens FR) = {metrics_ext['FVE']:.4f} | "
                   f"NMSE = {metrics_ext['NMSE']:.4f} | "
                   f"ΔFVE = {metrics_ext['FVE'] - metrics_pretrained['FVE']:+.4f}")
     else:

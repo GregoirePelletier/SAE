@@ -1,5 +1,5 @@
 """
-frozen_core.py — FrozenCoreResidualSAE / ExtendedSAE : extension résiduelle
+frozen_core.py — FrozenCoreResidualSAE / SAEBoostResidualSAE : extension résiduelle
 avec BatchTopKEncoder (seuil θ persistant) et AuxK sur la branche extra.
 
 encode/decode concaténés [core | extra], core gelé, décodeur normalisé,
@@ -186,7 +186,7 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
     étude — teste si nos métriques (juge odd-one-out, sondes de
     classification) distinguent réellement un apprentissage de features
     significatif d'un simple ajustement de l'encodeur à des directions
-    arbitraires. Volontairement PAS de sous-classe d'ExtendedSAE : ce dernier
+    arbitraires. Volontairement PAS de sous-classe de SAEBoostResidualSAE : ce dernier
     initialise le décodeur par PCA sur le résidu (des directions déjà
     informées par les données), ce qui affaiblirait le test — la baseline de
     référence doit partir d'un décodeur ALÉATOIRE, pas data-informed."""
@@ -214,7 +214,7 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
         pass
 
 
-class ExtendedSAE(FrozenCoreResidualSAE):
+class SAEBoostResidualSAE(FrozenCoreResidualSAE):
     def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32,
                  domain_residuals=None, domain_inputs=None):
         super().__init__(core_sae, d_extra, k_extra)
@@ -227,7 +227,7 @@ class ExtendedSAE(FrozenCoreResidualSAE):
         `inputs` (x, échantillons appariés aux mêmes tokens que `residuals`) :
         calibre encoder_input_scale et le biais de l'encodeur, qui lit x
         (SAE Boost §3.1) -- sans eux, repli dégradé sur l'échelle du résidu."""
-        print("  [ExtendedSAE] Initialisation PCA sur la distribution d'erreurs locale...")
+        print("  [SAEBoostResidualSAE] Initialisation PCA sur la distribution d'erreurs locale...")
         sample = residuals[:min(8192, len(residuals))].float()
         self.input_scale = sample.norm(dim=-1).median().to(self.input_scale.dtype)
         centered = sample - sample.mean(dim=0)
@@ -245,13 +245,13 @@ class ExtendedSAE(FrozenCoreResidualSAE):
                 self._calibrate_encoder_scale(inputs)
                 mean_input = inputs[:min(8192, len(inputs))].float().mean(dim=0)
             else:
-                print("  [ExtendedSAE] ATTENTION : pas d'échantillons x fournis pour "
+                print("  [SAEBoostResidualSAE] ATTENTION : pas d'échantillons x fournis pour "
                       "calibrer encoder_input_scale -- repli sur l'échelle du résidu, "
                       "sous-optimal pour un encodeur qui lit x (SAE Boost §3.1).")
                 self.encoder_input_scale = self.input_scale.clone()
                 mean_input = sample.mean(dim=0)
             self.b_enc_extra.data.copy_(
                 (-(mean_input / self.encoder_input_scale) @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
-            print(f"  [ExtendedSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
+            print(f"  [SAEBoostResidualSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
         except Exception as e:
-            print(f"  [ExtendedSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")
+            print(f"  [SAEBoostResidualSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")
