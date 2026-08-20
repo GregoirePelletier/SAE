@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=imdb_genre_diff
-#SBATCH --partition=a100
+#SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=02:00:00
+#SBATCH --time=05:00:00
 #SBATCH --output=logs/validation/imdb_genre_diffing_%j.log
 
 export HF_HUB_OFFLINE=1

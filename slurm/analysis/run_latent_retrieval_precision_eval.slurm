@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=SAE_retrieval_eval
-#SBATCH --partition=a100
+#SBATCH --partition=h100-bis
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -26,17 +26,22 @@ export PYTHONUNBUFFERED=1
 # générique (~33M tokens, LT_TRAIN_TOKENS) + indexation des 3480 mails --
 # PAS de Gemma-3-12B. Pool d'entraînement matérialisé en RAM (bf16) avant
 # l'entraînement du SAE : ~33M x hidden_size(F2LLM-330M=896) x 2o ≈ 59 Go.
-# --mem=96G a OOM-killé un premier essai (job 44434, RSS relevé 61,9 Go juste
-# avant le kill) -- cause identifiée : le corpus générique était lu via
-# sample_fineweb2_chunks() (src/data/preparation.py), qui charge le shard
-# FineWeb2-fr ENTIER en RAM (4,6 Go compressé, `load_dataset(...,
-# streaming=False)`) avant tout filtrage, un coût non compté dans
-# l'estimation initiale. Corrigé : `_stream_generic_texts` dans
-# latent_terms.py lit désormais ce shard en streaming
-# (`load_dataset(..., streaming=True)`), jamais matérialisé en RAM --
+# Deux OOM successifs en production, deux causes distinctes, toutes deux
+# corrigées dans latent_terms.py (détail dans les docstrings des fonctions
+# concernées) :
+#  1. job 44434, --mem=96G, RSS 61,9 Go au kill : le corpus générique était lu
+#     via sample_fineweb2_chunks() (src/data/preparation.py), qui charge le
+#     shard FineWeb2-fr ENTIER en RAM (streaming=False) avant tout filtrage.
+#     Corrigé : `_stream_generic_texts` lit désormais ce shard en streaming
+#     (`load_dataset(..., streaming=True)`), jamais matérialisé en RAM.
+#  2. job 44438, --mem=110G, RSS 68,9 Go au kill (streaming actif) :
+#     `build_token_training_pool` accumulait les tokens dans une liste Python
+#     puis `torch.cat(pool)` -- la liste ET le tenseur concaténé coexistaient
+#     en mémoire au pic (~2x les 59 Go du pool). Corrigé : écriture directe
+#     dans un buffer préalloué (~1x).
 # --mem=110G restaure une marge raisonnable sur la seule estimation du pool
-# de tokens (59 Go) + overhead modèle/tokenizer/OS, sans le coût du shard
-# complet.
+# de tokens (59 Go) + overhead modèle/tokenizer/OS, sans le double comptage
+# ni le coût du shard complet.
 export SAVE_DIR="./results_v10_emails_main/"
 export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-330M"
