@@ -233,20 +233,10 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   pas distinguer ce cas d'un run réellement terminé — d'autant plus gênant que `CLAUDE.md`
   documente déjà les pièges `afterok`. Code de sortie distinct requis (64, par convention)
   pour un arrêt anticipé même propre.
-- **`uv.lock` gitignoré**, alors que le pipeline dépend de détails internes non
-  contractuels de `transformers` (comportement `tie_last_hidden_states`, type de retour de
-  `DecoderLayer.forward`). Une réinstallation future peut casser silencieusement
-  l'équivalence bit-à-bit déjà vérifiée sur GPU.
-- **`.claude/settings.json` code en dur `/home/h21486/SAE`** dans le hook post-edit pytest —
-  ne fonctionne pour aucun autre chemin/utilisateur. À rendre relatif
-  (`$CLAUDE_PROJECT_DIR`).
 - **`load_augmented` charge tout le JSONL en liste de dicts puis DataFrame**, et
   `build_email_train_test_corpus` est appelée pour P1 **et** P2 dans le même processus —
   plusieurs Go transitoires en double dans un process qui tient déjà le réservoir memmap et
   `all_doc_sae_acts`.
-- **`.gitignore` exclut `archive/` et `results_*/`** : toute recommandation d'archiver sous
-  `archive/` les ferait disparaître de fait. Décision explicite requise (soit `git rm`
-  assumé, l'historique suffisant, soit un dossier tracé nommé autrement).
 - **`HF_HUB_OFFLINE=1` absent d'un seul fichier** sur 45 dans `slurm/pipeline_runs/`
   (`run_core_vs_extension_ablation.slurm`) — 44/45 l'ont déjà, item mineur restant plutôt
   qu'absent partout. `prepare_domain_dataset` garde un repli réseau

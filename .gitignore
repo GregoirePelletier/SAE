@@ -44,7 +44,10 @@ outputs/
 checkpoints/
 embeddings/
 cache/
-archive/
+# archive/ suivi par git (pas ignoré) : c'est la destination prévue pour le
+# nettoyage §3 (scripts d'audit à conclusion figée, etc.) -- l'ignorer aurait
+# fait disparaître silencieusement tout fichier qui y est déplacé
+# (AUDIT_SAE_2026-08.md, item A7).
 
 # ============================================================
 # Downloaded artifacts (Weights, Tensors)
@@ -63,7 +66,11 @@ archive/
 # ============================================================
 # Lock files
 # ============================================================
-uv.lock
+# uv.lock suivi par git (pas ignoré) : le pipeline dépend de détails internes
+# non contractuels de transformers (tie_last_hidden_states, type de retour de
+# DecoderLayer.forward) -- sans lock, une réinstallation future peut casser
+# silencieusement l'équivalence bit-à-bit déjà vérifiée sur GPU
+# (AUDIT_SAE_2026-08.md, item A4).
 
 # ============================================================
 # KEEP THESE FILES
