@@ -1,8 +1,8 @@
 """
 scripts/check_docs.py — Garde-fou éditorial pour la documentation Markdown
-versionnée du dépôt (README, CLAUDE.md, docs/, report/, RESULTS_TESTS.md,
-CHANGELOG.md) : signale les régressions vers les travers corrigés lors de la
-refonte documentaire (numéro de version interne en prose, jargon de session,
+versionnée du dépôt (README, CLAUDE.md, docs/, report/, RESULTS_TESTS.md) :
+signale les régressions vers les travers corrigés lors de la refonte
+documentaire (numéro de version interne en prose, jargon de session,
 placeholders non résolus, TODO, première personne du singulier dans
 README.md/docs/, lien relatif mort).
 
@@ -21,7 +21,7 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TARGET_DIRS = ["docs", "report"]
-TARGET_FILES = ["README.md", "CLAUDE.md", "CHANGELOG.md", "RESULTS_TESTS.md"]
+TARGET_FILES = ["README.md", "CLAUDE.md", "RESULTS_TESTS.md"]
 EXCLUDE_DIRS = {"dist"}  # report/dist/ est généré, gitignoré, non versionné
 
 # Chaînes connues à masquer avant la recherche de motif de version interne --

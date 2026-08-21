@@ -2,7 +2,7 @@
 
 Tous les scripts de soumission `.slurm` du dépôt, classés par catégorie. Chaque
 script écrit sa sortie dans le sous-dossier `logs/` de même nom (cf.
-[`../logs/README.md`](../logs/README.md)) — jamais à la racine du dépôt.
+[`../docs/ops.md`](../docs/ops.md)) — jamais à la racine du dépôt.
 
 - **[`pipeline_runs/`](pipeline_runs/)** — Pipeline 1 (Gemma-3 + GemmaScope) et
   Pipeline 2 (F2LLM + PhraseLevelSAE), via `src/sae/saev5.py` : run principal, et

@@ -367,7 +367,7 @@ python -m src.sae.compare.pipeline --mails <Mails.tsv> --mode compare \
 
 ### Diagnostics manuels (hors pytest)
 
-- `test_chargement_sae.py` : charge le SAE configuré, affiche ses dimensions.
+- `scripts/test_chargement_sae.py` : charge le SAE configuré, affiche ses dimensions.
 - `scripts/test_massive_acts.py` : corrélation Pearson entre pré-activations
   "extra" et norme du token — diagnostic de pollution par activations
   massives. Suppose des checkpoints déjà produits par un run complet.

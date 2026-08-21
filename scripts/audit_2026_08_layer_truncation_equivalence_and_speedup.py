@@ -27,8 +27,7 @@ Deux questions, dans cet ordre (la première conditionne la seconde) :
 2. GAIN RÉEL : débit (docs/s) et pic VRAM, tronqué vs plein, sur le MÊME
    modèle chargé une seule fois, mêmes textes réels, même méthodologie de
    chronométrage (warmup exclu) que
-   `scripts/audit_2026_08_extraction_batch_size_sweep.py` (déjà la référence
-   citée par job 44211/RESULTS_TESTS.md).
+   `benchmarks/extraction_batch_size_sweep.py`.
 
 Indépendant du job 44211 en cours (a100, pas h100 -- aucune contention).
 N'écrit rien dans le cache de production.

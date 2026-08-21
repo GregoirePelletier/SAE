@@ -152,19 +152,26 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
 
 ## 3. Hygiène du dépôt
 
-- **Nettoyage (~55 fichiers) non entamé** : 16 scripts d'audit forensiques à conclusion
-  figée dans `RESULTS_TESTS.md` (`scripts/audit_2026_08_*.py`, sauf les deux à promouvoir en
-  outillage/test permanent : `extraction_batch_size_sweep.py` → `benchmarks/`,
-  `bf16_fp32_diagnostic.py` → `tests/test_dtype_overflow.py`) ; 8 `docs/audit_*_results.json`
-  à sortir de `docs/` (référence technique, pas dossier de résultats) ;
-  `docs/PDF_APPENDICES_EXTRACT.md` (reproduction verbatim d'appendices sous copyright, à
-  réduire à une table de correspondance §/App. → décision → fichier) ;
-  `compare_to_frozen_benchmark.py` orphelin (0 référence, cf. §1) ; `test_chargement_sae.py`
-  à la racine (à déplacer vers `tests/` ou `slurm/validation/`) ; `src/sae.egg-info/` versionné
-  par erreur ; `CHANGELOG.md` redondant avec `git log`/`RESULTS_TESTS.md` ; `logs/README.md`
-  à fusionner dans `docs/ops.md` ; 104 `.slurm` (94 au dernier comptage, la dérive continue)
-  à réduire à un template générique + fichiers `.env` — copies d'un même script différant
-  par une variable.
+- **Nettoyage — fait** : 16 scripts d'audit forensiques + leurs `.slurm` + JSON associés
+  supprimés (conclusions figées dans `RESULTS_TESTS.md`) ; les deux à conclusion réutilisable
+  promus (`extraction_batch_size_sweep.py` → `benchmarks/`, invariant fp16/bf16 de
+  `bf16_fp32_diagnostic.py` réécrit en test CPU synthétique →
+  `tests/test_dtype_overflow.py`, le diagnostic GPU original supprimé) ; 6
+  `docs/audit_*_results.json` correspondants supprimés ; `src/sae.egg-info/` (versionné par
+  erreur) ; `CHANGELOG.md` (redondant, `check_docs.py` mis à jour) ; `logs/README.md`
+  (dupliquait `docs/ops.md`) ; `test_chargement_sae.py` déplacé de la racine vers `scripts/`.
+  `compare_to_frozen_benchmark.py` gardé délibérément (seul mécanisme de non-régression
+  domaine général pour SAE Boost, cf. §1) plutôt que supprimé faute de référence — le
+  raccrocher à un `.slurm` reste à faire, hors scope hygiène. `c2_original_only_rejudge.py`/
+  `relabel_diff_csvs.py`/`augmentation_lexical_leakage_audit.py` gardés : non cités par
+  `report/` mais cités par `RESULTS_TESTS.md` §37+ comme source de reproductibilité d'un
+  résultat déjà publié — le critère "cité par `report/`" seul les aurait supprimés à tort.
+  **Reste à faire, volontairement pas fait dans cette passe** (effort disproportionné au
+  risque d'erreur pour une passe de nettoyage) : `docs/PDF_APPENDICES_EXTRACT.md` — réduction
+  risquée sans casser les citations précises par numéro de ligne que
+  `docs/INTERP_EMBED_COVERAGE.md` (travail original de qualité) fait vers ce fichier ; 104
+  `.slurm` à consolider en template + `.env` — refactor large, casserait potentiellement des
+  noms de fichiers cités nommément dans `RESULTS_TESTS.md`.
 - **`pytest tests/ -q` ne passe qu'à un test près.** `scripts/check_docs.py` sort en 1 avec
   17 violations de première personne du singulier (`docs/INTERP_EMBED_COVERAGE.md`,
   `docs/PDF_APPENDICES_EXTRACT.md`) — réécriture de prose, pas de code. Tout le reste

@@ -6,12 +6,10 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --time=00:30:00
-#SBATCH --output=logs/validation/audit_extraction_batch_sweep_%j.log
+#SBATCH --output=logs/validation/extraction_batch_sweep_%j.log
 
-# Etape 1 du plan (sharded-twirling-sunbeam.md) : balayage EXTRACTION_BATCH_SIZE,
-# en parallele du job 44211 (h100, tenu inchange). Sur a100 (40 Go VRAM, 4 GPU
-# libres au moment de la soumission -- h100/h100-bis saturees par d'autres
-# utilisateurs) pour une lecture propre, non contendue.
+# Balayage EXTRACTION_BATCH_SIZE (benchmarks/extraction_batch_size_sweep.py) --
+# à relancer à chaque changement de GPU, de modèle ou de couche.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -23,4 +21,4 @@ export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
 
 cd /home/h21486/SAE/
-.venv/bin/python scripts/audit_2026_08_extraction_batch_size_sweep.py
+.venv/bin/python benchmarks/extraction_batch_size_sweep.py
