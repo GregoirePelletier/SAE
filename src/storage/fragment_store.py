@@ -84,9 +84,75 @@ def _pt_path(d: str, i: int) -> str:  return os.path.join(d, f"doc_{i:05d}.pt")
 def _pkl_path(d: str, i: int) -> str: return os.path.join(d, f"doc_{i:05d}.pkl")
 
 
+# ─── shards (audit perf item 3, AUDIT_SAE_2026-08.md §2.2) ───
+#
+# Un fichier par document (doc_*.pt) coûte ~1-5 ms de latence de métadonnées
+# par création sur le volume réseau partagé -- 432k créations + fsync
+# implicites ≈ 22 min de latence pure sur le run de référence. SHARD_SIZE
+# documents par fichier (shards/shard_{k:05d}.pt = {doc_id: payload, ...})
+# réduit ce nombre par SHARD_SIZE. Utilisé UNIQUEMENT côté extraction
+# (ShardedFragmentWriter) : le ré-encodage continue d'écrire un fichier par
+# document via save_fragment() (déjà testé cette session, aucune raison de
+# le retoucher) -- ces écritures individuelles PRIMENT sur le contenu du
+# shard à la lecture (cf. load_fragment), donc un document ré-encodé sort
+# proprement de son shard sans jamais le réécrire.
+SHARD_SIZE = 1000
+
+
+def _shard_dir(fragments_dir: str) -> str:
+    return os.path.join(fragments_dir, "shards")
+
+
+def _shard_idx(doc_id: int) -> int:
+    return doc_id // SHARD_SIZE
+
+
+def _shard_path(fragments_dir: str, shard_idx: int) -> str:
+    return os.path.join(_shard_dir(fragments_dir), f"shard_{shard_idx:05d}.pt")
+
+
+class _ShardReadCache:
+    """Cache le dernier shard chargé (fragments_dir, shard_idx) -> contenu.
+    Extraction et ré-encodage parcourent les documents dans l'ordre : des
+    lectures consécutives portent presque toujours sur la MÊME shard -- sans
+    ce cache, lire SHARD_SIZE documents d'un même shard le rechargerait
+    entièrement SHARD_SIZE fois (régression pire que le problème d'origine).
+
+    Péremption intra-process : si un shard est lu (mis en cache) PUIS
+    modifié par un ShardedFragmentWriter du MÊME process (ex. reprise dans
+    une shard déjà partiellement lue par la reconstruction de repli, cf.
+    saev5.py), une lecture ultérieure de cette shard doit voir le contenu
+    frais, pas la version mise en cache avant l'écriture --
+    ShardedFragmentWriter.flush() appelle invalidate() après confirmation
+    que l'écriture a atteint le disque (jamais avant, cf. sa docstring)."""
+
+    def __init__(self):
+        self._key = None
+        self._content: dict = {}
+
+    def get(self, fragments_dir: str, shard_idx: int) -> dict:
+        key = (fragments_dir, shard_idx)
+        if key != self._key:
+            path = _shard_path(fragments_dir, shard_idx)
+            self._content = torch.load(path, map_location="cpu", weights_only=False) \
+                if os.path.exists(path) else {}
+            self._key = key
+        return self._content
+
+    def invalidate(self, fragments_dir: str, shard_idx: int) -> None:
+        if self._key == (fragments_dir, shard_idx):
+            self._key = None
+            self._content = {}
+
+
+_shard_read_cache = _ShardReadCache()
+
+
 def fragment_exists(fragments_dir: str, doc_id: int) -> bool:
-    return os.path.exists(_pt_path(fragments_dir, doc_id)) or \
-           os.path.exists(_pkl_path(fragments_dir, doc_id))
+    if os.path.exists(_pt_path(fragments_dir, doc_id)) or \
+       os.path.exists(_pkl_path(fragments_dir, doc_id)):
+        return True
+    return doc_id in _shard_read_cache.get(fragments_dir, _shard_idx(doc_id))
 
 
 def list_fragment_ids(fragments_dir: str) -> list[int]:
@@ -95,6 +161,9 @@ def list_fragment_ids(fragments_dir: str) -> list[int]:
         ids.add(int(os.path.basename(p)[4:9]))
     for p in glob.glob(os.path.join(fragments_dir, "doc_*.pkl")):
         ids.add(int(os.path.basename(p)[4:9]))
+    for p in glob.glob(os.path.join(_shard_dir(fragments_dir), "shard_*.pt")):
+        shard = torch.load(p, map_location="cpu", weights_only=False)
+        ids.update(shard.keys())
     return sorted(ids)
 
 
@@ -110,6 +179,91 @@ def _dense_to_csr(acts: torch.Tensor, eps: float = 1e-6):
     rows, cols = mask.nonzero(as_tuple=True)
     vals = acts[rows, cols].to(torch.float32)
     return rowptr, cols.to(torch.int32), vals, tuple(acts.shape)
+
+
+class ShardedFragmentWriter:
+    """Écrit les fragments par lots de SHARD_SIZE documents dans un seul
+    fichier (audit perf item 3, AUDIT_SAE_2026-08.md §2.2/§2.9) au lieu d'un
+    fichier par document -- réduit 432k créations de fichiers/fsync à ~432
+    sur le run de référence. Utilisée UNIQUEMENT côté extraction (saev5.py) ;
+    le ré-encodage continue d'écrire un fichier par document via
+    save_fragment() (cf. docstring load_fragment pour la résolution de
+    priorité fichier-individuel > shard).
+
+    Écriture réellement effectuée par un AsyncFragmentWriter interne (même
+    discipline "flush() avant tout checkpoint" que celui-ci, cf. sa
+    docstring) -- flush() reste le seul point de synchronisation nécessaire
+    et suffisant avant d'avancer un checkpoint de reprise (R1).
+
+    Reprise : un shard peut avoir été flushé PARTIEL (coupure gracieuse en
+    cours de shard, cf. saev5.py). add() précharge alors le contenu déjà sur
+    disque pour ce shard au premier contact -- sans ça, un flush() ultérieur
+    écraserait le fichier avec seulement les documents ajoutés APRÈS la
+    reprise, perdant ceux d'avant la coupure."""
+
+    def __init__(self, fragments_dir: str):
+        self.fragments_dir = fragments_dir
+        self._buffers: dict[int, dict] = {}
+        self._async_writer = AsyncFragmentWriter()
+        os.makedirs(_shard_dir(fragments_dir), exist_ok=True)
+
+    def add(
+        self,
+        doc_id: int,
+        token_strings: list[str],
+        acts_dense: torch.Tensor = None,
+        csr: tuple = None,
+        d_total: int = None,
+        raw_acts: torch.Tensor = None,
+    ) -> None:
+        if csr is None:
+            assert acts_dense is not None
+            rowptr, cols, vals, shape = _dense_to_csr(acts_dense)
+        else:
+            rowptr, cols, vals, shape = csr
+        T = shape[0]
+        payload = {
+            "token_strings": token_strings,
+            "rowptr": rowptr, "cols": cols, "vals": vals,
+            "shape": (T, int(d_total or shape[1])),
+        }
+        if raw_acts is not None:
+            payload["raw_acts"] = raw_acts.detach().to(torch.bfloat16).cpu()
+
+        shard_idx = _shard_idx(doc_id)
+        if shard_idx not in self._buffers:
+            # Précharge un éventuel contenu déjà sur disque (reprise après
+            # coupure en cours de shard) -- sinon le flush() suivant
+            # écraserait ces documents déjà persistés.
+            self._buffers[shard_idx] = dict(_shard_read_cache.get(self.fragments_dir, shard_idx))
+        self._buffers[shard_idx][doc_id] = payload
+
+    def flush(self) -> None:
+        """Écrit l'état courant de tous les shards en mémoire sur disque --
+        idempotent (écrase le fichier existant avec le contenu COMPLET connu
+        à cet instant), sûr à appeler à tout moment. Les shards COMPLETS
+        (SHARD_SIZE documents atteints) sont libérés de la RAM après
+        écriture ; les shards partiels restent pour continuer d'être
+        complétés et réécrits en entier au prochain flush().
+
+        Invalide le cache de lecture (_shard_read_cache) pour chaque shard
+        touché, APRÈS confirmation que l'écriture a atteint le disque
+        (self._async_writer.flush() bloque jusque-là) -- jamais avant, sinon
+        une lecture concurrente entre l'invalidation et l'écriture réelle
+        rechargerait encore l'ancien contenu depuis le disque."""
+        touched = list(self._buffers.keys())
+        for shard_idx, docs in list(self._buffers.items()):
+            path = _shard_path(self.fragments_dir, shard_idx)
+            self._async_writer.submit(path, dict(docs))  # copie : docs continue d'être mutable après ce point
+            if len(docs) >= SHARD_SIZE:
+                del self._buffers[shard_idx]
+        self._async_writer.flush()
+        for shard_idx in touched:
+            _shard_read_cache.invalidate(self.fragments_dir, shard_idx)
+
+    def close(self) -> None:
+        self.flush()
+        self._async_writer.close()
 
 
 # ─── écriture ───
@@ -155,18 +309,28 @@ def save_fragment(
 # ─── lecture ───
 
 def load_fragment(fragments_dir: str, doc_id: int) -> dict:
+    # Fichier individuel (écrit par save_fragment, ex. ré-encodage) : PRIME sur
+    # le shard -- c'est la version la plus récente d'un document déjà réencodé
+    # (cf. ShardedFragmentWriter, un document ré-encodé "sort" de son shard).
     path = _pt_path(fragments_dir, doc_id)
     if os.path.exists(path):
         return torch.load(path, map_location="cpu", weights_only=False)
     legacy = _pkl_path(fragments_dir, doc_id)
-    with open(legacy, "rb") as f:
-        old = pickle.load(f)
-    rowptr, cols, vals, shape = _dense_to_csr(old["token_sae_acts"])
-    frag = {"token_strings": old["token_strings"],
-            "rowptr": rowptr, "cols": cols, "vals": vals, "shape": shape}
-    if "raw_acts" in old:
-        frag["raw_acts"] = old["raw_acts"]
-    return frag
+    if os.path.exists(legacy):
+        with open(legacy, "rb") as f:
+            old = pickle.load(f)
+        rowptr, cols, vals, shape = _dense_to_csr(old["token_sae_acts"])
+        frag = {"token_strings": old["token_strings"],
+                "rowptr": rowptr, "cols": cols, "vals": vals, "shape": shape}
+        if "raw_acts" in old:
+            frag["raw_acts"] = old["raw_acts"]
+        return frag
+    shard = _shard_read_cache.get(fragments_dir, _shard_idx(doc_id))
+    if doc_id in shard:
+        return shard[doc_id]
+    raise FileNotFoundError(
+        f"Fragment {doc_id} introuvable dans {fragments_dir} (ni fichier individuel, ni shard)."
+    )
 
 
 # ─── accès O(nnz) ───

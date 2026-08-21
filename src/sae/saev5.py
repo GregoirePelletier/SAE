@@ -10,6 +10,7 @@ embeddings de phrase.
 import os
 import sys
 import time
+import shutil
 import urllib3
 import requests
 import glob
@@ -235,12 +236,14 @@ def _trim_host_memory():
 try:
     from src.storage.fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
-        feature_column, doc_maxpool, decode_core_sparse, merge_extra, AsyncFragmentWriter,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+        AsyncFragmentWriter, ShardedFragmentWriter,
     )
 except ImportError:
     from fragment_store import (
         save_fragment, load_fragment, fragment_exists, list_fragment_ids,
-        feature_column, doc_maxpool, decode_core_sparse, merge_extra, AsyncFragmentWriter,
+        feature_column, doc_maxpool, decode_core_sparse, merge_extra,
+        AsyncFragmentWriter, ShardedFragmentWriter,
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1001,12 +1004,14 @@ def run_llm_max_pool_pipeline(
         _GracefulShutdown.install()
         _last_checkpoint_doc = _resume_from
         _early_exit = False
-        # Écriture de fragments en arrière-plan (audit perf G2, AUDIT_SAE_2026-08.md
-        # §2.2) : le GPU n'attend plus le disque pour continuer -- flush() OBLIGATOIRE
-        # avant tout checkpoint de reprise qui avance next_doc_idx (cf. docstring
-        # AsyncFragmentWriter), sinon un crash pourrait laisser un checkpoint plus
-        # avancé que les fragments réellement sur disque.
-        _fragment_writer = AsyncFragmentWriter()
+        # Fragments shardés côté extraction (item 3, AUDIT_SAE_2026-08.md §2.2/
+        # §2.9) : SHARD_SIZE documents par fichier au lieu d'un par document --
+        # écriture toujours en arrière-plan (G2, ShardedFragmentWriter encapsule
+        # son propre AsyncFragmentWriter) -- flush() OBLIGATOIRE avant tout
+        # checkpoint de reprise qui avance next_doc_idx (cf. docstring
+        # ShardedFragmentWriter/AsyncFragmentWriter), sinon un crash pourrait
+        # laisser un checkpoint plus avancé que les fragments réellement sur disque.
+        _fragment_writer = ShardedFragmentWriter(token_fragments_dir)
 
         # Écritures aléatoires du réservoir amorties (G5, AUDIT_SAE_2026-08.md
         # §2.2) : en phase 2 (réservoir déjà plein), `reservoir[j[hit]] = x_new[hit]`
@@ -1103,13 +1108,12 @@ def run_llm_max_pool_pipeline(
                         else:
                             doc_sae_vec = token_sae_acts.max(dim=0).values
 
-                        save_fragment(
-                            token_fragments_dir, doc_global_idx,
+                        _fragment_writer.add(
+                            doc_global_idx,
                             token_strings=tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
                             acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_total_frag
                             d_total=d_total_frag,
                             raw_acts=filtered,
-                            writer=_fragment_writer,
                         )
                         all_doc_sae_acts.append(doc_sae_vec.cpu())
                     else:
@@ -1486,7 +1490,20 @@ def run_llm_max_pool_pipeline(
                 torch.save(all_doc_sae_acts, cache_acts_ext)
                 if _eval_raw:
                     torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
-                    
+
+                # Nettoyage des shards d'extraction (item 3) : re_encode_targets
+                # couvre TOUS les documents fragmentés (train+test+diff, filler
+                # jamais fragmenté, G7) -- une fois le ré-encodage NATURELLEMENT
+                # complet (jamais sur early-exit, cf. sys.exit(0) ci-dessus), 100%
+                # des documents d'un shard ont désormais un fichier individuel à
+                # jour (save_fragment, prioritaire à la lecture, cf.
+                # load_fragment) : le contenu des shards est entièrement
+                # redondant, le garder doublerait le disque utilisé pour rien.
+                _shards_dir = os.path.join(token_fragments_dir, "shards")
+                if os.path.isdir(_shards_dir):
+                    shutil.rmtree(_shards_dir)
+                    print("  [P1] Shards d'extraction supprimés (redondants après ré-encodage complet).")
+
             d_total = d_core + D_EXTRA
             active_sae = ext_sae
             print(f"  [P1] Dimension SAE étendue : {d_core} core + {D_EXTRA} extra = {d_total}")
