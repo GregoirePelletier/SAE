@@ -94,6 +94,13 @@ def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
 
 
+def _batch_seed(seed: int, aug_ids: list[str]) -> int:
+    """Graine déterministe dérivée du CONTENU d'un lot de génération (B.12,
+    AUDIT_SAE_2026-08.md) -- `sorted()` rend le résultat indépendant de
+    l'ordre d'itération du lot, pas seulement de son contenu."""
+    return int(_sha1(f"{seed}:{'|'.join(sorted(aug_ids))}"), 16) % (2**31)
+
+
 # ─── 3. Garde-fous factuels ───────────────────────────────────────────────────
 
 _FACT_RE = re.compile(
@@ -172,7 +179,6 @@ def generate_variants(
     Produit len(mails) × len(specs) variantes. Reprise : les aug_id déjà présents
     dans out_jsonl sont sautés. Retourne le manifest (accepté + rejeté).
     """
-    torch.manual_seed(seed)
     specs = specs or all_specs()
 
     done: set[str] = set()
@@ -193,6 +199,18 @@ def generate_variants(
     model.eval()
     for i in range(0, len(jobs), batch_size):
         batch = jobs[i:i + batch_size]
+        # Graine dérivée du CONTENU du lot (B.12, AUDIT_SAE_2026-08.md) plutôt
+        # que de l'état séquentiel du générateur global : un `torch.manual_seed`
+        # unique en tête de fonction rend le "seed" écrit dans chaque
+        # enregistrement JSONL trompeur -- une reprise (do_sample=True, lots
+        # déjà générés sautés) change la composition des lots suivants, donc le
+        # flux RNG, donc la sortie réelle pour un même aug_id régénéré. Ici,
+        # regénérer EXACTEMENT le même lot d'aug_id (même composition, même
+        # ordre) reproduit la même sortie, indépendamment de ce qui a été
+        # généré avant dans le run. Ne couvre pas le cas où une reprise change
+        # la composition d'un lot (aug_id désormais co-batché différemment) --
+        # limite assumée, pas un flux RNG global reproductible de bout en bout.
+        torch.manual_seed(_batch_seed(seed, [aug_id for aug_id, _, _ in batch]))
         prompts = [
             tokenizer.apply_chat_template(build_messages(row.text, spec),
                                           tokenize=False, add_generation_prompt=True)

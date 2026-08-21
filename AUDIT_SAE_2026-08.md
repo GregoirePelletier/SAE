@@ -278,12 +278,6 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   2048 tokens, `validate()` compare aux faits du parent complet — les mails longs perdent
   des faits par construction et sont sous-représentés parmi les variantes, à mettre en
   regard de ρ(longueur, n_features) = 0,906 déjà mesuré (§59).
-- **Chunking par 1024 caractères** (pas tokens/mots) pour le corpus générique et le filler —
-  coupe au milieu des mots/phrases, distribution de tokens qui n'existe dans aucun usage
-  réel, pour le réservoir qui domine le volume d'entraînement du SAE résiduel.
-- **L'augmentation n'est pas reproductible malgré son champ `seed`** : `do_sample=True`,
-  génération batchée avec reprise → la composition des lots après reprise change le flux
-  RNG. Le champ `seed` du JSONL promet une reproductibilité qui n'existe pas.
 - **Aucune évaluation aval sur une tâche métier réelle** (routage, priorisation, détection
   de réclamation) avec baseline honnête TF-IDF+LogReg — la seule sonde existante est bâtie
   sur les labels faibles ci-dessus. Pour l'objectif affiché (outil transparent pour

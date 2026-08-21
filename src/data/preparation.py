@@ -47,6 +47,35 @@ def _chunk_hash(chunk: str) -> str:
     return hashlib.md5(chunk.strip().lower().encode("utf-8")).hexdigest()
 
 
+def _chunk_on_word_boundaries(txt: str, chunk_length: int, max_chunks: int) -> List[str]:
+    """Découpe `txt` en chunks d'environ `chunk_length` caractères, coupés à
+    la frontière de mot la plus proche plutôt qu'au milieu d'un mot (B.10,
+    AUDIT_SAE_2026-08.md) -- `txt[i:i+chunk_length]` coupait indifféremment
+    mots et phrases, une distribution de tokens qui n'existe dans aucun usage
+    réel, en particulier pour le filler qui domine le volume d'entraînement
+    du SAE résiduel. Un mot isolé plus long que `chunk_length` forme son
+    propre chunk plutôt que d'être tronqué au milieu."""
+    words = txt.split(" ")
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+    for w in words:
+        if not w:
+            continue
+        add_len = len(w) + (1 if current else 0)
+        if current and current_len + add_len > chunk_length:
+            chunks.append(" ".join(current))
+            if len(chunks) >= max_chunks:
+                return chunks
+            current, current_len = [], 0
+            add_len = len(w)
+        current.append(w)
+        current_len += add_len
+    if current:
+        chunks.append(" ".join(current))
+    return chunks[:max_chunks]
+
+
 def prepare_domain_dataset(
     keywords: List[str],
     domain_name: str,
@@ -93,7 +122,7 @@ def prepare_domain_dataset(
                 if not candidate:
                     continue
                 txt = text.replace("\n", " ").strip()
-                chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
+                chunks = _chunk_on_word_boundaries(txt, chunk_length, max_chunks)
                 added_any = False
                 for c in chunks:
                     if len(c) <= 100:
@@ -136,7 +165,7 @@ def prepare_domain_dataset(
             if not candidate:
                 continue
             txt = text.replace("\n", " ").strip()
-            chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
+            chunks = _chunk_on_word_boundaries(txt, chunk_length, max_chunks)
             added_any = False
             for c in chunks:
                 if len(c) <= 100:
@@ -182,7 +211,7 @@ def sample_fineweb2_chunks(
             if not text:
                 continue
             txt = text.replace("\n", " ").strip()
-            chunks = [txt[i: i + chunk_length] for i in range(0, len(txt), chunk_length)][:max_chunks]
+            chunks = _chunk_on_word_boundaries(txt, chunk_length, max_chunks)
             for c in chunks:
                 if len(c) <= 100:
                     continue
