@@ -1,10 +1,10 @@
 [project]
 name = "sae"
 version = "0.2.0"
-description = "Sparse Autoencoders for Interpretable Text Analysis - Two-pipeline system for feature interpretation via SAE decomposition"
+description = "Sparse Autoencoders pour l'analyse interprétable de mails clients EDF (deux pipelines : Gemma-3+GemmaScope-2, F2LLM+PhraseLevelSAE)"
 readme = "README.md"
 requires-python = "==3.12.*"
-authors = [{name = "Research Team"}]
+authors = [{name = "Grégoire Pelletier", email = "gregoire.pelletier80@gmail.com"}]
 dependencies = [
     "datasets>=2.21.0",
     "hdbscan>=0.8.40",

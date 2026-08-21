@@ -410,9 +410,9 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
         return empty
     try:
         try:
-            from src.data.dataset import load_mails_tsv
+            from src.data.dataset import load_mails_tsv, strip_leading_objet_line
         except ImportError:
-            from dataset import load_mails_tsv
+            from dataset import load_mails_tsv, strip_leading_objet_line
         try:
             from src.data.augmentation import _sha1
         except ImportError:
@@ -429,7 +429,7 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
             raw_text = str(row['document'])
             subject_match = re.search(r'(?:Objet|Subject)\s*:\s*([^\n]+)', raw_text, re.IGNORECASE)
             cat = subject_match.group(1).strip()[:50] if subject_match else "EDF_Mail_Reclamation"
-            clean_text = re.sub(r'^\s*(?:Objet|Subject)\s*:\s*[^\n]+\n*', '', raw_text, flags=re.IGNORECASE)
+            clean_text = strip_leading_objet_line(raw_text)
             clean_text = re.sub(r'\[\s*\{\s*"start".*?\}\s*\]', '', clean_text, flags=re.DOTALL).strip()
             if clean_text:
                 texts.append(clean_text)

@@ -251,24 +251,20 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
 
 ## 6. Tenue du dépôt
 
-- **README : contraste 20% (2/10) vs 45,3% (68/150) présenté sans réserve statistique.**
-  L'IC de Wilson de 2/10 est ≈[5,7%; 51%] — le contraste n'est pas significatif.
-  `stats.py::two_proportion_test` existe et n'est pas appliqué à ce chiffre d'affiche.
-  Soit refaire la mesure hors-domaine à n≥150, soit afficher l'IC.
-- **Aucune `LICENSE`, aucune mention de régime des données** dans un dépôt qui traite des
-  mails clients EDF et embarque une reproduction verbatim sous copyright
-  (`docs/PDF_APPENDICES_EXTRACT.md`, cf. §3) — à traiter avant toute publication.
-- **Aucun point d'entrée unique reliant les chiffres du README/rapport/`RESULTS_TESTS.md`
-  à la config exacte qui les a produits.** Un `docs/reference_run.md` d'une page
-  remplacerait une part des ~60 lignes de commentaires-journal éparpillées dans les
-  `.slurm`.
-- **Duplication fonctionnelle** : `_strip_leading_objet_line` (`augmentation.py`) et le
-  nettoyage « Objet : » de `load_and_clean_emails` (`preparation.py`) sont deux copies de
-  la même regex, couplées par un commentaire de cohérence plutôt qu'un module commun —
-  fragile, la prochaine modification n'en touchera qu'une.
-- **`pyproject.toml`** : `authors = [{name = "Research Team"}]`, description en anglais
-  dans un dépôt francophone, `version = "0.2.0"` sans référentiel — première chose que lit
-  un relecteur externe.
+- **Corrections à cet audit** : (a) le contraste README 20% (2/10) vs 45,3% (68/150)
+  porte maintenant l'IC de Wilson ([5,7%, 51,0%]) et le résultat du test à deux
+  proportions (`stats.py`, z=-1,56, p=0,12, non significatif à cet effectif). (b) le
+  point d'entrée unique réclamé existe déjà et est déjà lié depuis le README —
+  `docs/evaluation_protocol.md` (config exacte, `SAVE_DIR`, commandes, table
+  capacité→résultat→comparaison) — l'audit avait affirmé son absence à tort. (c) la
+  duplication `_strip_leading_objet_line`/nettoyage « Objet : » est corrigée : source
+  unique `dataset.strip_leading_objet_line`, utilisée par `augmentation.py` et
+  `preparation.py`. (d) `pyproject.toml` : auteur/email réels, description en français.
+- **Reste ouvert : aucune `LICENSE`, aucune mention de régime des données**, dans un
+  dépôt qui traite des mails clients EDF et embarque une reproduction verbatim sous
+  copyright (`docs/PDF_APPENDICES_EXTRACT.md`, cf. §3) — décision qui dépasse une passe
+  de nettoyage (droits sur les données, régime de publication du dépôt) : à trancher
+  explicitement avant toute mise en public, pas à choisir seul.
 
 ## 7. Priorisation restante
 

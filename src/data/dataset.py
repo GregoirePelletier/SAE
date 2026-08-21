@@ -52,6 +52,19 @@ def _clean_text(t: str) -> str:
     return t.strip().strip('"').strip()
 
 
+OBJET_LINE_RE = re.compile(r'^\s*(?:Objet|Subject)\s*:\s*[^\n]+\n*', re.IGNORECASE)
+
+
+def strip_leading_objet_line(text: str) -> str:
+    """Retire une ligne "Objet :"/"Subject :" en tête de texte, si présente.
+    Utilisé identiquement par `load_and_clean_emails` (mails originaux) et
+    `load_augmented` (variantes) -- une même source évite qu'une modification
+    ne touche l'un des deux traitements sans l'autre."""
+    if not isinstance(text, str):
+        return text
+    return OBJET_LINE_RE.sub('', text)
+
+
 def load_mails_tsv(path: str | Path, min_chars: int = 30) -> pd.DataFrame:
     """
     Ingestion robuste de Mails.tsv (colonnes: index, document, segments).

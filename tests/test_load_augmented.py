@@ -31,7 +31,7 @@ def test_load_augmented_filters_rejected_and_keeps_accepted(tmp_path):
     assert len(df) == 2  # la variante rejetée est exclue
     assert set(df.columns) >= {"text", "is_augmented", "corpus_origin", "aug_axis", "aug_level"}
     assert df["is_augmented"].all()
-    # "Objet :" en tête retiré par _strip_leading_objet_line.
+    # "Objet :" en tête retiré par dataset.strip_leading_objet_line.
     assert not df["text"].str.startswith("Objet").any()
 
 

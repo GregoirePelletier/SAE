@@ -23,8 +23,10 @@ import torch
 
 try:
     from src.sae.judge import _apply_chat_and_extract
+    from src.data.dataset import strip_leading_objet_line
 except ImportError:
     from judge import _apply_chat_and_extract
+    from dataset import strip_leading_objet_line
 
 # ─── 1. Grille de perturbations ───────────────────────────────────────────────
 # axis → {level: instruction}. Une variante = UN axe (perturbation isolée,
@@ -263,27 +265,13 @@ def generate_variants(
     return df
 
 
-def _strip_leading_objet_line(text: str) -> str:
-    """Retire une ligne "Objet :"/"Subject :" en tête de texte, si présente.
-
-    Nécessaire pour la cohérence avec les mails originaux : `load_and_clean_emails`
-    (src/data/preparation.py) applique déjà ce nettoyage aux mails originaux. Sans
-    ce même traitement ici, la ligne "Objet :" que le générateur ajoute encore
-    dans une partie des variantes malgré la contrainte du prompt système
-    (_SYSTEM) devient un artefact de formatage qui distingue trivialement
-    "augmenté" de "original" pour le SAE, sans rapport avec l'axe de
-    perturbation réellement visé."""
-    if not isinstance(text, str):
-        return text
-    return re.sub(r'^\s*(?:Objet|Subject)\s*:\s*[^\n]+\n*', '', text, flags=re.IGNORECASE)
-
-
 def load_augmented(jsonl_path: str) -> pd.DataFrame:
     """Charge les variantes acceptées. Colonnes prêtes pour la visu :
     is_augmented=True, corpus_origin=corpus parent, aug_axis, aug_level.
     Le texte est nettoyé d'une éventuelle ligne "Objet :"/"Subject :" résiduelle
-    (cf. _strip_leading_objet_line) pour rester cohérent avec le traitement des
-    mails originaux et ne pas polluer le SAE avec un artefact de formatage."""
+    (cf. dataset.strip_leading_objet_line) pour rester cohérent avec le
+    traitement des mails originaux et ne pas polluer le SAE avec un artefact
+    de formatage."""
     # Un seul passage, filtré au vol -- pas de liste intermédiaire de TOUS les
     # enregistrements (acceptés + rejetés) tenue en RAM en plus de la liste
     # filtrée puis du DataFrame final (AUDIT_SAE_2026-08.md, item A6 : ce
@@ -300,6 +288,6 @@ def load_augmented(jsonl_path: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["text", "is_augmented", "corpus_origin",
                                       "aug_axis", "aug_level"])
     df = pd.DataFrame(accepted)
-    df["text"] = df["text"].map(_strip_leading_objet_line)
+    df["text"] = df["text"].map(strip_leading_objet_line)
     df["is_augmented"] = True
     return df.rename(columns={"corpus": "corpus_origin", "axis": "aug_axis", "level": "aug_level"})
