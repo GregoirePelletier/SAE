@@ -206,7 +206,8 @@ from sae_shared import (
 
 from src.sae.judge import (
     extract_causal_context, build_feature_examples_with_control,
-    feature_selection_by_magnitude, odd_one_out_judge, _apply_chat_and_extract,
+    feature_selection_by_magnitude, feature_selection_stratified_by_frequency,
+    odd_one_out_judge, _apply_chat_and_extract,
     local_gemma_judge,
 )
 
@@ -292,6 +293,12 @@ ALLOW_SYNTHETIC_CORPUS_FALLBACK = os.environ.get("ALLOW_SYNTHETIC_CORPUS_FALLBAC
 # Batch size de extract_f2llm_embeddings (P2), en dur à 128 auparavant, jamais
 # balayé (AUDIT_SAE_2026-08.md, §2 Performance). Défaut 128 inchangé.
 F2LLM_EXTRACT_BATCH_SIZE = int(os.environ.get("F2LLM_EXTRACT_BATCH_SIZE", "128"))
+# "magnitude" (défaut inchangé) ou "stratified" (par bins de fréquence,
+# AUDIT_SAE_2026-08.md item B.2) : magnitude sélectionne systématiquement les
+# features les plus denses, ce que le taux d'interprétabilité mesuré dessus
+# hérite silencieusement. Pas basculé par défaut sans un run de comparaison
+# validant l'effet (même discipline que BATCH_SIZE_EXTRA, §2.9 item 7).
+FEATURE_SELECTION_METHOD = os.environ.get("FEATURE_SELECTION_METHOD", "magnitude")
 
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
@@ -1558,14 +1565,18 @@ def run_llm_max_pool_pipeline(
               "Générer le cache hors-cluster via fetch_neuronpedia_labels().")
 
     # -- Sélection top-N par plage ------------------------------------------
-    print("  [P1 Labels] Sélection par magnitude token-level, plages core / extension séparées...")
-    top_core_indices = feature_selection_by_magnitude(
+    _select_features = (
+        feature_selection_stratified_by_frequency if FEATURE_SELECTION_METHOD == "stratified"
+        else feature_selection_by_magnitude
+    )
+    print(f"  [P1 Labels] Sélection par {FEATURE_SELECTION_METHOD}, plages core / extension séparées...")
+    top_core_indices = _select_features(
         token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
         lo=0, hi=d_core,
     )
     top_ext_indices = []
     if USE_FROZEN_CORE and d_total > d_core:
-        top_ext_indices = feature_selection_by_magnitude(
+        top_ext_indices = _select_features(
             token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
             lo=d_core, hi=d_total,
         )

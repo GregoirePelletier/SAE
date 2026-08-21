@@ -11,11 +11,11 @@ import json
 import pickle
 try:
     from src.storage.fragment_store import (
-        load_fragment, fragment_exists, feature_column, sum_columns,
+        load_fragment, fragment_exists, feature_column, sum_columns, doc_maxpool,
     )
 except ImportError:
     from fragment_store import (
-        load_fragment, fragment_exists, feature_column, sum_columns,
+        load_fragment, fragment_exists, feature_column, sum_columns, doc_maxpool,
     )
 import random
 import numpy as np
@@ -278,6 +278,88 @@ def feature_selection_by_magnitude(
         return list(range(lo, min(lo + n_features, hi)))
     mean_mag = acc[lo:hi] / n_tokens
     return (np.argsort(mean_mag)[::-1][:n_features] + lo).tolist()
+
+
+def feature_selection_stratified_by_frequency(
+    token_fragments_dir: str,
+    doc_indices: list[int],
+    d_sae: int,
+    n_features: int,
+    sample_docs: int = 500,
+    lo: int = 0,
+    hi: int = None,
+    n_bins: int = 10,
+    seed: int = 0,
+) -> list[int]:
+    """
+    Sélection stratifiée par bins de fréquence log-espacés (interp-embed, App. J)
+    plutôt que par magnitude moyenne. `feature_selection_by_magnitude` sélectionne
+    systématiquement les features les plus DENSES (magnitude token-level la plus
+    forte), qui sont aussi les plus proches de directions génériques/stop-word --
+    le taux d'interprétabilité mesuré sur cet échantillon n'est alors comparable ni
+    à un chiffre publié (Bills et al. échantillonnent au hasard, EleutherAI/Paulo
+    stratifient) ni entre deux configurations du dépôt dès que la distribution de
+    magnitude change (K_EXTRA, largeur, couche, core vs extension) --
+    AUDIT_SAE_2026-08.md, item B.2.
+
+    Fréquence = fraction des documents échantillonnés où la feature est active
+    (max-pool documentaire > 0, pas magnitude). Les features mortes (fréquence
+    nulle) sur l'échantillon sont exclues -- aucun exemple positif n'existerait
+    pour elles de toute façon (cf. `build_feature_examples_with_control`).
+    Échantillonnage aléatoire (`np.random.default_rng(seed)`) DANS chaque bin,
+    pas les n_features/n_bins premières par indice -- éviter un biais positionnel
+    au sein d'un bin qui remplacerait le biais de magnitude par un autre biais.
+    """
+    hi = d_sae if hi is None else hi
+    sample_docs = min(sample_docs, len(doc_indices))
+    sampled = random.sample(doc_indices, sample_docs)
+    freq = np.zeros(hi - lo, dtype=np.float64)
+    n_docs_seen = 0
+    for d_idx in sampled:
+        if not fragment_exists(token_fragments_dir, d_idx):
+            continue
+        frag = load_fragment(token_fragments_dir, d_idx)
+        doc_vec = doc_maxpool(frag).numpy()
+        freq += (doc_vec[lo:hi] > 1e-6).astype(np.float64)
+        n_docs_seen += 1
+    if n_docs_seen == 0:
+        return list(range(lo, min(lo + n_features, hi)))
+    freq /= n_docs_seen
+
+    alive_idx = np.nonzero(freq > 0)[0]
+    if len(alive_idx) == 0:
+        return list(range(lo, min(lo + n_features, hi)))
+    if len(alive_idx) <= n_features:
+        return (alive_idx + lo).tolist()
+
+    log_freq = np.log10(freq[alive_idx])
+    lo_edge, hi_edge = log_freq.min(), log_freq.max()
+    if lo_edge == hi_edge:  # toutes les features vivantes à la même fréquence -- un seul bin
+        bin_ids = np.zeros(len(alive_idx), dtype=int)
+        n_bins_eff = 1
+    else:
+        bin_edges = np.linspace(lo_edge, hi_edge, n_bins + 1)
+        bin_ids = np.clip(np.digitize(log_freq, bin_edges[1:-1]), 0, n_bins - 1)
+        n_bins_eff = n_bins
+
+    rng = np.random.default_rng(seed)
+    selected: list[int] = []
+    per_bin = max(1, n_features // n_bins_eff)
+    for b in range(n_bins_eff):
+        members = alive_idx[bin_ids == b]
+        if len(members) == 0:
+            continue
+        take = min(per_bin, len(members))
+        selected.extend(rng.choice(members, size=take, replace=False).tolist())
+
+    remaining = n_features - len(selected)
+    if remaining > 0:
+        pool = np.setdiff1d(alive_idx, np.array(selected, dtype=alive_idx.dtype))
+        if len(pool) > 0:
+            extra = rng.choice(pool, size=min(remaining, len(pool)), replace=False)
+            selected.extend(extra.tolist())
+
+    return (np.array(selected[:n_features], dtype=int) + lo).tolist()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

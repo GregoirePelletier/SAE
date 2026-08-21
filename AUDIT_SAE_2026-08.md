@@ -245,15 +245,18 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   modèle qui juge ensuite les features qu'il a lui-même généré la matière d'entraînement.
   Test minimal : réentraîner l'extension sur les mails originaux seuls, comparer taux
   d'interprétabilité et top-features de diffing.
-- **La métrique d'interprétabilité phare (45,3%, 68/150) est mesurée sur un échantillon
-  biaisé par construction.** `feature_selection_by_magnitude` sélectionne les *N* features
-  par magnitude token-level moyenne — donc les plus denses, les plus proches de directions
+- **La métrique d'interprétabilité phare (45,3%, 68/150) reste mesurée par défaut sur un
+  échantillon biaisé par construction — sélection stratifiée ajoutée, pas encore par
+  défaut.** `feature_selection_by_magnitude` sélectionne les *N* features par magnitude
+  token-level moyenne — donc les plus denses, les plus proches de directions
   génériques/stop-word. Non comparable à un chiffre publié (Bills et al. échantillonnent au
   hasard, EleutherAI/Paulo stratifient, interp-embed rapporte par bins de fréquence
-  log-espacés, App. J) ni comparable entre les configurations du dépôt lui-même dès que la
-  distribution de magnitude change (K_EXTRA, largeur, couche, core vs extension) — ce qui
-  touche presque toutes les ablations publiées. Ajouter une sélection stratifiée par
-  fréquence comme mode par défaut ; garder la magnitude comme variante étiquetée.
+  log-espacés, App. J) ni comparable entre les configurations du dépôt dès que la
+  distribution de magnitude change. `feature_selection_stratified_by_frequency`
+  (`judge.py`) existe désormais, opt-in via `FEATURE_SELECTION_METHOD=stratified` —
+  gardé opt-in plutôt que basculé par défaut faute d'un run de comparaison qui en valide
+  l'effet (même discipline que `BATCH_SIZE_EXTRA`). **Reste à faire : lancer ce run et, si
+  concluant, en faire le défaut.**
 - Problème de moindre gravité, non traité : `information\w*` et `coupure\w*` (« urgence »)
   restent des motifs larges dans `INTENT_KEYWORDS_FR`, moins sévères que ne l'était
   `avoir\w*` (corrigé) mais pas resserrés.
