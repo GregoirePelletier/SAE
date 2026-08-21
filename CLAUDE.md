@@ -17,10 +17,28 @@ LLM local. Deux pipelines : Pipeline 1 (Gemma-3 → SAE GemmaScope-2 + extension
   interp_embed sans comparaison documentée (`docs/references.md`).
 - `FrozenCoreResidualSAE` est spécifique au projet, ne pas la remplacer par un
   usage direct de SAELens.
-- bf16 partout, y compris en local (les activations massives de Gemma-3
-  débordent en fp16). La branche "extra" de `FrozenCoreResidualSAE`/`SAEBoostResidualSAE`
-  reste en fp32 ; ne jamais caster le module entier après construction.
+- bf16 obligatoire sur les activations du residual stream de Gemma-3 (activations
+  massives, débordent en fp16). Pipeline 2 (F2LLM, entrées L2-normalisées et
+  bornées à 1,0) : fp32 pour le SAE, bf16 pour le seul backbone. La branche
+  "extra" de `FrozenCoreResidualSAE`/`SAEBoostResidualSAE` reste en fp32 ;
+  ne jamais caster le module entier après construction.
 - Toute modification doit laisser `pytest tests/ -q` 100% vert.
+- Toute clé de cache ou chemin de checkpoint est dérivé mécaniquement des
+  paramètres dont le contenu dépend, jamais rédigé à la main comme une
+  f-string ad hoc (R5) — cf. piège ci-dessous.
+- Tout écart à l'équation ou au protocole d'un papier cité s'documente dans
+  `docs/references.md` : équation du papier, équation implémentée,
+  justification, conséquence sur la comparabilité des chiffres (R6).
+- Toute boucle dont le coût dépasse ~1h GPU écrit son état de progression de
+  façon atomique et reprend depuis cet état (`src/storage/checkpoint.py`) ;
+  le critère de reprise est *quel est le prochain élément non traité*, jamais
+  *le run est-il complet*. Un compteur d'échantillonnage (réservoir) fait
+  partie de l'état à persister (R1).
+- Toute structure O(n²) en nombre de documents ou en largeur de dictionnaire
+  porte un plafond codé explicite (R4) — la trajectoire du projet vers 65k
+  puis 262k de largeur rend ce risque concret, pas théorique.
+- Tout script produisant une section `§N` de `RESULTS_TESTS.md` reporte
+  `tokens/s`/`docs/s`/`steps/s` et le pic VRAM dans son JSON de résultats (R3).
 
 ## Convention de test — deux niveaux, ne pas les mélanger
 
@@ -61,6 +79,12 @@ corpus) sont **découplés** dans `src/config.py`, tous deux à 42 par défaut �
 ne pas supposer qu'ils sont le même paramètre en reconstruisant un split de
 référence.
 
+Une reprise après coupure (`src/storage/checkpoint.py`) n'est PAS bit-reproductible
+par rapport à un run continu : le flux RNG diverge dès la reprise (composition de
+lots différente), donc le réservoir résiduel d'un run repris ≠ celui d'un run
+continu. Scientifiquement bénin (échantillon aléatoire dans les deux cas), mais
+`SEED` ne garantit une reconstruction bit-exacte que pour un run jamais interrompu.
+
 ## Pièges PyTorch/HuggingFace rencontrés
 
 - `@torch.no_grad()` en décorateur sur une fonction **génératrice** ne protège que
@@ -79,14 +103,14 @@ référence.
 
 Conventions de partitions, soumission, logs, disque : `docs/ops.md`.
 
-**Ne jamais exécuter de code Python sur le nœud frontal, y compris pour un
-test CPU trivial sur cache** (`.venv/bin/python script.py` en direct,
-`pytest` manuel, etc.) — la RAM du frontal est partagée entre tous les
-utilisateurs du cluster et un run gêne les autres, même léger. Toujours
-soumettre via `sbatch`, catégorie `slurm/validation/` pour un smoke-test
-CPU-only sur cache. Le hook post-edit (`pytest tests/ -q` en tâche de fond)
-reste la seule exécution tolérée hors `sbatch`, car géré par le harness et
-déjà borné en ressources.
+**Aucun calcul sur le nœud frontal.** La RAM/CPU y sont partagées entre tous
+les utilisateurs du cluster. Une validation de configuration bornée (<5s CPU,
+<500Mo RSS, aucune lecture de tenseur/modèle/checkpoint réel — vérifier un
+chemin, une clé de cache, une regex, une jointure sur un manifest déjà écrit)
+est tolérée ; tout calcul sur des données/modèles réels passe par `sbatch`,
+catégorie `slurm/validation/` pour un smoke-test CPU-only sur cache. Le hook
+post-edit (`pytest tests/ -q` en tâche de fond) reste la seule exécution
+automatique tolérée hors `sbatch`, déjà bornée par le harness.
 
 **Les activations SAE (17k+ dimensions, ~99,9% de zéros) se passent en CSR
 sparse à `LogisticRegression`, jamais en tableau dense.** `sklearn` recopie
@@ -119,7 +143,12 @@ ne veut pas.
   Conclusion / Limite connue.
 - Rédiger au présent, sans numéro de version interne (`v9`, `v10`...) ni récit
   de session : une contrainte de conception encore active se formule comme
-  une règle, pas comme le récit de sa découverte.
+  une règle, pas comme le récit de sa découverte. Même discipline dans les
+  commentaires et docstrings du code (R2) : citer un défaut par son nom de
+  variable, pas par sa narration ("corrigé cette session", "audit du ...").
+  Exception assumée : les répertoires/scripts de run
+  (`results_v14_main/`, `run_sae_v12_scaled.slurm`) restent versionnés/
+  horodatés — seule la prose reste intemporelle.
 
 ## Diagnostics — un run est-il sain avant d'en tirer une conclusion ?
 

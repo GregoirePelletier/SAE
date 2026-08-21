@@ -40,7 +40,10 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
 
 VERSION_RE = re.compile(r"\bv\d{1,2}\b")
 SESSION_V_RE = re.compile(r"\bsession\s+v\d", re.IGNORECASE)
-PLACEHOLDER_RE = re.compile(r"\[à compléter\]", re.IGNORECASE)
+PLACEHOLDER_RE = re.compile(
+    r"\[à compléter\]|§<[^>]*à.?compléter[^>]*>|<!--\s*à\s*compléter\s*-->",
+    re.IGNORECASE,
+)
 TODO_RE = re.compile(r"\bTODO\b")
 FIRST_PERSON_RE = re.compile(r"\b(je|j'|ma|mon|mes)\b", re.IGNORECASE)
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")

@@ -826,10 +826,11 @@ quantitatif (`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20 co
 les labels faibles d'intention (5.1), sur 4 requêtes en paraphrase, comparé à une
 baseline TF-IDF, sur les 3480 mails originaux.
 
-*[Résultats en attente du job SLURM `latent_retrieval_precision_eval` — voir
-`RESULTS_TESTS.md` §<N-À-COMPLÉTER>. Les chiffres ci-dessous (§26/§68/§69) mesuraient
-une première version phrase-level, entraînée en domaine sur Mails.tsv — écart
-méthodologique corrigé, supersédés, conservés en trace historique uniquement.]*
+*[Bloqué : `build_token_training_pool` meurt OOM avant de terminer, aucun résultat
+produit avec cette version. Les chiffres ci-dessous (§26/§68/§69) mesuraient une
+première version phrase-level, entraînée en domaine sur Mails.tsv — écart
+méthodologique corrigé depuis, supersédés, conservés en trace historique
+uniquement, pas citables comme résultat de référence.]*
 
 **Réserve méthodologique sur la comparaison à TF-IDF (§5.1 et §5.5)** : la vérité
 terrain utilisée dans les deux cas (`INTENT_KEYWORDS_FR`) est elle-même construite par

@@ -1581,10 +1581,11 @@ n'atteigne la significativité seule).
 
 ## 26. Évaluation quantitative du retrieval Latent Terms (jamais faite jusqu'ici)
 
-**Supersédé par §<N-À-COMPLÉTER>** : cette section et §68(c)/§69(c) mesurent un
-SAE **phrase-level** entraîné directement sur Mails.tsv, pas la méthode
+**Supersédé, sans remplacement produit à ce jour** : cette section et §68(c)/§69(c)
+mesurent un SAE **phrase-level** entraîné directement sur Mails.tsv, pas la méthode
 token-level du papier (§3.1-3.2) — écart identifié et corrigé, `latent_terms.py`
-réimplémenté fidèlement. Chiffres ci-dessous conservés comme trace historique
+réimplémenté fidèlement, mais bloqué par un OOM dans `build_token_training_pool`
+avant de produire un seul chiffre. Chiffres ci-dessous conservés comme trace historique
 (append-only), à ne plus citer comme résultat Latent Terms de référence.
 
 `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE

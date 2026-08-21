@@ -139,7 +139,8 @@ from sae_lens import SAE
 # matmul bf16 (le forward Gemma-3/core SAE, castés en TORCH_DTYPE, n'est pas fp32).
 torch.set_float32_matmul_precision("high")
 
-# fp16 par défaut en local (GPU Turing 6 Go sans bf16 natif) ; bf16 dispo via DTYPE=bf16 (cluster).
+# DTYPE="bf16" par défaut (config.py) ; fp16 seulement si DTYPE forcé à autre chose
+# (ex. GPU Turing local sans bf16 natif).
 TORCH_DTYPE = torch.bfloat16 if DTYPE == "bf16" else torch.float16
 
 
@@ -301,7 +302,7 @@ F2LLM_EXTRACT_BATCH_SIZE = int(os.environ.get("F2LLM_EXTRACT_BATCH_SIZE", "128")
 FEATURE_SELECTION_METHOD = os.environ.get("FEATURE_SELECTION_METHOD", "magnitude")
 
 from src.config import (
-    EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
+    EMB_MODEL, EMB_POOLING, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
     EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA, REENCODE_BATCH_SIZE,
@@ -1092,9 +1093,9 @@ def run_llm_max_pool_pipeline(
 
                 acts = acts_raw
                 # Masquage (special tokens + skip-first + σ-clip) : implémentation
-                # unique dans src/analysis/activations. σ-clip intra-batch (stats
-                # sur B docs) plutôt qu'intra-doc, cohérent avec l'unimodalité des
-                # normes observée empiriquement.
+                # unique dans src/analysis/activations::norm_outlier_mask, σ-clip
+                # intra-document (stats par document, pas par batch — sa docstring
+                # justifie ce choix).
                 keep_bt = valid_token_mask(
                     inputs["input_ids"], inputs["attention_mask"],
                     tokenizer, skip_first_content_token=True,
@@ -1861,13 +1862,18 @@ def run_f2llm_pipeline(
 
     diff_texts  = diff_texts or []
     diff_labels = diff_labels or []
+    # Clé de cache dérivée mécaniquement du backbone (R5, CLAUDE.md) : sans ça,
+    # basculer EMB_MODEL/EMB_POOLING sur un corpus de même taille (ex.
+    # F2LLM-v2-330M -> F2LLM-v2-80M, ou bge-m3) rechargeait silencieusement les
+    # embeddings du mauvais modèle (AUDIT_SAE_2026-08.md).
+    _emb_tag = f"{os.path.basename(EMB_MODEL.rstrip('/'))}_{EMB_POOLING}"
 
     train_phrases, train_p2d = split_into_phrases(train_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
     print(f"  Train : {len(train_texts)} docs → {len(train_phrases)} phrases")
 
     train_phrase_emb, d_in = extract_f2llm_embeddings(
         train_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(train_phrases)}"),
+        cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(train_phrases)}_{_emb_tag}"),
         batch_size=F2LLM_EXTRACT_BATCH_SIZE,
     )
 
@@ -1888,7 +1894,7 @@ def run_f2llm_pipeline(
     print(f"  Test  : {len(test_texts)} docs → {len(test_phrases)} phrases")
     test_phrase_emb, _ = extract_f2llm_embeddings(
         test_phrases, max_length=128,
-        cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(test_phrases)}"),
+        cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(test_phrases)}_{_emb_tag}"),
         batch_size=F2LLM_EXTRACT_BATCH_SIZE,
     )
     test_p2d_arr = np.array(test_p2d_list)
@@ -1902,7 +1908,7 @@ def run_f2llm_pipeline(
         diff_phrases, diff_p2d_list = split_into_phrases(diff_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
         diff_phrase_emb, _ = extract_f2llm_embeddings(
             diff_phrases, max_length=128,
-            cache_path=os.path.join(CACHE_DIR, f"diffcorpus_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(diff_phrases)}"),
+            cache_path=os.path.join(CACHE_DIR, f"diffcorpus_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(diff_phrases)}_{_emb_tag}"),
             batch_size=F2LLM_EXTRACT_BATCH_SIZE,
         )
         diff_p2d_arr = np.array(diff_p2d_list)

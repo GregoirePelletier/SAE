@@ -165,54 +165,11 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   à fusionner dans `docs/ops.md` ; 104 `.slurm` (94 au dernier comptage, la dérive continue)
   à réduire à un template générique + fichiers `.env` — copies d'un même script différant
   par une variable.
-- **3 désynchronisations commentaire↔code restantes** (une 4e, `config.py` annonçant
-  layer=24 par défaut au lieu de 31, corrigée avec le test qui en dépendait) :
-  1. `saev5.py` (« fp16 par défaut en local ») : le défaut réel de `DTYPE` (`config.py`) est
-     `bf16` — fp16 n'intervient que si `DTYPE` est explicitement mis à autre chose qu'`bf16`
-     (ex. GPU Turing local sans bf16 natif). Le commentaire présente l'exception comme le
-     défaut.
-  2. `saev5.py` (« σ-clip intra-batch (stats sur B docs) ») contredit frontalement
-     `activations.py::norm_outlier_mask`, explicitement **intra-document** (sa docstring
-     justifie ce choix contre l'intra-batch).
-  3. `fragment_store.py` docstring (« `vals`: float16 ») : le code écrit `torch.float32` —
-     double du stockage annoncé.
 - **`pytest tests/ -q` ne passe qu'à un test près.** `scripts/check_docs.py` sort en 1 avec
-  17 violations (première personne du singulier), 16 venant de `docs/INTERP_EMBED_COVERAGE.md`
-  et `docs/PDF_APPENDICES_EXTRACT.md`. Les 7 autres échecs préexistants (mocks de test
-  périmés — `.eval()` absent d'un stub, forme fixe d'un `MagicMock` incompatible avec un
-  batch réel, comparaison train/validation mélangée, assertion sur l'ancien défaut
-  layer=24, référence CSR/CSC bugguée dans son propre calcul de référence — cf. commit qui
-  suit) sont corrigés ; il ne reste que `check_docs.py`, un travail de réécriture de prose,
-  pas de code.
-- **Garde-fou placeholder incomplet.** `PLACEHOLDER_RE = r"\[à compléter\]"`
-  (`scripts/check_docs.py`) ne matche ni `§<N-À-COMPLÉTER>` ni `<!-- À COMPLÉTER -->`. Au
-  moins 4 occurrences non résolues passent au travers, dont
-  `report/03_experiences_et_resultats.md` (le rapport cite une section de
-  `RESULTS_TESTS.md` qui n'existe pas) et `docs/architecture.md`.
-- **Une reprise n'est pas bit-reproductible.** Le flux RNG diffère entre un run continu et
-  un run repris (checkpoint), donc le réservoir résiduel d'un run repris ≠ celui d'un run
-  continu. Scientifiquement bénin (échantillon aléatoire dans les deux cas) mais rien ne le
-  documente — la traçabilité `SEED` (`CLAUDE.md`) laisse croire à une reproductibilité qui
-  n'existe pas dès qu'une reprise a eu lieu. À écrire en commentaire/doc, pas à corriger.
-- **Clé de cache P2 toujours sans `EMB_MODEL`** (`train_phrase_emb_dim{...}_n{...}`,
-  `saev5.py`) : violation de la règle `CLAUDE.md` sur les clés de cache, à l'endroit exact
-  que la règle signale déjà comme piège. Basculer de backbone sur le même corpus recharge
-  silencieusement les embeddings du mauvais modèle.
-- **`CLAUDE.md` — contestations non traitées** : (b) la formulation absolue « aucun code
-  Python sur le frontal, jamais » interdit même une validation de configuration bornée
-  (<5s CPU, <500Mo RSS), poussant à découvrir des fautes de config après 20h de file
-  d'attente ; (c) « bf16 partout, y compris en local » est appliquée aveuglément à
-  `PhraseLevelSAE` (P2) dont les embeddings sont L2-normalisés et bornés à 1,0 — bf16 y
-  coûte 8 bits de mantisse pour rien ; (d) la règle « pas de numéro de version interne »
-  ne couvre que la prose `.md`, pas le nommage des artefacts (`results_v14_main/`,
-  `run_sae_v12_scaled.slurm`).
-- **R1-R6 proposées, aucune écrite dans `CLAUDE.md`** : R1 (reprise obligatoire >1h GPU)
-  est implémentée dans le code mais n'existe pas comme règle écrite, donc rien ne protège
-  contre une régression sur une future boucle longue qui l'omettrait. R2 (commentaires
-  suivent la règle éditoriale des `.md`, pas de récit de session) R3 (budget de perf tracé
-  par run) R4 (plafond explicite sur toute structure O(n²) en n_docs/d_sae) R5 (clé de
-  cache dérivée mécaniquement, pas rédigée à la main) R6 (écart au papier = entrée
-  documentée dans `docs/references.md`) restent à écrire.
+  17 violations de première personne du singulier (`docs/INTERP_EMBED_COVERAGE.md`,
+  `docs/PDF_APPENDICES_EXTRACT.md`) — réécriture de prose, pas de code. Tout le reste
+  (mocks périmés, désynchronisations commentaire↔code, garde-fou placeholder incomplet,
+  clé de cache P2, R1-R6) est corrigé.
 
 ## 4. Opérationnel
 

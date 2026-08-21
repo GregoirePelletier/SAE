@@ -7,7 +7,9 @@ Avec L0 ≈ 70 (core JumpReLU) + 32 (extra), densité ≈ 4e-4 → CSR ≈ 250 K
 
 Format (torch.save, .pt) :
   { "token_strings": list[str],
-    "rowptr": int64 [T+1], "cols": int32 [nnz], "vals": float16 [nnz],
+    "rowptr": int64 [T+1], "cols": int32 [nnz], "vals": float32 [nnz],
+    # float32, pas float16 : les activations JumpReLU du core (non bornées,
+    # outliers ~1e5) débordent la plage fp16 (max ~65504).
     "shape": (T, d_total),
     "raw_acts": bf16 [T, d_in] (optionnel, supprimé après entraînement SAEBoostResidualSAE) }
 
