@@ -147,6 +147,18 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
     régression logistique — le reste de l'aval (UMAP fitté deux fois en dense `n_jobs=1`,
     `_embed_bge_m3` rechargé depuis le disque 3× par run, `df.iterrows()` sur le hover UMAP)
     reste dense/séquentiel.
+- **Dernier reliquat du gaspillage filler, malgré G7.** G7 supprime l'encodage core et
+  l'écriture de fragment pour un document filler, mais la boucle d'extraction fait toujours
+  `all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))` **par document
+  filler** (`saev5.py`), puis `torch.stack` + `torch.save` sur l'ensemble. À 1,2M chunks
+  filler (run 100M tokens) : une liste Python de ~1,2M tenseurs de zéros en RAM, puis sur
+  disque. Représentation creuse (lignes non-filler + un index) à faire.
+- **Hook d'extraction fragile à la version de `transformers`.** `_capture_resid_post`
+  (`saev5.py`) suppose que `output` d'un `Gemma3DecoderLayer.forward()` est un tenseur nu, pas
+  un tuple — confirmé vrai pour la version actuelle en lisant `modeling_gemma3.py`, mais
+  l'équivalence bit-à-bit (G1, §2.2) n'a été vérifiée que sur cette version précise. Un
+  `isinstance(output, tuple)` explicite coûte une ligne et protège une propriété dont dépend
+  maintenant tout le pipeline d'extraction contre une future mise à jour de `transformers`.
 
 ## 3. Hygiène du dépôt
 
@@ -163,7 +175,8 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   à fusionner dans `docs/ops.md` ; 104 `.slurm` (94 au dernier comptage, la dérive continue)
   à réduire à un template générique + fichiers `.env` — copies d'un même script différant
   par une variable.
-- **4 désynchronisations commentaire↔code** :
+- **3 désynchronisations commentaire↔code restantes** (une 4e, `config.py` annonçant
+  layer=24 par défaut au lieu de 31, corrigée avec le test qui en dépendait) :
   1. `saev5.py` (« fp16 par défaut en local ») : le défaut réel de `DTYPE` (`config.py`) est
      `bf16` — fp16 n'intervient que si `DTYPE` est explicitement mis à autre chose qu'`bf16`
      (ex. GPU Turing local sans bf16 natif). Le commentaire présente l'exception comme le
@@ -171,11 +184,26 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   2. `saev5.py` (« σ-clip intra-batch (stats sur B docs) ») contredit frontalement
      `activations.py::norm_outlier_mask`, explicitement **intra-document** (sa docstring
      justifie ce choix contre l'intra-batch).
-  3. `config.py` (« LAYER par défaut vient du preset MODEL_SIZE (24 pour 12b) ») : le
-     preset vaut **31**, pas 24 — un lecteur qui croit ce commentaire reproduira le mauvais
-     run.
-  4. `fragment_store.py` docstring (« `vals`: float16 ») : le code écrit `torch.float32` —
+  3. `fragment_store.py` docstring (« `vals`: float16 ») : le code écrit `torch.float32` —
      double du stockage annoncé.
+- **`pytest tests/ -q` ne passe qu'à un test près.** `scripts/check_docs.py` sort en 1 avec
+  17 violations (première personne du singulier), 16 venant de `docs/INTERP_EMBED_COVERAGE.md`
+  et `docs/PDF_APPENDICES_EXTRACT.md`. Les 7 autres échecs préexistants (mocks de test
+  périmés — `.eval()` absent d'un stub, forme fixe d'un `MagicMock` incompatible avec un
+  batch réel, comparaison train/validation mélangée, assertion sur l'ancien défaut
+  layer=24, référence CSR/CSC bugguée dans son propre calcul de référence — cf. commit qui
+  suit) sont corrigés ; il ne reste que `check_docs.py`, un travail de réécriture de prose,
+  pas de code.
+- **Garde-fou placeholder incomplet.** `PLACEHOLDER_RE = r"\[à compléter\]"`
+  (`scripts/check_docs.py`) ne matche ni `§<N-À-COMPLÉTER>` ni `<!-- À COMPLÉTER -->`. Au
+  moins 4 occurrences non résolues passent au travers, dont
+  `report/03_experiences_et_resultats.md` (le rapport cite une section de
+  `RESULTS_TESTS.md` qui n'existe pas) et `docs/architecture.md`.
+- **Une reprise n'est pas bit-reproductible.** Le flux RNG diffère entre un run continu et
+  un run repris (checkpoint), donc le réservoir résiduel d'un run repris ≠ celui d'un run
+  continu. Scientifiquement bénin (échantillon aléatoire dans les deux cas) mais rien ne le
+  documente — la traçabilité `SEED` (`CLAUDE.md`) laisse croire à une reproductibilité qui
+  n'existe pas dès qu'une reprise a eu lieu. À écrire en commentaire/doc, pas à corriger.
 - **Clé de cache P2 toujours sans `EMB_MODEL`** (`train_phrase_emb_dim{...}_n{...}`,
   `saev5.py`) : violation de la règle `CLAUDE.md` sur les clés de cache, à l'endroit exact
   que la règle signale déjà comme piège. Basculer de backbone sur le même corpus recharge
@@ -198,15 +226,13 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
 
 ## 4. Opérationnel
 
-- **Un `Mails.tsv` illisible produit un run « réussi » sur des données synthétiques, avec
-  train = test.** Chaîne confirmée dans le code : `load_mails_tsv` échoue → fallback
-  `pd.read_csv(sep=',')` sur un TSV → retour vide → repli sur mails synthétiques codés en
-  dur → `test_texts, test_labels = train_texts, train_labels`. Le run continue, entraîne,
-  juge, écrit `results.json`, et rien ne marque le run comme dégradé. Minimum : lever une
-  exception sous un seuil de mails réels, écrire `corpus_degraded: true` dans `results.json`.
-- **`on_bad_lines="skip"` sans compteur** dans `load_mails_tsv` : nombre de mails perdus à
-  l'ingestion inconnu. Un `n_skipped` loggué et stocké dans `results.json` coûte deux
-  lignes.
+- **`sys.exit(0)` sur arrêt gracieux enregistre un run incomplet comme COMPLETED.**
+  `saev5.py` (fin de boucle d'extraction P1, fin de boucle d'extraction P2) : un arrêt
+  propre avant la fin des données (ex. `SIGUSR1` proche de la limite de temps SLURM, cf.
+  reprise §2.3) sort en code 0. `sacct`/`--dependency=afterok` d'une chaîne de jobs ne peut
+  pas distinguer ce cas d'un run réellement terminé — d'autant plus gênant que `CLAUDE.md`
+  documente déjà les pièges `afterok`. Code de sortie distinct requis (64, par convention)
+  pour un arrêt anticipé même propre.
 - **`uv.lock` gitignoré**, alors que le pipeline dépend de détails internes non
   contractuels de `transformers` (comportement `tie_last_hidden_states`, type de retour de
   `DecoderLayer.forward`). Une réinstallation future peut casser silencieusement

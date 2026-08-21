@@ -52,7 +52,17 @@ def load_mails_tsv(path: str | Path, min_chars: int = 30) -> pd.DataFrame:
     Le champ `document` contient des retours ligne internes → parsing quoting-aware.
     Enrichissement: langue heuristique, intentions par regex (labels faibles), longueur.
     """
-    df = pd.read_csv(path, sep="\t", quoting=0, engine="python", on_bad_lines="skip")
+    n_bad_lines = [0]
+
+    def _count_and_skip(bad_line):
+        n_bad_lines[0] += 1
+        return None  # None -> ligne ignorée (même comportement que on_bad_lines="skip")
+
+    df = pd.read_csv(path, sep="\t", quoting=0, engine="python", on_bad_lines=_count_and_skip)
+    if n_bad_lines[0]:
+        print(f"  [dataset] load_mails_tsv : {n_bad_lines[0]} ligne(s) malformée(s) ignorée(s) "
+              f"({path}).")
+    df.attrs["n_bad_lines_skipped"] = n_bad_lines[0]
     text_col = "document" if "document" in df.columns else df.columns[1]
     df = df.rename(columns={text_col: "text"})
     df["text"] = df["text"].map(_clean_text)

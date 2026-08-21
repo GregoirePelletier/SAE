@@ -284,6 +284,11 @@ EMAIL_TEST_SPLIT = float(os.environ.get("EMAIL_TEST_SPLIT", "0.05"))
 # déséquilibre train si un mail génère beaucoup plus de variantes qu'un autre,
 # et borne le volume total si besoin de contrôler le temps de calcul).
 MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
+# Défaut désactivé : un Mails.tsv illisible/introuvable doit interrompre le run
+# plutôt que produire silencieusement un résultat sur 3 mails synthétiques
+# (AUDIT_SAE_2026-08.md, item A2). À activer explicitement pour un run de
+# démonstration/smoke-test sans données réelles -- jamais pour un résultat cité.
+ALLOW_SYNTHETIC_CORPUS_FALLBACK = os.environ.get("ALLOW_SYNTHETIC_CORPUS_FALLBACK", "0") == "1"
 
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
@@ -2112,6 +2117,7 @@ if __name__ == "__main__":
         diff_texts, diff_labels = [], []
         train_groups = None  # pas de notion de mail d'origine dans ce corpus generique
         test_groups = None
+        corpus_degraded, corpus_degraded_reason = False, None
     else:
         with stage_timer("Chargement corpus principal (emails+augmentés)"):
             train_texts, train_labels, test_texts, test_labels, train_groups, test_groups = (
@@ -2121,15 +2127,36 @@ if __name__ == "__main__":
                     seed=CORPUS_SPLIT_SEED, return_groups=True,
                 )
             )
+        corpus_degraded, corpus_degraded_reason = False, None
         if not train_texts:
-            print("  Fallback emails synthétiques (Mails.tsv introuvable).")
+            corpus_degraded = True
+            corpus_degraded_reason = (
+                f"Mails.tsv illisible ou introuvable ({LOCAL_MAILS_PATH!r}) : train_texts vide "
+                "après build_email_train_test_corpus."
+            )
+            if not ALLOW_SYNTHETIC_CORPUS_FALLBACK:
+                raise RuntimeError(
+                    f"{corpus_degraded_reason} Run interrompu -- positionner "
+                    "ALLOW_SYNTHETIC_CORPUS_FALLBACK=1 pour un run de démonstration sur mails "
+                    "synthétiques (résultat jamais citable, results.json le marque corpus_degraded)."
+                )
+            print(f"  [DEGRADED] {corpus_degraded_reason} Fallback synthétique "
+                  "(ALLOW_SYNTHETIC_CORPUS_FALLBACK=1) -- résultat non citable.")
             train_texts = [
                 "Bonjour, je conteste ma facture d'électricité Linky, hausse injustifiée.",
                 "Merci de planifier l'installation de mon compteur de raccordement électrique.",
                 "Coupure réseau dans notre rue depuis 2 heures. Envoyez un technicien.",
             ]
             train_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
-            test_texts, test_labels = train_texts, train_labels
+            # Test distinct du train même en mode dégradé -- train==test rendrait toute
+            # métrique de classification/interprétabilité du run vide de sens (cf.
+            # AUDIT_SAE_2026-08.md, item A2).
+            test_texts = [
+                "Je souhaite contester le montant de ma dernière facture, il me semble erroné.",
+                "Pouvez-vous planifier la pose de mon nouveau compteur électrique svp ?",
+                "Panne de courant persistante dans mon quartier, merci d'intervenir.",
+            ]
+            test_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
         print(f"Train (emails+augmentés) : {len(train_texts)} docs | Test : {len(test_texts)} docs")
 
         # ─── CORPUS SECONDAIRE : diffing cross-domaine (energy vs sports) ──────────
@@ -2243,6 +2270,8 @@ if __name__ == "__main__":
     with open(os.path.join(SAVE_DIR, "results.json"), "w") as f:
         json.dump(
             {
+                "corpus_degraded": corpus_degraded,
+                "corpus_degraded_reason": corpus_degraded_reason,
                 "P1_Gemma3_SAE":    {k: v for k, v in results_p1.items() if not k.startswith("_")},
                 "P2_F2LLM_PhSAE":  {k: v for k, v in results_p2.items()},
             },
