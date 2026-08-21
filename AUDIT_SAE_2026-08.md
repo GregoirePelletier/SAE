@@ -127,8 +127,6 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   batching casserait cet invariant (le shard N ne correspondrait plus à `texts[i:i+shard_size]`)
   sans persister aussi la permutation dans le checkpoint. Gain plus risqué qu'ailleurs dans
   cet audit, pas fait tant que la reprise n'est pas adaptée en même temps.
-- **Sharding des fragments (extraction)** : testé CPU, vérification GPU en cours (job 44778,
-  lancé avant cette passe) — à confirmer une fois le job terminé avant de considérer l'item clos.
 - **Étages aval — murs de scalabilité restants** (aucun ne coûte cher à 16k de largeur, tous
   cassent à 65k/262k) :
   - `saev5.py` : `SpectralClustering` construit une affinité n×n en O(n²) mémoire — mur dur
