@@ -1,24 +1,20 @@
 """
-scripts/audit_2026_08_extraction_batch_size_sweep.py — Étape 1 du plan
-(sharded-twirling-sunbeam.md) : benchmark de `EXTRACTION_BATCH_SIZE`
-(src/config.py, nouvellement configurable -- 4 codé en dur avant cette
-session) sur un échantillon réel, GPU chargé UNE SEULE FOIS, pour trouver la
-plus grande valeur qui tient en VRAM sans OOM sur H100/H100-bis (80 Go),
-avant d'investir des heures d'extraction complète à la valeur par défaut (4).
+benchmarks/extraction_batch_size_sweep.py — Balaye `EXTRACTION_BATCH_SIZE`
+(src/config.py) sur un échantillon réel, GPU chargé une seule fois, pour
+trouver la plus grande valeur qui tient en VRAM sans OOM. À relancer à
+chaque changement de GPU, de modèle, ou de couche d'extraction.
 
-Mesure le forward-pass Gemma-3-12B lui-même (le coût dominant, GPU-bound),
-même signature exacte que la boucle d'extraction de production (saev5.py,
-"Extraction P1") : output_hidden_states=True, logits_to_keep=1,
-hidden_states[LAYER]. Ne réplique PAS le post-traitement par document
-(masquage, encodage SAE core, écriture de fragments CSR) -- coût CPU/IO
-largement indépendant de la taille de batch, pas le facteur limitant pour
-cette question précise (taille de batch max sans OOM + débit du forward).
+Mesure le forward-pass Gemma-3-12B lui-même (coût dominant, GPU-bound),
+même signature que la boucle d'extraction de production (saev5.py) :
+output_hidden_states=True, logits_to_keep=1, hidden_states[LAYER]. Ne
+réplique pas le post-traitement par document (masquage, encodage SAE core,
+écriture de fragments CSR) — coût CPU/IO indépendant de la taille de batch,
+pas le facteur limitant pour cette question.
 
-N'écrit RIEN dans le cache de production (aucun résidu, aucun fragment) --
-purement un benchmark, indépendant du job 44211 en cours (qui, lui, écrit le
-cache réel à réutiliser pour de futures comparaisons K_EXTRA, cf. discussion).
+N'écrit rien dans le cache de production (aucun résidu, aucun fragment) —
+purement un benchmark.
 
-Usage : sbatch slurm/validation/run_audit_extraction_batch_sweep.slurm
+Usage : sbatch slurm/validation/run_extraction_batch_sweep.slurm
 """
 from __future__ import annotations
 
@@ -37,7 +33,7 @@ CANDIDATE_BATCH_SIZES = [4, 8, 16, 24, 32, 48, 64]
 N_WARMUP_BATCHES = 2
 N_TIMED_BATCHES = 8
 MAX_LENGTH = 512
-OUT_PATH = "docs/audit_2026_08_extraction_batch_size_sweep_results.json"
+OUT_PATH = "benchmarks/extraction_batch_size_sweep_results.json"
 
 
 def main():
@@ -49,7 +45,7 @@ def main():
         MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
         token=HF_TOKEN, trust_remote_code=True, local_files_only=True,
     ).eval()
-    print(f"[batch-sweep] LAYER={LAYER} (même config que job 44211, résultats représentatifs de ce run)")
+    print(f"[batch-sweep] LAYER={LAYER}")
 
     print("[batch-sweep] Chargement d'un échantillon de textes réels (corpus emails+augmentés)...")
     train_texts, _, _, _ = build_email_train_test_corpus(
