@@ -198,13 +198,6 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
 
 ## 4. Opérationnel
 
-- **Streaming corrigé sur un seul des trois appels concernés.** `preparation.py` a deux
-  appels encore en `streaming=False` (`prepare_domain_dataset`, `sample_fineweb2_chunks`) ;
-  seul l'appel de `latent_terms.py` a été corrigé. Or `sample_fineweb2_chunks` est appelée
-  en boucle sur les 18 shards (`saev5.py`) pour construire le filler : chaque itération
-  charge un parquet FineWeb2 de 4,6 Go compressé intégralement en RAM avant filtrage —
-  l'OOM diagnostiqué et corrigé ailleurs reste vivant dans le chemin de production le plus
-  lourd.
 - **Un `Mails.tsv` illisible produit un run « réussi » sur des données synthétiques, avec
   train = test.** Chaîne confirmée dans le code : `load_mails_tsv` échoue → fallback
   `pd.read_csv(sep=',')` sur un TSV → retour vide → repli sur mails synthétiques codés en

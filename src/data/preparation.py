@@ -72,7 +72,7 @@ def prepare_domain_dataset(
                 "parquet",
                 data_files={"train": local_dataset_path},
                 split="train",
-                streaming=False,
+                streaming=True,
             )
             for ex in ds:
                 text = ex.get("text", "")
@@ -169,7 +169,7 @@ def sample_fineweb2_chunks(
     seen_chunk_hashes = set()
     try:
         ds = load_dataset(
-            "parquet", data_files={"train": local_dataset_path}, split="train", streaming=False
+            "parquet", data_files={"train": local_dataset_path}, split="train", streaming=True
         )
         for ex in ds:
             text = ex.get("text", "")
