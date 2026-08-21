@@ -206,20 +206,25 @@ def build_feature_examples_with_control(
     # en cache sans confondre "négatif différent" et "juge différent".
     neg_pool = np.where(f_acts <= threshold_neg)[0].tolist()
     random.Random(f_idx).shuffle(neg_pool)
-    neg_example = None
-    neg_magnitude = 0.0
+    # B.5 : neg_quantile=0.05 ne garantit pas une activation nulle pour une
+    # feature dense -- le 5e percentile peut être strictement positif. Garde
+    # le candidat de plus faible magnitude réelle parmi ceux examinés plutôt
+    # qu'un seuil dur (candidat > threshold_pos -> rejeté) : sur les features
+    # de l'extension (sélectionnées par magnitude, donc denses par
+    # construction, cf. B.2), AUCUN candidat du pool ne passe jamais un seuil
+    # à threshold_pos=1e-6 -- un seuil dur annule silencieusement neg_example
+    # pour la quasi-totalité des features, vérifié sur GPU (job 44831) avant
+    # ce correctif. "Meilleur candidat trouvé" reste toujours une amélioration
+    # sur l'ancien comportement (premier candidat du pool, sans égard à sa
+    # magnitude réelle), sans reproduire l'échec total du seuil dur.
+    best_example, best_magnitude = None, None
     for d_idx in neg_pool[:20]:
         if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
         doc_data = load_fragment(token_fragments_dir, int(d_idx + offset))
         token_acts = feature_column(doc_data, f_idx)
         candidate_magnitude = float(token_acts.max())
-        # B.5 : neg_quantile=0.05 ne garantit pas une activation nulle pour une
-        # feature dense (>95% des documents actifs) -- le 5e percentile peut
-        # être strictement positif, auquel cas ce candidat n'est pas un vrai
-        # négatif. On l'écarte et on essaie le suivant plutôt que de présenter
-        # au juge un "négatif" qui active réellement.
-        if candidate_magnitude > threshold_pos:
+        if best_magnitude is not None and candidate_magnitude >= best_magnitude:
             continue
         toks = doc_data["token_strings"]
         # B.3 : argmax de CETTE feature sur ce document non-activant, pas le
@@ -229,9 +234,13 @@ def build_feature_examples_with_control(
         # saillance (explication mécanique plausible de l'instabilité à 31%
         # du protocole odd-one-out, RESULTS_TESTS.md §13.1).
         target_idx = int(token_acts.argmax())
-        neg_example = extract_causal_context(toks, target_idx)
-        neg_magnitude = candidate_magnitude
-        break
+        best_example = extract_causal_context(toks, target_idx)
+        best_magnitude = candidate_magnitude
+        if best_magnitude <= threshold_pos:
+            break  # vrai négatif trouvé, inutile de continuer
+
+    neg_example = best_example
+    neg_magnitude = best_magnitude if best_magnitude is not None else 0.0
 
     if return_magnitudes:
         return pos_examples, neg_example, pos_magnitudes, neg_magnitude
@@ -582,18 +591,24 @@ def build_phrase_examples_with_control(
     # Graine locale par feature (B.28) -- cf. build_feature_examples_with_control.
     neg_pool = np.where(f_acts <= threshold_neg)[0].tolist()
     random.Random(f_idx).shuffle(neg_pool)
-    neg_example = None
-    neg_magnitude = 0.0
+    # B.5 : garde le candidat de plus faible activation réelle plutôt qu'un
+    # seuil dur -- cf. build_feature_examples_with_control (un seuil dur
+    # annule silencieusement neg_example pour les features denses).
+    best_example, best_magnitude = None, None
     for p_idx in neg_pool[:20]:
-        # B.5 : voir build_feature_examples_with_control -- neg_quantile=0.05
-        # ne garantit pas une activation nulle pour une feature dense.
-        if float(f_acts[p_idx]) > threshold_pos:
-            continue
         text = re.sub(r"\s+", " ", phrase_texts[p_idx]).strip()
-        if text:
-            neg_example = f"<<{text}>>"
-            neg_magnitude = float(f_acts[p_idx])
+        if not text:
+            continue
+        candidate_magnitude = float(f_acts[p_idx])
+        if best_magnitude is not None and candidate_magnitude >= best_magnitude:
+            continue
+        best_example = f"<<{text}>>"
+        best_magnitude = candidate_magnitude
+        if best_magnitude <= threshold_pos:
             break
+
+    neg_example = best_example
+    neg_magnitude = best_magnitude if best_magnitude is not None else 0.0
 
     if return_magnitudes:
         return pos_examples, neg_example, pos_magnitudes, neg_magnitude

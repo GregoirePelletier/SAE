@@ -3920,3 +3920,45 @@ autour du seuil ne changerait pas la conclusion (le mécanisme resterait
 anecdotique, pas structurel). N'exclut pas un biais de longueur ailleurs
 dans le pipeline (cf. §59, sans rapport avec l'augmentation) — seule
 l'hypothèse spécifique de troncature du prompt d'augmentation est testée ici.
+
+## 75. Un seuil dur sur le garde-fou B.5 (négatif odd-one-out) annulait `interp_score` pour la quasi-totalité des features de l'extension
+
+**Question** : le correctif B.5 (négatif écarté si son activation réelle
+dépasse `threshold_pos`) se comporte-t-il comme attendu sur un run réel, ou
+seulement sur les tests unitaires synthétiques qui l'ont validé ?
+
+**Écart à la configuration de référence** : run de validation 100k tokens,
+layer 24, `N_FEATURES_TO_LABEL=20`, sinon identique à la configuration de
+référence.
+
+**Méthode statistique** : comparaison avant/après sur deux runs GPU
+identiques par ailleurs (job 44778 avant les correctifs de cette session,
+job 44831 après) ; ré-exécution directe de
+`build_feature_examples_with_control` sur les activations mises en cache
+des deux runs pour isoler la cause.
+
+**n** : 20 features labellisées par run.
+
+**Résultat** : `interp_score` moyen 45% (44778) → 0% (44831, 20/20 features
+à `neg_example=None`). Cause isolée : le seuil dur de B.5
+(`candidate_magnitude > threshold_pos: continue`) rejette la totalité des
+20 candidats examinés pour chaque feature testée, sur les deux runs quand on
+y rejoue le code corrigé — les features de l'extension sont sélectionnées
+par magnitude (B.2), donc denses par construction, et leur 5e percentile
+d'activation documentaire (~0,2-0,27 mesuré) est loin d'être nul : aucun
+document du pool n'est un négatif "vrai" au sens strict. Le run 44778
+montrait 45% parce qu'il utilisait encore l'ancien code, sans ce garde-fou.
+
+**Conclusion** : seuil dur remplacé par un choix du candidat de plus faible
+activation réelle parmi ceux examinés (`src/sae/judge.py`,
+`build_feature_examples_with_control` et
+`build_phrase_examples_with_control`) — `neg_example` n'est plus jamais
+`None` si au moins un candidat existe, `neg_magnitude` reste traçable pour
+un filtrage en aval si besoin. Revérifié sur les mêmes activations en cache
+(44778, 44831) : `neg_example` non nul pour les features testées après ce
+correctif.
+
+**Limite connue** : ré-exécuté sur les activations en cache, pas sur un
+nouveau run GPU de bout en bout (juge non ré-invoqué) — le taux
+d'interprétabilité réel après ce correctif reste à mesurer sur un run
+complet avant de comparer B.3/B.4/B.6/B.7/B.11 à la référence 45,3%.

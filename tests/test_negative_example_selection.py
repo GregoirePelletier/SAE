@@ -93,11 +93,14 @@ def test_negative_rejects_candidate_above_threshold_pos(tmp_path):
     assert "BAD" not in neg_example
 
 
-def test_negative_none_when_all_candidates_rejected(tmp_path):
-    """Si tous les candidats du pool échouent le garde-fou B.5, neg_example
-    reste None plutôt que de retourner un faux négatif -- comportement déjà
-    couvert en aval par test_judge_batching_orchestration.py::
-    test_no_neg_example_skips_stage_3_but_keeps_label."""
+def test_negative_falls_back_to_least_active_candidate_when_none_is_truly_zero(tmp_path):
+    """Si aucun candidat du pool n'est réellement inactif (feature dense --
+    B.2, le cas courant pour des features sélectionnées par magnitude, cf.
+    job 44831), neg_example reste le candidat de plus faible activation
+    réelle plutôt que None -- un seuil dur ferait disparaître neg_example
+    (et donc interp_score) pour la quasi-totalité des features, vérifié sur
+    GPU avant ce correctif. neg_magnitude reflète l'activation réelle non
+    nulle, exploitable en aval pour filtrer si besoin."""
     frag_dir = str(tmp_path)
     d_sae = 1
     n_tok = 5
@@ -109,11 +112,14 @@ def test_negative_none_when_all_candidates_rejected(tmp_path):
     save_fragment(frag_dir, doc_id=1, token_strings=_toks(n_tok, 0, "POS"), acts_dense=pos_acts)
 
     doc_level_acts = torch.tensor([[0.5], [5.0]])
-    pos_examples, neg_example = build_feature_examples_with_control(
+    pos_examples, neg_example, pos_mags, neg_magnitude = build_feature_examples_with_control(
         f_idx=0, token_fragments_dir=frag_dir, acts=doc_level_acts, n_pos=5,
         neg_quantile=0.6,  # seul doc 0 (BAD, réellement actif) tombe dans le pool négatif
+        return_magnitudes=True,
     )
-    assert neg_example is None
+    assert neg_example is not None
+    assert "BAD" in neg_example
+    assert neg_magnitude == 0.5  # pas un vrai négatif -- traçable via neg_magnitude, pas caché
 
 
 def test_phrase_level_negative_rejects_candidate_above_threshold_pos():
