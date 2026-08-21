@@ -269,15 +269,17 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   ordre qu'au moment de la génération et associer `parent_id` (position) → hash — à faire
   seulement si le `Mails.tsv` d'origine n'a pas changé depuis la génération, sinon la
   correspondance positionnelle qu'on backfillerait serait elle-même invalide.
-- **Taux de rejet de `validate()` corrélé à l'axe de perturbation** (les axes qui
-  perturbent le plus la forme perdent plus souvent les entités numériques, sauf
-  `orthographe` exempté de vérification factuelle) — le pool accepté est déséquilibré par
-  axe, confondu avec les accuracies par axe publiées. Aucun audit ne rapporte le taux
-  d'acceptation par axe (`groupby` sur le manifest parquet déjà écrit).
-- **Biais de longueur à la construction du corpus** : prompt d'augmentation tronqué à
-  2048 tokens, `validate()` compare aux faits du parent complet — les mails longs perdent
-  des faits par construction et sont sous-représentés parmi les variantes, à mettre en
-  regard de ρ(longueur, n_features) = 0,906 déjà mesuré (§59).
+- **Corrections à cet audit, faites en le vérifiant contre `RESULTS_TESTS.md` plutôt qu'en
+  le prenant pour acquis** : le taux de rejet déséquilibré par axe (jusqu'à 59,6% pour
+  `orthographe__degrade_fort`) était déjà mesuré et documenté en détail par `RESULTS_TESTS.md`
+  §38 — ce document affirmait à tort qu'aucun audit ne le rapportait. L'hypothèse d'un biais
+  de longueur via troncature du prompt à 2048 tokens (les mails longs perdraient des faits et
+  seraient sous-représentés) est réfutée par mesure (§74) : un seul mail parent sur 3474
+  dépasse le seuil de troncature, la corrélation longueur↔rejet est statistiquement
+  significative mais négligeable (ρ=0,012), et longueur↔`facts_lost` n'est même pas
+  significative (p=0,17, n=35 340). Le déséquilibre par axe existe bel et bien (§38) mais sa
+  cause est `length_ratio` interagissant avec des axes qui raccourcissent le texte par
+  construction, indépendante de la longueur du parent.
 - **Aucune évaluation aval sur une tâche métier réelle** (routage, priorisation, détection
   de réclamation) avec baseline honnête TF-IDF+LogReg — la seule sonde existante est bâtie
   sur les labels faibles ci-dessus. Pour l'objectif affiché (outil transparent pour

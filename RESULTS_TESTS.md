@@ -3861,3 +3861,61 @@ attendu est inconnu. Le seuil `mean+2×std` réellement utilisé pour flagger
 reste, lui, non corrigé (`src/sae/compare/model_compare.py`) : soit le
 dériver de `q_null_npmi95` une fois ce dernier correctement calibré, soit
 retirer la colonne vestigiale.
+
+## 74. Le biais de longueur hypothétique de l'augmentation (troncature du prompt à 2048 tokens) n'est pas mesurable sur ce corpus
+
+**Question** : `validate()` (`augmentation.py`) compare la variante générée
+aux faits du mail parent COMPLET, mais le prompt d'augmentation est tronqué
+à 2048 tokens — un mail parent plus long que ce seuil verrait sa génération
+fondée sur un contexte partiel, potentiellement en délicatesse avec
+`facts_lost` (comparaison contre le texte complet). Les mails longs
+seraient-ils de fait sous-représentés parmi les variantes acceptées ?
+
+**Écart à la configuration de référence** : aucun — mesure rétrospective sur
+`local_data/emails/archive/augmented_mails_shard{0..7}of8_manifest.parquet`
++ `augmented_mails_test_manifest.parquet` (45 942 tentatives de génération
+liées à 3474 mails parents après filtrage `load_and_clean_emails`), aucun
+calcul GPU.
+
+**Méthode statistique** : corrélation de Spearman entre longueur du mail
+parent (caractères) et (a) rejet global, (b) `facts_lost` spécifiquement,
+restreint aux axes non-`orthographe` (seuls concernés par ce garde-fou, cf.
+§38-39) ; comptage des mails parents dépassant le seuil de troncature
+approximatif (2048 tokens × ~4 caractères/token ≈ 8192 caractères).
+`scripts/augmentation_rejection_length_bias_test.py` →
+`local_data/augmentation_rejection_length_bias_results.json`.
+
+**n** : 45 942 variantes (35 340 hors axe `orthographe`), 3474 mails parents.
+
+**Résultat** : **1 seul mail parent sur 3474 dépasse le seuil de troncature
+approximatif.** La corrélation longueur↔rejet est statistiquement
+significative mais négligeable en amplitude (ρ=0,0117, p=0,012) — taux de
+rejet quasi plat par quartile de longueur (11,3% à 12,6%, Q4 le plus long
+pas nettement au-dessus des autres). La corrélation longueur↔`facts_lost`
+restreinte aux axes concernés n'est même pas significative (ρ=0,0073,
+p=0,17, n=35 340). Le sous-groupe des 10 variantes issues de l'unique mail
+dépassant le seuil a un taux `facts_lost` de 20% contre 3,1% pour le reste —
+à ne PAS lire comme confirmatoire (n=10, un seul mail parent, aucune
+puissance statistique).
+
+**Conclusion** : l'hypothèse B.9 (biais de longueur via troncature du
+prompt) ne se vérifie pas sur ce corpus — mécaniquement, elle ne PEUT quasi
+pas jouer : le corpus de mails réels ne contient qu'un seul mail assez long
+pour être concerné par la troncature à 2048 tokens. Le biais de rejet
+massivement documenté par axe (§38, jusqu'à 59,6%) est réel et important,
+mais sa cause est le seuil `length_ratio` interagissant avec des axes qui
+raccourcissent le texte par construction (orthographe très dégradée,
+impatience) — indépendant de la longueur du parent. À corriger dans
+`AUDIT_SAE_2026-08.md` : l'item B.9 tel que formulé (troncature → perte de
+faits → sous-représentation des mails longs) est réfuté par cette mesure ;
+B.8 (taux d'acceptation par axe) était déjà couvert par §38, pas absent
+comme l'audit l'affirmait.
+
+**Limite connue** : l'approximation 4 caractères/token est grossière (pas de
+tokenisation réelle du parent) — un mail juste sous le seuil réel pourrait
+être classé à tort côté "ne dépasse pas". Avec 1 seul mail dépassant le
+seuil approximatif sur 3474, une erreur d'approximation de quelques mails
+autour du seuil ne changerait pas la conclusion (le mécanisme resterait
+anecdotique, pas structurel). N'exclut pas un biais de longueur ailleurs
+dans le pipeline (cf. §59, sans rapport avec l'augmentation) — seule
+l'hypothèse spécifique de troncature du prompt d'augmentation est testée ici.
