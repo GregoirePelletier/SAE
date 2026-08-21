@@ -33,7 +33,13 @@ _GO2EKMAN = {g: e for e, gs in EKMAN_MAP.items() for g in gs}
 INTENT_KEYWORDS_FR = {
     "reclamation": r"\b(r[ée]clamation\w*|contest\w*|inadmissible\w*|scandaleux\w*|erreur de facturation)\b",
     "resiliation": r"\b(r[ée]sili\w*|clôtur\w*|mettre fin au contrat)\b",
-    "remboursement": r"\b(rembours\w*|trop[- ]perçu|avoir\w*)\b",
+    # "avoir\w*" retiré (B.6, AUDIT_SAE_2026-08.md) : matchait le verbe "avoir",
+    # l'un des mots les plus fréquents du français ("je souhaite avoir des
+    # informations" -> étiqueté remboursement à tort) -- invalidait un résultat
+    # déjà publié (sonde "remboursement" à peine sous la majorité, écart
+    # attribuable au label bruité, pas à la feature). "un avoir"/"l'avoir"
+    # (le nom, note de crédit EDF) reste couvert par un motif dédié avec article.
+    "remboursement": r"\b(rembours\w*|trop[- ]perçu|(un\s+avoir|l'avoir|d'avoir|mon\s+avoir|notre\s+avoir)\b)",
     "information": r"\b(renseign\w*|information\w*|pourriez[- ]vous m'indiquer|comment (faire|proc[ée]der))\b",
     "urgence": r"\b(urgent\w*|imm[ée]diat\w*|sans d[ée]lai|coupure\w*)\b",
 }

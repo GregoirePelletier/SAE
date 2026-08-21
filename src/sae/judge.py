@@ -210,12 +210,25 @@ def build_feature_examples_with_control(
         if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
         doc_data = load_fragment(token_fragments_dir, int(d_idx + offset))
+        token_acts = feature_column(doc_data, f_idx)
+        candidate_magnitude = float(token_acts.max())
+        # B.5 : neg_quantile=0.05 ne garantit pas une activation nulle pour une
+        # feature dense (>95% des documents actifs) -- le 5e percentile peut
+        # être strictement positif, auquel cas ce candidat n'est pas un vrai
+        # négatif. On l'écarte et on essaie le suivant plutôt que de présenter
+        # au juge un "négatif" qui active réellement.
+        if candidate_magnitude > threshold_pos:
+            continue
         toks = doc_data["token_strings"]
-        mid = len(toks) // 2
-        neg_example = extract_causal_context(toks, mid)
-        # Magnitude RÉELLE (pas 0.0 fixe, B.5) : max token-level de CETTE feature
-        # sur ce document -- cohérent avec la façon dont pos_magnitudes est mesurée.
-        neg_magnitude = float(feature_column(doc_data, f_idx).max())
+        # B.3 : argmax de CETTE feature sur ce document non-activant, pas le
+        # milieu du document -- même construction que les positifs (contexte
+        # autour de l'argmax), pour que la seule différence entre positifs et
+        # négatif soit la présence du concept, pas un artefact de position/
+        # saillance (explication mécanique plausible de l'instabilité à 31%
+        # du protocole odd-one-out, RESULTS_TESTS.md §13.1).
+        target_idx = int(token_acts.argmax())
+        neg_example = extract_causal_context(toks, target_idx)
+        neg_magnitude = candidate_magnitude
         break
 
     if return_magnitudes:
@@ -488,6 +501,10 @@ def build_phrase_examples_with_control(
     neg_example = None
     neg_magnitude = 0.0
     for p_idx in neg_pool[:20]:
+        # B.5 : voir build_feature_examples_with_control -- neg_quantile=0.05
+        # ne garantit pas une activation nulle pour une feature dense.
+        if float(f_acts[p_idx]) > threshold_pos:
+            continue
         text = re.sub(r"\s+", " ", phrase_texts[p_idx]).strip()
         if text:
             neg_example = f"<<{text}>>"

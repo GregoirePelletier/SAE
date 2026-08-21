@@ -16,10 +16,16 @@ except ImportError:
 
 
 def keyword_match(text: str, keywords: List[str]) -> bool:
+    """Frontières de mot (`\\b...\\b`), pas un `in` sur sous-chaîne -- sans ça
+    "vol" matche volume/volley/évolution, "watt" matche Watteau, "avoir"
+    matche le verbe (AUDIT_SAE_2026-08.md, item B.11) : la vérité terrain du
+    diffing cross-domaine (energy/sports/support) était bruitée par
+    construction. Même convention que `INTENT_KEYWORDS_FR`
+    (`src/data/dataset.py`)."""
     if not text or not keywords:
         return False
-    text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in keywords)
+    return any(re.search(r"\b" + re.escape(kw) + r"\b", text, flags=re.IGNORECASE)
+               for kw in keywords)
 
 
 def url_match(url: str, patterns: List[str]) -> bool:

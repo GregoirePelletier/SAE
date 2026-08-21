@@ -256,27 +256,14 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   distribution de magnitude change (K_EXTRA, largeur, couche, core vs extension) — ce qui
   touche presque toutes les ablations publiées. Ajouter une sélection stratifiée par
   fréquence comme mode par défaut ; garder la magnitude comme variante étiquetée.
-- **Le négatif de l'odd-one-out est structurellement différent des positifs.** Positifs :
-  contexte autour de l'argmax de la feature. Négatif : contexte autour de
-  `mid = len(toks)//2` (`judge.py`), une position arbitraire. Le juge peut trancher sur un
-  artefact de position/saillance plutôt que sur la sémantique — explication mécanique
-  plausible des 31% d'instabilité (§13.1), jamais formulée. Correctif : négatif à l'argmax
-  de la **même** feature sur un document non-activant.
 - **Déduplication des positifs pénalise systématiquement les features lexicales.**
   `seen_target_words` force des mots-cibles différents ; une feature authentiquement
   lexicale (Latent Terms mesure ~33% de features purement lexicales) ne peut jamais être
   présentée sous sa forme la plus convaincante (même mot, contextes variés). Correctif :
   dédupliquer sur `(doc_idx, word_span)`, pas sur la chaîne du mot.
-- **`neg_quantile=0.05` ne garantit pas un négatif inactif** pour une feature dense
-  (active dans >95% des documents, 5ᵉ percentile strictement positif). `interp_embed`
-  impose une activation strictement nulle. Ajouter un `assert` ou écarter la feature.
-- **Un label faible d'intention est du bruit pur.**
-  `INTENT_KEYWORDS_FR["remboursement"] = r"\b(rembours\w*|trop[- ]perçu|avoir\w*)\b"`
-  (`dataset.py`) : `avoir\w*` matche le verbe « avoir », l'un des mots les plus fréquents du
-  français. Cohérent avec le résultat déjà publié (sonde remboursement 0,846 vs 0,855 de
-  majorité, Δ = −0,85pt) : le label est ininterprétable, pas la feature — un résultat
-  négatif déjà publié est probablement invalidé par un bug de regex, pas par la méthode.
-  Problème de moindre gravité pour `information\w*` et `coupure\w*` sous « urgence ».
+- Problème de moindre gravité, non traité : `information\w*` et `coupure\w*` (« urgence »)
+  restent des motifs larges dans `INTENT_KEYWORDS_FR`, moins sévères que ne l'était
+  `avoir\w*` (corrigé) mais pas resserrés.
 - **Le split group-aware repose sur une jointure positionnelle fragile.**
   `build_email_train_test_corpus` associe `parent_idx` à l'index positionnel dans
   `real_texts`, qui sort de `load_and_clean_emails` **après filtrage**
@@ -298,11 +285,6 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
 - **Chunking par 1024 caractères** (pas tokens/mots) pour le corpus générique et le filler —
   coupe au milieu des mots/phrases, distribution de tokens qui n'existe dans aucun usage
   réel, pour le réservoir qui domine le volume d'entraînement du SAE résiduel.
-- **Deux standards de matching lexical incompatibles dans le dépôt.** `dataset.py` documente
-  soigneusement `\b...\w*` ; `preparation.py::keyword_match` fait un `in` sur sous-chaîne
-  sans frontière (« vol » matche volume/volley/évolution, « watt » matche Watteau) — le
-  corpus energy/sports/support, vérité terrain du diffing cross-domaine, est bruité par
-  construction.
 - **L'augmentation n'est pas reproductible malgré son champ `seed`** : `do_sample=True`,
   génération batchée avec reprise → la composition des lots après reprise change le flux
   RNG. Le champ `seed` du JSONL promet une reproductibilité qui n'existe pas.
@@ -338,7 +320,8 @@ Ce qui rend un résultat déjà publié attaquable en soutenance, par ordre déc
 fallback layer=24 silencieux (tracké `docs/evaluation_protocol.md` → Points ouverts, à
 vérifier sur les logs du run §51 en quelques minutes) ; métrique d'interprétabilité
 biaisée par sélection (§5, B2) ; corpus d'entraînement à 93% généré par le juge (§5, B1) ;
-leakage de split indétectable (§5, B7) ; label faux invalidant un résultat négatif déjà
-publié (§5, B6). Les quatre derniers se corrigent ou se mesurent en quelques heures chacun,
-aucun ne demande un run de 20h, et deux (métrique biaisée, label faux) se traitent en
-rétro-analyse sur des caches déjà existants.
+leakage de split indétectable (§5, B7). Les trois derniers se corrigent ou se mesurent en
+quelques heures chacun, aucun ne demande un run de 20h, et le premier (métrique biaisée) se
+traite en rétro-analyse sur des caches déjà existants. Le label `remboursement` invalidant
+un résultat négatif déjà publié est corrigé ; le résultat concerné (sonde à 0,846 vs 0,855
+de majorité) reste à re-mesurer avec le label corrigé avant de le citer.
