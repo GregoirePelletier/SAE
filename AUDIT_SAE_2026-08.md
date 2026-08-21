@@ -107,20 +107,11 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   de `[T, 3840]×[3840, 16384]` au lieu d'un seul de `[ΣT, 3840]`. Le filler ne passe plus
   par ce chemin (exclu de l'encodage core), donc le gain restant est proportionnel aux
   documents non-filler (~8% du corpus à l'échelle de référence) — modeste mais non nul.
-- **`torch.randperm(100_000_000)` par époque** (`sae_shared.py`) : deux tenseurs int64 de
-  800 Mo générés et réalloués à chaque époque. Remplacer par un échantillonnage par blocs
-  (permuter des chunks de 64k, puis intra-chunk) économiserait ~1,6 Go et la localité
-  mémoire.
 - **`BATCH_SIZE_EXTRA=16384` : gain de vitesse réel, compromis de qualité non tranché.**
   Ablation terminée (job 44620) : dead_pct 53,3% (mieux qu'à 1024) mais rho_sae 0,781
   (contre ~0,82-0,83 à 1024) — pas un gain net, le budget top-k partagé sur un batch plus
   large change la distribution de sparsité à l'entraînement. Ne pas adopter comme défaut
-  sans réplication multi-graines (n=1 à ce jour).
-- **Juge — pas de tri par longueur avant batching.** `_batched_generate` ne trie pas les
-  prompts par longueur et ne coupe pas ligne par ligne à son propre critère d'arrêt : le
-  lot entier coûte le `max_new_tokens` du plus lent, et le prefill paie le padding du plus
-  long — explique l'écart entre le 6,51× mesuré et le 8-16× attendu. Trier donnerait le
-  reste, sans changement de sémantique.
+  sans réplication multi-graines (n=1 à ce jour). Décision produit, pas un correctif.
 - **Juge — désaccord de batching non testé sur le stade le plus sensible.** Le 1/24
   désaccord texte-à-texte mesuré (non-associativité flottante des kernels batchés) porte
   sur un prompt de test long (32 tokens) ; le stade odd-one-out de production (8 tokens, un
@@ -129,36 +120,37 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
 - **Juge — trois chargements du 12B par run**, non résolu par défaut : `RUN_DIFF_HYPOTHESIS=0`
   supprime le troisième, mais garder le modèle résident entre extraction et juge (24 Go
   bf16 + SAE 16k ≈ 26 Go, tient sur H100 80 Go) reste un compromis à trancher explicitement
-  contre le repli A100-40G, pas un défaut.
-- **P2/F2LLM** : `batch_size = 128` en dur, jamais balayé (contrairement à P1) ; aucun tri
-  par longueur avant `padding=True`, gaspille du calcul proportionnellement à la variance
-  des longueurs de phrase.
-- **Sharding des fragments (extraction)** : testé CPU, vérification GPU lancée
-  (dernier commit du dépôt) — à confirmer une fois le job terminé avant de considérer
-  l'item clos.
-- **Étages aval — murs de scalabilité** (aucun ne coûte cher à 16k de largeur, tous cassent
-  à 65k/262k) :
-  - `cooccurrence.py` : boucle Python `fisher_exact` sur toutes les features + accès
-    colonne strided sur tableau C-contigu ; `torch.triu_indices(K, K)` sans plafond
-    (le chemin voisin `p1_npmi` plafonne à 4000, celui-ci non).
-  - `saev5.py` : `SpectralClustering` construit une affinité n×n en O(n²) mémoire —
-    mur dur vers 15-20k documents.
-  - `metrics.py::downstream_classification` : voir hygiène ci-dessous, déjà en CSR pour la
-    régression logistique — le reste de l'aval (UMAP fitté deux fois en dense `n_jobs=1`,
-    `_embed_bge_m3` rechargé depuis le disque 3× par run, `df.iterrows()` sur le hover UMAP)
-    reste dense/séquentiel.
+  contre le repli A100-40G (change le pic VRAM, pas un défaut à changer sans décision produit).
+- **P2/F2LLM — tri par longueur avant `padding=True` non fait.** `batch_size` est maintenant
+  paramétré (`F2LLM_EXTRACT_BATCH_SIZE`), mais `extract_f2llm_embeddings` a un mécanisme de
+  reprise shardée qui indexe par position CONTIGUE dans `texts` — trier par longueur avant
+  batching casserait cet invariant (le shard N ne correspondrait plus à `texts[i:i+shard_size]`)
+  sans persister aussi la permutation dans le checkpoint. Gain plus risqué qu'ailleurs dans
+  cet audit, pas fait tant que la reprise n'est pas adaptée en même temps.
+- **Sharding des fragments (extraction)** : testé CPU, vérification GPU en cours (job 44778,
+  lancé avant cette passe) — à confirmer une fois le job terminé avant de considérer l'item clos.
+- **Étages aval — murs de scalabilité restants** (aucun ne coûte cher à 16k de largeur, tous
+  cassent à 65k/262k) :
+  - `saev5.py` : `SpectralClustering` construit une affinité n×n en O(n²) mémoire — mur dur
+    vers 15-20k documents.
+  - `saev5.py::_fit_umap` : UMAP fitté deux fois (2D + 10D) sur une matrice dense, `n_jobs=1`
+    forcé par `random_state`.
+  - `saev5.py::_embed_bge_m3` : rechargé depuis le disque à chaque appel (jusqu'à 3× par run
+    P1) — `del mdl` explicite en fin de fonction (discipline mémoire délibérée dans un
+    process qui tient déjà Gemma-3-12B) ; un cache modèle (`lru_cache`) changerait ce
+    compromis mémoire/vitesse et n'a pas été ajouté sans mesure VRAM réelle. Un cache disque
+    des *embeddings de labels* (pas du modèle) resterait sans risque mémoire — à faire.
+  - `saev5.py` : `df.iterrows()` sur le hover UMAP — boucle Python + `topk` torch par document.
 - **Dernier reliquat du gaspillage filler, malgré G7.** G7 supprime l'encodage core et
   l'écriture de fragment pour un document filler, mais la boucle d'extraction fait toujours
   `all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))` **par document
   filler** (`saev5.py`), puis `torch.stack` + `torch.save` sur l'ensemble. À 1,2M chunks
   filler (run 100M tokens) : une liste Python de ~1,2M tenseurs de zéros en RAM, puis sur
-  disque. Représentation creuse (lignes non-filler + un index) à faire.
-- **Hook d'extraction fragile à la version de `transformers`.** `_capture_resid_post`
-  (`saev5.py`) suppose que `output` d'un `Gemma3DecoderLayer.forward()` est un tenseur nu, pas
-  un tuple — confirmé vrai pour la version actuelle en lisant `modeling_gemma3.py`, mais
-  l'équivalence bit-à-bit (G1, §2.2) n'a été vérifiée que sur cette version précise. Un
-  `isinstance(output, tuple)` explicite coûte une ligne et protège une propriété dont dépend
-  maintenant tout le pipeline d'extraction contre une future mise à jour de `transformers`.
+  disque. Représentation creuse (lignes non-filler + un index) à faire — pas fait dans cette
+  passe : le format touche à la fois l'écriture (`saev5.py`) et tout consommateur de
+  `all_doc_sae_acts` en aval, plus proche en risque de G2/G3 (format sur disque, tenu à
+  l'écart tant qu'un run de référence n'a pas tourné sur le mécanisme de reprise actuel) que
+  des correctifs isolés de cette passe.
 
 ## 3. Hygiène du dépôt
 

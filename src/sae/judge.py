@@ -57,28 +57,41 @@ def _batched_generate(model, tokenizer, list_of_messages: list[list[dict]],
     contourne déjà un piège voisin) -- template appliqué en texte
     (`tokenize=False`) prompt par prompt (CPU, négligeable), puis tokenisation
     batchée avec padding, chemin standard et portable.
+
+    Tri par longueur de prompt avant de découper en lots (audit perf §2.6 :
+    sans lui, un lot mélangeant prompts courts et longs paie le padding du
+    plus long sur toute la ligne) -- longueur en caractères comme proxy de la
+    longueur tokenisée (évite une passe de tokenisation dédiée juste pour
+    trier), l'ordre d'origine est restauré à la fin via `order`. N'affecte pas
+    la sémantique (mêmes prompts, `do_sample=False`) : seul l'ORDRE de
+    traitement et la composition des lots changent, avec le même bruit de
+    non-associativité flottante entre lots déjà documenté et accepté pour ce
+    juge (item 1, §2.9).
     """
     original_padding_side = tokenizer.padding_side
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
-    responses: list[str] = [""] * len(list_of_messages)
+    n = len(list_of_messages)
+    responses: list[str] = [""] * n
     try:
-        for start in range(0, len(list_of_messages), batch_size):
-            chunk = list_of_messages[start:start + batch_size]
-            texts = [
-                tokenizer.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
-                for msgs in chunk
-            ]
-            enc = tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False).to(model.device)
+        texts = [
+            tokenizer.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+            for msgs in list_of_messages
+        ]
+        order = sorted(range(n), key=lambda i: len(texts[i]))
+        for start in range(0, n, batch_size):
+            batch_order = order[start:start + batch_size]
+            chunk_texts = [texts[i] for i in batch_order]
+            enc = tokenizer(chunk_texts, return_tensors="pt", padding=True, add_special_tokens=False).to(model.device)
             with torch.no_grad():
                 out = model.generate(
                     input_ids=enc["input_ids"], attention_mask=enc["attention_mask"],
                     max_new_tokens=max_new_tokens, do_sample=False,
                 )
             gen_only = out[:, enc["input_ids"].shape[-1]:]
-            for i in range(gen_only.shape[0]):
-                responses[start + i] = tokenizer.decode(gen_only[i], skip_special_tokens=True)
+            for j, orig_i in enumerate(batch_order):
+                responses[orig_i] = tokenizer.decode(gen_only[j], skip_special_tokens=True)
     finally:
         tokenizer.padding_side = original_padding_side
     return responses

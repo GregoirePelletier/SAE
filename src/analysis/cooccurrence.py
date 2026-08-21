@@ -38,14 +38,22 @@ def cooccurrence_graph(
     min_freq: float = 0.01,
     max_freq: float = 0.5,
     feature_labels: Optional[dict[int, str]] = None,
+    max_features: int = 4000,
 ) -> nx.Graph:
     """
     Nœuds = features (fréquence ∈ [min_freq, max_freq] pour écarter morts et
     quasi-denses type sink), arêtes = NPMI > seuil. Communautés Louvain
     (networkx.community.louvain_communities) stockées en attribut de nœud.
-    """
+
+    `max_features` (défaut 4000, même plafond que le chemin voisin
+    `saev5.py::keep_npmi`) : `torch.triu_indices` ci-dessous est O(K²) en
+    mémoire -- sans plafond, une largeur de dictionnaire de 65k/262k avec une
+    bande de fréquence peu sélective ferait exploser cette allocation
+    (AUDIT_SAE_2026-08.md, §2 Performance). Les features en excès sont
+    tronquées après le tri implicite de `nonzero()` (ordre d'indice croissant,
+    pas un tri par fréquence) -- même convention que `keep_npmi`."""
     freq = (doc_acts > 1e-6).float().mean(0)
-    keep = ((freq >= min_freq) & (freq <= max_freq)).nonzero(as_tuple=True)[0]
+    keep = ((freq >= min_freq) & (freq <= max_freq)).nonzero(as_tuple=True)[0][:max_features]
     npmi = compute_npmi(doc_acts[:, keep])
 
     G = nx.Graph()
@@ -112,9 +120,16 @@ def corpus_diff_stats(
     bin_acts = (doc_acts > 1e-6).cpu().numpy()
     A, B = bin_acts[group_mask], bin_acts[~group_mask]
     nA, nB = len(A), len(B)
+    # Comptage vectorisé une seule fois sur toute la largeur (A.sum(0)) plutôt
+    # qu'un A[:, f].sum() par feature dans la boucle -- même résultat, mais un
+    # seul passage optimisé au lieu de d_sae accès colonne strided sur un
+    # tableau C-contigu (AUDIT_SAE_2026-08.md, §2 Performance). fisher_exact
+    # lui-même reste par feature (scipy ne le vectorise pas) : seule la partie
+    # comptage change, la méthode statistique est identique.
+    a_counts, b_counts = A.sum(0), B.sum(0)
     rows = []
     for f in range(bin_acts.shape[1]):
-        a, b = int(A[:, f].sum()), int(B[:, f].sum())
+        a, b = int(a_counts[f]), int(b_counts[f])
         if a + b == 0:
             continue
         odds, p = fisher_exact([[a, nA - a], [b, nB - b]])

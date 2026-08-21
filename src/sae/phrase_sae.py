@@ -124,7 +124,8 @@ class PhraseLevelSAE(nn.Module):
 
 
 def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path: str = None,
-                              shard_size: int = 100_000) -> tuple[torch.Tensor, int]:
+                              shard_size: int = 100_000,
+                              batch_size: int = None) -> tuple[torch.Tensor, int]:
     """Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : sans
     `cache_path`, comportement inchangé (pas de reprise possible, appelant
     ponctuel type encodage d'une seule requête). Avec `cache_path`, les
@@ -133,7 +134,12 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
     (`next_idx`) -- un crash/SIGKILL perd au plus `shard_size` phrases de
     calcul GPU, jamais l'extraction entière. Le cache final
     (`{cache_path}.pt`) et le comportement de restauration en tête de fonction
-    sont inchangés pour tout appelant existant."""
+    sont inchangés pour tout appelant existant.
+
+    `batch_size` (défaut None -> 128, comportement inchangé) : paramétré au
+    lieu d'une constante en dur pour permettre un balayage avant tout
+    changement de défaut (AUDIT_SAE_2026-08.md, §2 Performance -- même
+    discipline que `BATCH_SIZE_EXTRA` côté P1, `src/config.py`)."""
     if cache_path and os.path.exists(cache_path + ".pt"):
         print(f"  [Phrase] Restauration cache d'embeddings : {cache_path}.pt")
         emb = torch.load(cache_path + ".pt", map_location="cpu")
@@ -157,7 +163,8 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
     shard_dir = f"{cache_path}_shards" if cache_path else None
     progress_path = f"{cache_path}_shards.progress.json" if cache_path else None
 
-    all_embs, batch_size = [], 128
+    batch_size = batch_size if batch_size is not None else 128
+    all_embs = []
     resume_from, n_shards_written = 0, 0
     if shard_dir is not None:
         os.makedirs(shard_dir, exist_ok=True)

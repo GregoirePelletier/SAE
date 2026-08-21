@@ -289,6 +289,9 @@ MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
 # (AUDIT_SAE_2026-08.md, item A2). À activer explicitement pour un run de
 # démonstration/smoke-test sans données réelles -- jamais pour un résultat cité.
 ALLOW_SYNTHETIC_CORPUS_FALLBACK = os.environ.get("ALLOW_SYNTHETIC_CORPUS_FALLBACK", "0") == "1"
+# Batch size de extract_f2llm_embeddings (P2), en dur à 128 auparavant, jamais
+# balayé (AUDIT_SAE_2026-08.md, §2 Performance). Défaut 128 inchangé.
+F2LLM_EXTRACT_BATCH_SIZE = int(os.environ.get("F2LLM_EXTRACT_BATCH_SIZE", "128"))
 
 from src.config import (
     EMB_MODEL, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
@@ -956,7 +959,15 @@ def run_llm_max_pool_pipeline(
         _hook_handle = None
         if HOOK_TYPE == "resid_post":
             def _capture_resid_post(module, args, output):
-                _hook_capture["acts"] = output
+                # Gemma3DecoderLayer.forward() retourne un tenseur nu sur la
+                # version actuelle de transformers (vérifié dans
+                # modeling_gemma3.py avant de câbler ce hook, cf. G1) -- mais
+                # d'autres versions/architectures de DecoderLayer retournent un
+                # tuple (hidden_states, ...). Une future mise à jour de
+                # transformers qui changerait ce comportement casserait
+                # silencieusement l'équivalence bit-à-bit vérifiée sur GPU sans
+                # cette garde (AUDIT_SAE_2026-08.md, item "hook fragile").
+                _hook_capture["acts"] = output[0] if isinstance(output, tuple) else output
             _n_layers_needed = LAYER
             _hook_handle = llm.model.language_model.layers[LAYER - 1].register_forward_hook(
                 _capture_resid_post)
@@ -1846,6 +1857,7 @@ def run_f2llm_pipeline(
     train_phrase_emb, d_in = extract_f2llm_embeddings(
         train_phrases, max_length=128,
         cache_path=os.path.join(CACHE_DIR, f"train_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(train_phrases)}"),
+        batch_size=F2LLM_EXTRACT_BATCH_SIZE,
     )
 
     idx = torch.randperm(len(train_phrase_emb), generator=torch.Generator().manual_seed(SEED))
@@ -1866,6 +1878,7 @@ def run_f2llm_pipeline(
     test_phrase_emb, _ = extract_f2llm_embeddings(
         test_phrases, max_length=128,
         cache_path=os.path.join(CACHE_DIR, f"test_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(test_phrases)}"),
+        batch_size=F2LLM_EXTRACT_BATCH_SIZE,
     )
     test_p2d_arr = np.array(test_p2d_list)
     doc_acts = encode_documents_with_phrase_sae(
@@ -1879,6 +1892,7 @@ def run_f2llm_pipeline(
         diff_phrase_emb, _ = extract_f2llm_embeddings(
             diff_phrases, max_length=128,
             cache_path=os.path.join(CACHE_DIR, f"diffcorpus_phrase_emb_dim{MATRYOSHKA_DIM}_n{len(diff_phrases)}"),
+            batch_size=F2LLM_EXTRACT_BATCH_SIZE,
         )
         diff_p2d_arr = np.array(diff_p2d_list)
         diff_doc_acts = encode_documents_with_phrase_sae(

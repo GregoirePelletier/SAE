@@ -147,6 +147,38 @@ def pool_embeddings_by_document(phrase_embeddings, phrase_to_doc, n_docs=None):
 
 # ─── HARNAIS D'ENTRAINEMENT ET CHARGEMENT DU FROZEN-CORE EXTENDED SAE ───
 
+def block_shuffle_indices(idx: torch.Tensor, block_size: int = 65536,
+                           generator: torch.Generator = None) -> torch.Tensor:
+    """Approxime `idx[torch.randperm(len(idx))]` avec une empreinte mémoire
+    O(block_size) au lieu de O(len(idx)) -- shuffle l'ordre des blocs de
+    `block_size` indices, puis shuffle intra-bloc, plutôt qu'une permutation
+    globale. Sur `len(idx)=100_000_000`, `torch.randperm` alloue et régénère
+    deux tenseurs int64 de 800 Mo à chaque appel (audit perf §2.4) ; ici
+    l'allocation dominante (le tenseur de sortie) est de même taille que
+    l'entrée, mais aucun tenseur intermédiaire de la taille de `idx` n'est
+    créé pour le calculer, et l'accès reste par blocs contigus (meilleure
+    localité mémoire qu'un index global aléatoire). Chaque élément de `idx`
+    apparaît exactement une fois dans la sortie (propriété nécessaire et
+    suffisante pour un epoch de SGD) -- ce n'est PAS une permutation uniforme
+    sur toutes les `len(idx)!` possibles (l'ordre relatif intra-bloc est
+    aléatoire, mais les blocs ne se mélangent jamais entre eux au-delà de
+    leur propre réordonnancement), un compromis assumé pour ce gain mémoire."""
+    n = idx.shape[0]
+    if n <= block_size:
+        return idx[torch.randperm(n, generator=generator)]
+    n_blocks = (n + block_size - 1) // block_size
+    block_order = torch.randperm(n_blocks, generator=generator).tolist()
+    out = torch.empty_like(idx)
+    pos = 0
+    for b in block_order:
+        start, end = b * block_size, min((b + 1) * block_size, n)
+        block = idx[start:end]
+        block_len = end - start
+        out[pos:pos + block_len] = block[torch.randperm(block_len, generator=generator)]
+        pos += block_len
+    return out
+
+
 def load_or_train_extended_sae(
     model: nn.Module,
     model_name: str,
@@ -212,7 +244,10 @@ def load_or_train_extended_sae(
 
     for epoch in range(epochs):
         model.train()
-        epoch_perm = train_idx[torch.randperm(len(train_idx))]
+        # block_shuffle_indices plutôt que train_idx[torch.randperm(len(train_idx))] :
+        # évite de réallouer un tenseur int64 de la taille de train_idx à chaque
+        # époque (jusqu'à ~800 Mo sur un run à 100M tokens, cf. AUDIT_SAE_2026-08.md).
+        epoch_perm = block_shuffle_indices(train_idx)
         # Métriques accumulées comme tenseurs GPU pendant l'époque, converties en
         # Python UNE SEULE FOIS à la fin (un seul sync CPU<->GPU par époque) plutôt
         # qu'à chaque step (audit perf §2.4 : 4x .item()/float() par step = 4x
