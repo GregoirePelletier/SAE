@@ -258,8 +258,22 @@ def load_augmented(jsonl_path: str) -> pd.DataFrame:
     Le texte est nettoyé d'une éventuelle ligne "Objet :"/"Subject :" résiduelle
     (cf. _strip_leading_objet_line) pour rester cohérent avec le traitement des
     mails originaux et ne pas polluer le SAE avec un artefact de formatage."""
-    rows = [json.loads(l) for l in open(jsonl_path, encoding="utf-8") if l.strip()]
-    df = pd.DataFrame([r for r in rows if r["rejected"] is None])
+    # Un seul passage, filtré au vol -- pas de liste intermédiaire de TOUS les
+    # enregistrements (acceptés + rejetés) tenue en RAM en plus de la liste
+    # filtrée puis du DataFrame final (AUDIT_SAE_2026-08.md, item A6 : ce
+    # process tient déjà le réservoir memmap et all_doc_sae_acts).
+    accepted = []
+    with open(jsonl_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if r["rejected"] is None:
+                accepted.append(r)
+    if not accepted:
+        return pd.DataFrame(columns=["text", "is_augmented", "corpus_origin",
+                                      "aug_axis", "aug_level"])
+    df = pd.DataFrame(accepted)
     df["text"] = df["text"].map(_strip_leading_objet_line)
     df["is_augmented"] = True
     return df.rename(columns={"corpus": "corpus_origin", "axis": "aug_axis", "level": "aug_level"})

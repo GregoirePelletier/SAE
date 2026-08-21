@@ -233,10 +233,6 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   pas distinguer ce cas d'un run réellement terminé — d'autant plus gênant que `CLAUDE.md`
   documente déjà les pièges `afterok`. Code de sortie distinct requis (64, par convention)
   pour un arrêt anticipé même propre.
-- **`load_augmented` charge tout le JSONL en liste de dicts puis DataFrame**, et
-  `build_email_train_test_corpus` est appelée pour P1 **et** P2 dans le même processus —
-  plusieurs Go transitoires en double dans un process qui tient déjà le réservoir memmap et
-  `all_doc_sae_acts`.
 - **`HF_HUB_OFFLINE=1` absent d'un seul fichier** sur 45 dans `slurm/pipeline_runs/`
   (`run_core_vs_extension_ablation.slurm`) — 44/45 l'ont déjà, item mineur restant plutôt
   qu'absent partout. `prepare_domain_dataset` garde un repli réseau
