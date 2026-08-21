@@ -285,7 +285,7 @@ def build_email_train_test_corpus(
     permet une CV group-aware (GroupKFold/StratifiedGroupKFold) en aval,
     `RESULTS_TESTS.md` §57.
     """
-    real_texts, _ = load_and_clean_emails(mails_tsv_path)
+    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
     if not real_texts:
         return ([], [], [], [], [], []) if return_groups else ([], [], [], [])
 
@@ -308,10 +308,31 @@ def build_email_train_test_corpus(
             from augmentation import load_augmented
         df_aug = load_augmented(augmented_jsonl_path)
         df_aug = df_aug[df_aug["text"].notna()].copy()
-        df_aug["parent_idx"] = df_aug["parent_id"].astype(int)
-        df_aug = df_aug[df_aug["parent_idx"] < n_real]  # ignore parents hors plage courante
 
-        if max_augmented_per_mail:
+        if "parent_sha1" in df_aug.columns:
+            # Jointure par CONTENU (B.7) : hash_to_pos construit sur les mêmes
+            # hashes que ceux écrits à la génération (augmentation.py::_sha1
+            # sur le texte AVANT strip de l'Objet, cf. load_and_clean_emails).
+            # Un décalage de filtrage entre le run d'augmentation et ce run ne
+            # peut plus mal-attribuer une variante -- au pire elle est écartée
+            # (parent introuvable), jamais rattachée au mauvais mail.
+            hash_to_pos = {h: i for i, h in enumerate(real_hashes)}
+            df_aug["parent_idx"] = df_aug["parent_sha1"].map(hash_to_pos)
+            n_unmatched = int(df_aug["parent_idx"].isna().sum())
+            if n_unmatched:
+                print(f"  [corpus] {n_unmatched} variante(s) augmentée(s) sans mail parent "
+                      f"correspondant (Mails.tsv modifié depuis la génération ?) -- écartées.")
+            df_aug = df_aug[df_aug["parent_idx"].notna()].copy()
+            df_aug["parent_idx"] = df_aug["parent_idx"].astype(int)
+        else:
+            # Repli rétrocompatible : JSONL généré avant l'ajout de parent_sha1,
+            # jointure positionnelle (fragile, cf. AUDIT_SAE_2026-08.md item B.7).
+            print("  [corpus] parent_sha1 absent du JSONL augmenté -- jointure positionnelle "
+                  "de repli (regénérer le corpus augmenté pour la jointure par contenu).")
+            df_aug["parent_idx"] = df_aug["parent_id"].astype(int)
+            df_aug = df_aug[df_aug["parent_idx"] < n_real]  # ignore parents hors plage courante
+
+        if max_augmented_per_mail and len(df_aug):
             sampled_idx = np.concatenate([
                 rng.choice(group.index.to_numpy(), size=min(len(group), max_augmented_per_mail), replace=False)
                 for _, group in df_aug.groupby("parent_idx")
@@ -341,19 +362,32 @@ def build_email_train_test_corpus(
     return train_texts, train_labels, test_texts, test_labels
 
 
-def load_and_clean_emails(tsv_path: str) -> Tuple[List[str], List[str]]:
+def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
     """Retourne (texts, labels). Le parsing TSV délègue à dataset.load_mails_tsv
     (implémentation unique, quoting-aware, dédupliquée) ; ne subsiste ici que
-    l'extraction de l'Objet comme label faible."""
-    texts, categories = [], []
+    l'extraction de l'Objet comme label faible.
+
+    `return_hashes=True` (défaut False, RÉTROCOMPATIBLE) : retourne en plus
+    `hashes`, le SHA1 (`_sha1`, `src/data/augmentation.py`) du texte AVANT
+    strip de l'Objet -- identique à `row.text` dans `run_augmentation.py`
+    (même `load_mails_tsv(tsv_path)`, même colonne, avant tout nettoyage
+    supplémentaire). Permet à `build_email_train_test_corpus` de rattacher
+    une variante augmentée à son mail parent par CONTENU plutôt que par
+    position (AUDIT_SAE_2026-08.md, item B.7)."""
+    texts, categories, hashes = [], [], []
+    empty = ([], [], []) if return_hashes else ([], [])
     if not os.path.exists(tsv_path):
         print(f"  [sae_shared] Fichier d'emails introuvable : {tsv_path}")
-        return [], []
+        return empty
     try:
         try:
             from src.data.dataset import load_mails_tsv
         except ImportError:
             from dataset import load_mails_tsv
+        try:
+            from src.data.augmentation import _sha1
+        except ImportError:
+            from augmentation import _sha1
         try:
             df = load_mails_tsv(tsv_path).rename(columns={"text": "document"})
             if len(df) == 0:
@@ -371,8 +405,9 @@ def load_and_clean_emails(tsv_path: str) -> Tuple[List[str], List[str]]:
             if clean_text:
                 texts.append(clean_text)
                 categories.append(cat)
+                hashes.append(_sha1(raw_text))
         print(f"  [sae_shared] {len(texts)} emails chargés depuis {tsv_path}")
-        return texts, categories
+        return (texts, categories, hashes) if return_hashes else (texts, categories)
     except Exception as e:
         print(f"  [sae_shared] Erreur lecture TSV : {e}")
-        return [], []
+        return empty

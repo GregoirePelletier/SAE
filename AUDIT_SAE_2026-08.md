@@ -10,11 +10,11 @@ appliqués et de leur vérification (jobs GPU, tests d'équivalence) vit dans `g
 ici — ce document ne porte que ce qui reste à traiter.
 
 Priorité, si le temps manque, par ordre décroissant de ce qui rend un résultat déjà publié
-attaquable : **§5 (fallback layer=24 silencieux, tracké dans `docs/evaluation_protocol.md`
+attaquable : **fallback layer=24 silencieux (tracké dans `docs/evaluation_protocol.md`
 → Points ouverts, à vérifier en quelques minutes de log)**, puis B2 (métrique
 d'interprétabilité biaisée par sélection), B1 (corpus d'entraînement 93% généré par le
-modèle juge), B7 (leakage de split indétectable), B6 (label faible invalidant un résultat
-négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
+modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de split) et B6
+(label `remboursement`) sont corrigés.
 
 ---
 
@@ -256,23 +256,18 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
   distribution de magnitude change (K_EXTRA, largeur, couche, core vs extension) — ce qui
   touche presque toutes les ablations publiées. Ajouter une sélection stratifiée par
   fréquence comme mode par défaut ; garder la magnitude comme variante étiquetée.
-- **Déduplication des positifs pénalise systématiquement les features lexicales.**
-  `seen_target_words` force des mots-cibles différents ; une feature authentiquement
-  lexicale (Latent Terms mesure ~33% de features purement lexicales) ne peut jamais être
-  présentée sous sa forme la plus convaincante (même mot, contextes variés). Correctif :
-  dédupliquer sur `(doc_idx, word_span)`, pas sur la chaîne du mot.
 - Problème de moindre gravité, non traité : `information\w*` et `coupure\w*` (« urgence »)
   restent des motifs larges dans `INTENT_KEYWORDS_FR`, moins sévères que ne l'était
   `avoir\w*` (corrigé) mais pas resserrés.
-- **Le split group-aware repose sur une jointure positionnelle fragile.**
-  `build_email_train_test_corpus` associe `parent_idx` à l'index positionnel dans
-  `real_texts`, qui sort de `load_and_clean_emails` **après filtrage**
-  (`min_chars`, `drop_duplicates`, `clean_text` non vide). Si ce filtrage diffère, même
-  légèrement, entre le run d'augmentation et le run d'entraînement, chaque variante est
-  rattachée au mauvais mail parent et le split par groupe fuit sans signal — le garde-fou
-  actuel (`parent_idx < n_real`) ne détecte qu'un dépassement de borne, pas un décalage.
-  Toute la revendication d'absence de leakage (métriques de classification) en dépend.
-  Correctif : joindre sur un hash SHA1 du texte parent, stocké au moment de la génération.
+- **Migration à faire : `augmented_mails.jsonl` existant (45 240 lignes) n'a pas
+  `parent_sha1`.** La jointure par contenu (B.7, corrigée) exige ce champ ; en son absence
+  `build_email_train_test_corpus` retombe sur l'ancienne jointure positionnelle (log explicite,
+  pas de régression silencieuse), mais ne bénéficie pas encore de la protection contre un
+  décalage de filtrage. Backfill possible sans regénération GPU (le texte n'a pas besoin de
+  changer, seul `parent_sha1` manque) : recalculer `load_mails_tsv(Mails.tsv)` dans le même
+  ordre qu'au moment de la génération et associer `parent_id` (position) → hash — à faire
+  seulement si le `Mails.tsv` d'origine n'a pas changé depuis la génération, sinon la
+  correspondance positionnelle qu'on backfillerait serait elle-même invalide.
 - **Taux de rejet de `validate()` corrélé à l'axe de perturbation** (les axes qui
   perturbent le plus la forme perdent plus souvent les entités numériques, sauf
   `orthographe` exempté de vérification factuelle) — le pool accepté est déséquilibré par
@@ -319,9 +314,12 @@ négatif déjà publié), puis le bug OOM bloquant de Latent Terms (§1).
 Ce qui rend un résultat déjà publié attaquable en soutenance, par ordre décroissant :
 fallback layer=24 silencieux (tracké `docs/evaluation_protocol.md` → Points ouverts, à
 vérifier sur les logs du run §51 en quelques minutes) ; métrique d'interprétabilité
-biaisée par sélection (§5, B2) ; corpus d'entraînement à 93% généré par le juge (§5, B1) ;
-leakage de split indétectable (§5, B7). Les trois derniers se corrigent ou se mesurent en
-quelques heures chacun, aucun ne demande un run de 20h, et le premier (métrique biaisée) se
-traite en rétro-analyse sur des caches déjà existants. Le label `remboursement` invalidant
-un résultat négatif déjà publié est corrigé ; le résultat concerné (sonde à 0,846 vs 0,855
-de majorité) reste à re-mesurer avec le label corrigé avant de le citer.
+biaisée par sélection (§5, B2) ; corpus d'entraînement à 93% généré par le juge (§5, B1).
+Les deux derniers se mesurent en quelques heures chacun, aucun ne demande un run de 20h, et
+B2 se traite en rétro-analyse sur des caches déjà existants.
+
+Corrigés depuis : B7 (jointure de split par hash SHA1 du texte parent plutôt que par
+position — migration de `augmented_mails.jsonl` existant vers `parent_sha1` encore à faire,
+§5) ; B6 (label `remboursement`, le résultat concerné — sonde à 0,846 vs 0,855 de majorité —
+reste à re-mesurer avec le label corrigé avant d'être cité) ; B3/B5 (protocole odd-one-out) ;
+B4 (dédup des positifs) ; B11 (matching lexical du corpus diffing).

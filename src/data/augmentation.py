@@ -214,6 +214,14 @@ def generate_variants(
             rec = {
                 "aug_id": aug_id,
                 "parent_id": str(row.doc_id),
+                # SHA1 du texte parent (pas seulement sa position, cf. parent_id) :
+                # permet à build_email_train_test_corpus (preparation.py) de
+                # rattacher une variante à son mail d'origine par CONTENU plutôt
+                # que par index positionnel dans un recalcul indépendant de
+                # load_and_clean_emails -- deux calculs de filtrage légèrement
+                # désynchronisés feraient sinon fuir le split group-aware sans
+                # aucun signal (AUDIT_SAE_2026-08.md, item B.7).
+                "parent_sha1": _sha1(row.text),
                 "corpus": getattr(row, "corpus", "mail_reel"),
                 "axis": spec.axis,
                 "level": spec.level,

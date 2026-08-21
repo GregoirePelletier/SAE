@@ -172,10 +172,17 @@ def build_feature_examples_with_control(
     # Sans cela, un même mot-déclencheur très fréquent (ex. "cher" en tête de mail)
     # peut apparaître 2-3 fois comme exemples "positifs" distincts alors qu'il s'agit
     # sémantiquement du même exemple pour le juge LLM.
+    # Déduplication par (doc_idx, position du mot argmax) plutôt que par
+    # chaîne de mot (B.4, AUDIT_SAE_2026-08.md) : la boucle ci-dessous ne
+    # visite déjà chaque d_idx qu'une fois, donc (doc_idx, word_span) est
+    # automatiquement unique -- l'ancien filtre sur la chaîne du mot excluait
+    # en pratique tout mot-cible répété d'un document à l'autre, empêchant
+    # une feature authentiquement lexicale (le même mot dans des contextes
+    # variés, cf. Latent Terms ~33% de features purement lexicales) d'être
+    # présentée sous sa forme la plus convaincante au juge.
     sorted_desc = np.argsort(f_acts)[::-1]
     pos_examples = []
     pos_magnitudes = []
-    seen_target_words = set()
     for d_idx in sorted_desc:
         if f_acts[d_idx] <= threshold_pos:
             break
@@ -188,11 +195,6 @@ def build_feature_examples_with_control(
             continue
         target_idx = int(token_acts.argmax())
         ctx = extract_causal_context(doc_data["token_strings"], target_idx)
-        m = re.search(r"<<(.+?)>>", ctx)
-        target_word = m.group(1).strip().lower() if m else ctx.strip().lower()
-        if target_word in seen_target_words:
-            continue
-        seen_target_words.add(target_word)
         pos_examples.append(ctx)
         pos_magnitudes.append(float(max_act))
         if len(pos_examples) >= n_pos:
