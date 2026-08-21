@@ -11,4 +11,4 @@ def test_layer_env_override(monkeypatch):
     monkeypatch.delenv("LAYER", raising=False)
     monkeypatch.delenv("MODEL_SIZE", raising=False)
     importlib.reload(config)
-    assert config.LAYER == 24  # défaut preset 12b
+    assert config.LAYER == 31  # défaut preset 12b (RESULTS_TESTS.md §51)

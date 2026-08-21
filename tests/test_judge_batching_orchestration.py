@@ -6,7 +6,7 @@ features attendu et que les résultats sont ré-assemblés au bon feature, dans
 le bon ordre -- c'est la logique nouvelle de cette session, pas la mécanique
 bas niveau du padding (couverte séparément par un test GPU,
 scripts/audit_2026_08_judge_batching_equivalence.py)."""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import torch
 
@@ -60,7 +60,7 @@ def test_only_interpretable_features_reach_stage_2_and_3():
             fake_gen, calls = _fake_batched_generate_factory(["10", "1", "10"])
             with patch("src.sae.judge._batched_generate", fake_gen):
                 results = local_gemma_judge(
-                    model=object(), tokenizer=object(),
+                    model=MagicMock(), tokenizer=object(),
                     feature_indices=[0, 1, 2],
                     phrase_texts=phrase_texts, phrase_acts=phrase_acts,
                 )
@@ -87,7 +87,7 @@ def test_dead_features_never_reach_generation():
         fake_gen, calls = _fake_batched_generate_factory([])
         with patch("src.sae.judge._batched_generate", fake_gen):
             results = local_gemma_judge(
-                model=object(), tokenizer=object(),
+                model=MagicMock(), tokenizer=object(),
                 feature_indices=[0, 1],
                 phrase_texts=phrase_texts, phrase_acts=phrase_acts,
             )
@@ -113,7 +113,7 @@ def test_no_neg_example_skips_stage_3_but_keeps_label():
             fake_gen, calls = _fake_batched_generate_factory(["1"])
             with patch("src.sae.judge._batched_generate", fake_gen):
                 results = local_gemma_judge(
-                    model=object(), tokenizer=object(),
+                    model=MagicMock(), tokenizer=object(),
                     feature_indices=[0],
                     phrase_texts=phrase_texts, phrase_acts=phrase_acts,
                 )

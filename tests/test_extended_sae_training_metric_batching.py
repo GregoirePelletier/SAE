@@ -27,7 +27,11 @@ class _LoggingStubModel(nn.Module):
         l0 = torch.tensor(float(x.shape[1]))
         dead = torch.tensor(0.02)
         aux = torch.tensor(0.5)
-        self.calls.append((loss.item(), l0.item(), dead.item(), aux.item()))
+        # self.training distingue les steps d'entraînement de l'unique forward
+        # de validation en fin d'époque (model.eval() posé par la boucle avant
+        # cet appel) -- history["loss"] n'accumule que les steps d'entraînement,
+        # la validation va dans history["val_loss"] séparément.
+        self.calls.append((loss.item(), l0.item(), dead.item(), aux.item(), self.training))
         return {"loss": loss, "l0": l0, "dead_frac": dead, "aux_loss": aux}
 
 
@@ -42,10 +46,11 @@ def test_batched_history_matches_live_forward_values_exactly(tmp_path):
         epochs=2, lr=1e-3, save_dir=str(tmp_path), device="cpu",
     )
 
-    expected_loss = [c[0] for c in model.calls]
-    expected_l0 = [c[1] for c in model.calls]
-    expected_dead = [c[2] for c in model.calls]
-    expected_aux = [c[3] for c in model.calls]
+    train_calls = [c for c in model.calls if c[4]]
+    expected_loss = [c[0] for c in train_calls]
+    expected_l0 = [c[1] for c in train_calls]
+    expected_dead = [c[2] for c in train_calls]
+    expected_aux = [c[3] for c in train_calls]
 
     assert history["loss"] == expected_loss
     assert history["l0"] == expected_l0

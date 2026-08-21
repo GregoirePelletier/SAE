@@ -126,10 +126,10 @@ _m, RELEASE_ID, _sae_default, LAYER, D_MODEL = _PRESETS.get(MODEL_SIZE, _PRESETS
 MODEL_ID  = os.environ.get("MODEL_ID", _m)
 SAE_ID    = os.environ.get("SAE_ID", _sae_default)
 HOOK_TYPE = os.environ.get("HOOK_TYPE", "resid_post")
-# LAYER par défaut vient du preset MODEL_SIZE (24 pour 12b) ; overridable pour
-# tester les autres layers "curés" (12/31/41) publiés par GemmaScope-2 pour
-# gemma-3-12b-it. SAE_ID doit être mis à jour en cohérence (le layer y est
-# encodé dans le nom, ex. "layer_31_width_16k_l0_medium").
+# LAYER par défaut vient du preset MODEL_SIZE (31 pour 12b, RESULTS_TESTS.md
+# §51) ; overridable pour tester les autres layers "curés" (12/24/41) publiés
+# par GemmaScope-2 pour gemma-3-12b-it. SAE_ID doit être mis à jour en
+# cohérence (le layer y est encodé dans le nom, ex. "layer_24_width_16k_l0_medium").
 LAYER = int(os.environ.get("LAYER", LAYER))
 LOCAL_SAE_ROOT = os.environ.get("LOCAL_SAE_DIR", f"./local_data/saes/{RELEASE_ID}")
 SAE_SNAPSHOT   = os.environ.get("SAE_SNAPSHOT", "0" * 40)

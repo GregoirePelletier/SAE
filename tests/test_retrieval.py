@@ -63,10 +63,28 @@ def test_latent_terms_index_stores_csc_not_csr():
     assert isinstance(index.W, sparse.csc_matrix)
 
 
-def test_latent_terms_index_csc_matches_csr_getcol_scores():
-    """Non-régression : les scores de search() sur l'index CSC doivent être
-    identiques à ceux qu'on obtiendrait en accédant aux colonnes de la CSR
-    d'origine (même calcul, ordre d'accès mémoire différent seulement)."""
+def test_latent_terms_index_csc_matches_dense_bm25_scores():
+    """Non-régression : les scores de search() (CSC) doivent être identiques à
+    un calcul BM25 dense sans ambiguïté d'indexation.
+
+    Piège trouvé en écrivant ce test : `csr_matrix.getcol(j)` renvoie un
+    résultat CSR à une colonne dont `.indices` vaut le numéro de colonne
+    RELATIF à ce résultat (toujours 0, puisqu'il n'y a qu'une colonne), PAS
+    le numéro de ligne/document dans la matrice d'origine -- contrairement à
+    `csc_matrix.getcol(j).indices`, qui donne bien les lignes. Une première
+    version de ce test comparait `search()` (CSC, correct) à une référence
+    construite via `W_docs.getcol(j)` sur la CSR d'origine avec `.indices`
+    utilisé comme indice de document : la référence attribuait donc tout le
+    score au document 0. Le test échouait alors que `search()` était juste --
+    et ce même bug d'indexation, s'il avait existé dans l'ancien `search()`
+    CSR (avant la migration vers CSC, cf. `test_latent_terms_index_stores_csc_not_csr`),
+    aurait silencieusement mal attribué tous les scores BM25 au mauvais
+    document. Vérifié : `latent_retrieval_precision_eval.py` n'a jamais produit
+    de résultat citable avant cette migration (bloqué par l'OOM de
+    `build_token_training_pool`, cf. AUDIT_SAE_2026-08.md), donc aucun chiffre
+    publié n'est concerné -- mais la classe de bug est réelle et vaut d'être
+    gardée en mémoire dans ce commentaire, pas seulement dans un message de
+    commit."""
     from scipy import sparse
     rng = np.random.default_rng(0)
     W_docs = sparse.random(200, 64, density=0.05, random_state=rng, format="csr")
@@ -75,12 +93,14 @@ def test_latent_terms_index_csc_matches_csr_getcol_scores():
     w_q = np.zeros(64)
     w_q[[3, 10, 40]] = 1.0
 
-    # Référence : même formule BM25, colonnes lues directement sur la CSR d'origine.
-    N = W_docs.shape[0]
+    # Référence : même formule BM25, calculée dense (aucune ambiguïté CSR/CSC).
+    W_dense = np.asarray(W_docs.todense())
+    N = W_dense.shape[0]
     expected_scores = np.zeros(N)
     for j in np.nonzero(w_q > 0)[0]:
-        col = W_docs.getcol(j)
-        d_idx, f = col.indices, col.data.astype(np.float64)
+        f = W_dense[:, j]
+        d_idx = np.nonzero(f > 0)[0]
+        f = f[d_idx]
         contrib = index.idf[j] * f * (index.k1 + 1) / (f + index.k1 * index.K[d_idx])
         expected_scores[d_idx] += float(w_q[j]) * contrib
 

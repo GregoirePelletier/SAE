@@ -12,13 +12,19 @@ from src.sae.sae_shared import load_or_train_extended_sae
 
 
 def _mock_core_sae(batch, d_model, d_sae_core):
+    """`batch` ne fixe qu'un shape par défaut pour les appels directs à `sae(x)`
+    dans ce fichier (batch = x.shape[0] à chaque fois) -- `encode`/`decode`
+    utilisent `side_effect` plutôt que `return_value` pour rester corrects même
+    quand un appelant (ex. `load_or_train_extended_sae`, dont le batching
+    interne ne correspond à aucun `batch` connu à l'avance ici) invoque le core
+    SAE avec une autre taille de lot que celle passée à cette factory."""
     mock_core_sae = MagicMock(spec=SAE)
     mock_cfg = MagicMock()
     mock_cfg.d_in = d_model
     mock_cfg.d_sae = d_sae_core
     mock_core_sae.cfg = mock_cfg
-    mock_core_sae.encode.return_value = torch.zeros(batch, d_sae_core)
-    mock_core_sae.decode.return_value = torch.zeros(batch, d_model)
+    mock_core_sae.encode.side_effect = lambda x: torch.zeros(x.shape[0], d_sae_core)
+    mock_core_sae.decode.side_effect = lambda x: torch.zeros(x.shape[0], d_model)
     return mock_core_sae
 
 
