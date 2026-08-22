@@ -195,6 +195,7 @@ from sae_shared import (
     build_reencode_targets, is_filler_document,
     compute_metrics, compute_rho_sae,
     downstream_classification,
+    normalize_by_p90_and_score,
     steer_activations, steer_and_decode,
     build_email_train_test_corpus,
     FrozenCoreResidualSAE, SAEBoostResidualSAE, FrozenDecoderExtendedSAE,
@@ -523,9 +524,14 @@ def property_based_retrieval(
 ) -> list:
     """cf. interp_embed §4.4 : (1) latents candidats par similarité d'embedding
     label<->requête (select_latents_by_similarity, pas un matching de sous-chaîne),
-    (2) score documentaire = somme pondérée à température des activations de ces
-    latents, décroissante avec le rang de pertinence réel de `matched_latents`
-    (pas l'ordre d'itération du dict)."""
+    (2) score documentaire = somme pondérée à température des activations
+    NORMALISÉES de ces latents (Fig. 10, étape 1 : chaque latent divisé par le
+    90e percentile de ses activations non nulles sur le corpus), décroissante
+    avec le rang de pertinence réel de `matched_latents` (pas l'ordre
+    d'itération du dict). Sans cette normalisation, les magnitudes JumpReLU
+    non bornées du core (outliers ~1e5) écrasent le poids de rang -- le score
+    serait dominé par l'échelle des latents, pas par leur pertinence
+    (AUDIT_SAE_2026-08.md)."""
     print(f"\n  [Task 4] Recherche implicite : '{query_string}'")
     matched_latents = select_latents_by_similarity(query_string, feature_labels, top_k=top_k_latents)
     if not matched_latents:
@@ -536,7 +542,8 @@ def property_based_retrieval(
         [math.exp(-(rank / k) / temperature) for rank in range(k)],
         dtype=doc_acts.dtype
     )
-    scores = (doc_acts[:, matched_latents].float() * weights).sum(dim=-1).detach().cpu().numpy()
+    matched_acts = doc_acts[:, matched_latents].float()
+    scores = normalize_by_p90_and_score(matched_acts, weights).detach().cpu().numpy()
     top_idx = np.argsort(scores)[::-1][:top_n_results]
     return [(texts[i], float(scores[i])) for i in top_idx if scores[i] > 1e-6]
 

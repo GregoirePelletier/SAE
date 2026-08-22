@@ -37,17 +37,14 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   (`saev5.py`) n'est **pas** une variante de l'affinité de Jaccard du papier (App. F) —
   autre métrique, pas un choix d'implémentation. Manquent génération LLM de mots-clés +
   union top-k=100 latents (App. F.1, le dépôt prend un `axis_query` unique en dur),
-  accuracy par cluster (réassignation LLM), z-score de conductance en espace dense. Le
-  score de silhouette est toujours calculé et publié à deux endroits (`compute_silhouette`
-  dans `results_p1`/`results_p2`, `saev5.py`) alors que la note 4 du papier le rejette
-  explicitement comme mesure géométrique non pertinente pour l'analyse exploratoire.
-- **interp-embed, Retrieval** : manque l'étape 1 de la Figure 10 — *normaliser chaque
-  latent par le 90ᵉ percentile de ses activations non nulles*. Sans elle, les magnitudes
-  JumpReLU non bornées du core GemmaScope (outliers ~1e5) écrasent la pondération de rang :
-  le score est dominé par l'échelle des latents, pas par leur pertinence — bug de qualité
-  autant qu'écart de fidélité, correctif de l'ordre de quelques lignes. Manquent aussi le
-  rerank LLM des latents (App. G), les métriques MAP/MP@50/MP@10, l'agrégation RRF, RBO —
-  aucune évaluation retrieval chiffrée n'existe.
+  accuracy par cluster (réassignation LLM), z-score de conductance en espace dense. Score
+  de silhouette : gardé (continuité avec `RESULTS_TESTS.md`), divergence avec la note 4 du
+  papier documentée explicitement dans `docs/references.md` plutôt que silencieuse.
+- **interp-embed, Retrieval** : l'étape 1 de la Figure 10 (normaliser chaque latent par le
+  90ᵉ percentile de ses activations non nulles) est corrigée
+  (`src/analysis/metrics.py::normalize_by_p90_and_score`). Manquent encore le rerank LLM
+  des latents (App. G), les métriques MAP/MP@50/MP@10, l'agrégation RRF, RBO — aucune
+  évaluation retrieval chiffrée n'existe.
 - **App. I (taille du modèle lecteur, 12B vs 27B)** : protocole F1 latent-vs-juge absent.
   Tant qu'il n'est pas écrit, la comparaison 12B/27B ne peut être arbitrée que par le taux
   odd-one-out, instable à 31% au niveau d'une feature (`CLAUDE.md`, §13.1).

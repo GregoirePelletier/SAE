@@ -64,12 +64,14 @@ try:
         compute_metrics,
         compute_rho_sae,
         downstream_classification,
+        normalize_by_p90_and_score,
     )
 except ImportError:
     from metrics import (
         compute_metrics,
         compute_rho_sae,
         downstream_classification,
+        normalize_by_p90_and_score,
     )
 
 try:

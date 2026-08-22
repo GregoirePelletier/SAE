@@ -188,3 +188,21 @@ def downstream_classification(
         results["delta_acc"] = results["acc_sae"] - results["acc_raw"]
 
     return results
+
+
+def normalize_by_p90_and_score(matched_acts: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    """Score documentaire pondéré à température pour le retrieval par propriété
+    (`property_based_retrieval`, `saev5.py`), activations normalisées par le 90e
+    percentile non nul de chaque latent (interp_embed, Fig. 10 étape 1) avant la
+    somme pondérée par rang -- sans cette normalisation, les magnitudes JumpReLU
+    non bornées du core (outliers ~1e5) écrasent le poids de rang, le score est
+    dominé par l'échelle des latents plutôt que par leur pertinence
+    (AUDIT_SAE_2026-08.md). `matched_acts` : [n_docs, k_latents]."""
+    k = matched_acts.shape[1]
+    p90 = torch.ones(k, dtype=matched_acts.dtype)
+    for j in range(k):
+        nonzero = matched_acts[:, j][matched_acts[:, j] > 0]
+        if nonzero.numel() > 0:
+            p90[j] = torch.quantile(nonzero, 0.9).clamp(min=1e-8)
+    normalized_acts = matched_acts / p90
+    return (normalized_acts * weights).sum(dim=-1)
