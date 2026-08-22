@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=SAE_val100k_v10
-#SBATCH --partition=a100
+#SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
