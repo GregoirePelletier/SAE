@@ -3962,3 +3962,50 @@ correctif.
 nouveau run GPU de bout en bout (juge non ré-invoqué) — le taux
 d'interprétabilité réel après ce correctif reste à mesurer sur un run
 complet avant de comparer B.3/B.4/B.6/B.7/B.11 à la référence 45,3%.
+
+## 76. Entraîner l'extension sur les mails originaux seuls, sans les variantes générées par Gemma-3, augmente fortement le taux d'interprétabilité mesuré
+
+**Question** : le corpus d'entraînement de l'extension est dominé (~93% au
+run de référence) par du texte généré par Gemma-3-12B-it, le même modèle qui
+juge ensuite les features. B.1 (AUDIT_SAE_2026-08.md) demandait un premier
+test : réentraîner sur les mails originaux seuls, comparer le taux
+d'interprétabilité.
+
+**Écart à la configuration de référence** : run de validation 100k tokens,
+layer 24, `N_FEATURES_TO_LABEL=20`, `LOCAL_AUGMENTED_MAILS_PATH` vide
+(train/test = mails réels seuls, ~3480 mails au lieu de ~41k train/2,2k test
+habituels). Confondu avec l'ensemble des correctifs perf/data-science de
+cette session (B.3/B.4/B.5/B.6/B.7/B.11, cf. §75) : ce run n'isole pas la
+composition du corpus comme seule variable — comparé ici au run de référence
+`results_v21_validation_100k_layer24_v7_sharding` (job 44778), qui utilise
+encore le code d'AVANT cette session (donc sans le bug puis le correctif de
+§75).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 20 features labellisées par run.
+
+**Résultat** : interp_score 45% (9/20, corpus mixte, code de référence) vs
+**85% (17/20, mails originaux seuls, code de cette session)** — z=-2,65,
+**p=0,008**, h de Cohen=-0,88 (effet très large). `neg_example` non nul pour
+les 20/20 features (le correctif §75 fonctionne correctement sur ce run).
+Fidélité de reconstruction dégradée sans les augmentés (attendu, moins de
+données d'entraînement) : ρ_SAE 0,7904 (vs ~0,83), dead_pct 68,1% (vs
+~57,8%) — la sonde `acc_axes_email` n'a pas pu tourner (pas assez
+d'exemples par axe sans augmentation).
+
+**Conclusion** : direction et amplitude cohérentes avec l'hypothèse B.1 —
+le corpus généré par le juge lui-même semble bien dégrader l'interprétabilité
+mesurée, pas seulement un risque théorique d'indépendance du juge (déjà
+écarté séparément, §48/§50/§52). Deuxième résultat individuellement
+significatif du dépôt après layer 31 vs layer 24 (§51) — au même titre,
+**non répliqué sur une 2e graine**, et confondu ici avec les correctifs de
+session (§75) plutôt qu'isolé.
+
+**Limite connue** : n=20 très en dessous du n≥150 requis pour un taux agrégé
+informatif (checklist diagnostics, `CLAUDE.md`) ; comparaison confondue par
+tous les correctifs de cette session, pas une ablation à variable unique ; le
+run originaux-seuls a moins de données d'entraînement pour l'extension
+(rho_sae/dead_pct dégradés), un facteur de confusion supplémentaire non
+isolé de l'effet corpus lui-même ; réplication à n≥150 sur seed différente
+nécessaire avant de citer ce résultat comme établi.
