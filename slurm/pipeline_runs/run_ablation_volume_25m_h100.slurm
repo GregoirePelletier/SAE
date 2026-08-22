@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=SAE_abl_vol25m
-#SBATCH --partition=a100
+#SBATCH --job-name=SAE_abl_vol25m_h
+#SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=500G
 #SBATCH --time=48:00:00
 #SBATCH --signal=B:USR1@600
-#SBATCH --output=logs/pipeline_runs/sae_abl_vol25m_%j.log
+#SBATCH --output=logs/pipeline_runs/sae_abl_vol25m_h100_%j.log
 
 # Ablation volume ~25M tokens (SAE Boost, Koriagin et al. COLM 2025) -- calibrage
 # timing/ablations post-correctifs perf+data-science de cette session (G1/G2/G7,
@@ -26,7 +26,7 @@ export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 
 export SEED=42
-export SAVE_DIR="./results_v13b_ablation_volume25m_current/"
+export SAVE_DIR="./results_v13c_ablation_volume25m_h100/"
 export USE_FROZEN_CORE="1"
 export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
