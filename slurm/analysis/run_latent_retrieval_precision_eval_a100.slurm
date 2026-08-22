@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=SAE_retrieval_eval
-#SBATCH --partition=h100
+#SBATCH --job-name=SAE_retrieval_eval_a
+#SBATCH --partition=a100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=110G
 #SBATCH --time=24:00:00
-#SBATCH --output=logs/analysis/latent_retrieval_precision_eval_%j.log
+#SBATCH --output=logs/analysis/latent_retrieval_precision_eval_a100_%j.log
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -49,7 +49,7 @@ export PYTHONUNBUFFERED=1
 # aux boucles longues de saev5.py, R1) -- --time=24:00:00 comme premier essai
 # avant d'investir dans un mécanisme de reprise. h100-bis (partition d'origine)
 # down (sinfo) -- basculé sur h100.
-export SAVE_DIR="./results_v10_emails_main/"
+export SAVE_DIR="./results_v10_emails_main_a100dup/"
 export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-330M"
 export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
