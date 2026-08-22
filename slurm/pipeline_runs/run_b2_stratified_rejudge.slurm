@@ -23,6 +23,9 @@ export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
 export DTYPE=bf16
 export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
 export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+# N_FEATURES_TO_LABEL défaut = 10 (src/config.py) : sans cet export, le premier
+# essai (jobs 44997/44998) a comparé 9/10 vs 68/150 -- pas comparable, refait.
+export N_FEATURES_TO_LABEL=150
 
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
 
