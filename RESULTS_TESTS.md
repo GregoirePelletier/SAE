@@ -1584,9 +1584,12 @@ n'atteigne la significativité seule).
 **Supersédé, sans remplacement produit à ce jour** : cette section et §68(c)/§69(c)
 mesurent un SAE **phrase-level** entraîné directement sur Mails.tsv, pas la méthode
 token-level du papier (§3.1-3.2) — écart identifié et corrigé, `latent_terms.py`
-réimplémenté fidèlement, mais bloqué par un OOM dans `build_token_training_pool`
-avant de produire un seul chiffre. Chiffres ci-dessous conservés comme trace historique
-(append-only), à ne plus citer comme résultat Latent Terms de référence.
+réimplémenté fidèlement. L'OOM de `build_token_training_pool` qui bloquait la version
+token-level est corrigé (le pool se construit, job 44666 : 33M tokens) ; le run le plus
+récent a été tué par un budget `--time` insuffisant pendant l'entraînement du SAE, pas
+par manque de mémoire — relancé (jobs 44995/44996). Chiffres ci-dessous conservés comme
+trace historique (append-only), à ne pas citer comme résultat Latent Terms de référence
+tant que 44995/44996 n'ont pas produit de JSON.
 
 `src/sae/retrieval/latent_terms.py` (BM25 sur le vocabulaire latent d'un SAE
 entraîné par pure reconstruction, Clavié et al. 2026, arXiv:2605.29384) n'était

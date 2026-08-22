@@ -168,10 +168,11 @@ d'entraînement devient un sujet actif :
   un corpus FineWeb2-fr générique HORS domaine (jamais sur Mails.tsv, conforme au
   papier), index construit sur les mails entiers (pas de découpage en phrases — écart
   d'une première version corrigé). Résultats et écarts d'échelle assumés (33M tokens
-  uniques plutôt que 30B, une seule graine). Aucun résultat produit à ce jour :
-  la constitution du pool d'entraînement (`build_token_training_pool`) meurt OOM
-  avant de terminer — §26/§68/§69 (première version phrase-level/en-domaine)
-  restent la seule mesure disponible, marquée supersédée plutôt que citable.
+  uniques plutôt que 30B, une seule graine). Aucun résultat produit à ce jour : le pool
+  d'entraînement se construit (33M tokens), mais l'entraînement du SAE token-level a été
+  interrompu par le budget `--time` du job, relancé (jobs 44995/44996) — §26/§68/§69
+  (première version phrase-level/en-domaine) restent la seule mesure disponible,
+  marquée supersédée plutôt que citable.
 - **Cooccurrence** (`src/analysis/cooccurrence.py`) : NPMI (`compute_npmi`) et
   clustering Louvain (`nx.community.louvain_communities`, pondéré par NPMI) sont
   implémentés et exercés en production (`cooccurrence_graph`, appelé depuis

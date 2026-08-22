@@ -13,8 +13,8 @@ Priorité, si le temps manque, par ordre décroissant de ce qui rend un résulta
 attaquable : **fallback layer=24 silencieux (tracké dans `docs/evaluation_protocol.md`
 → Points ouverts, à vérifier en quelques minutes de log)**, puis B2 (métrique
 d'interprétabilité biaisée par sélection), B1 (corpus d'entraînement 93% généré par le
-modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de split) et B6
-(label `remboursement`) sont corrigés.
+modèle juge). B7 (jointure de split) et B6 (label `remboursement`) sont corrigés ; Latent
+Terms est relancé (§1, jobs 44995/44996), plus un OOM bloquant.
 
 ---
 
@@ -66,18 +66,17 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   l'initialisation PCA du décodeur sont des ajouts du dépôt absents du papier — légitimes,
   mais ils invalident la baseline « Extended SAE (random init) » de leur Table 3 comme
   point de comparaison si citée telle quelle.
-- **Latent Terms — bloquant, aucun résultat produit à ce jour.** La version fidèle au
-  papier (token-level, hors-domaine) meurt OOM avant même de finir de constituer son pool
-  d'entraînement, deux fois de suite malgré une première correction (streaming). Cause
-  probable non corrigée : `build_token_training_pool` accumule chaque tenseur dans une
-  liste Python `pool` (~59 Go pour ~33M tokens) puis fait `torch.cat(pool, ...)`, qui
-  alloue un second tenseur ~59 Go **pendant que `pool` reste référencée** — pic RSS ~2× le
-  pool, cohérent avec les OOM observés à 96G et 110G. Correctif : préallouer
-  `torch.empty(target_tokens, d_in, dtype=bfloat16)` et écrire chaque lot via un curseur,
-  sans liste intermédiaire. Tant que non corrigé, les seuls résultats Latent Terms
-  existants restent l'ancienne méthode phrase-level in-domain (`RESULTS_TESTS.md`
-  §26/§68(c)/§69(c), déjà marqués supersédés) — à ne pas citer comme résultat de
-  référence.
+- **Latent Terms — OOM corrigé, aucun résultat encore produit.** Correction : cet audit
+  affirmait le pool d'entraînement toujours OOM ; en fait déjà corrigé (préallocation +
+  curseur d'écriture, `fbde008`, antérieur au clone sur lequel portait cet audit) — jamais
+  revérifié contre le code avant d'être reconduit ici. Le pool se construit avec succès
+  (job 44666 : 33M tokens, 144064 documents) ; le job a ensuite été tué par `--time=06:00:00`
+  **pendant l'entraînement du SAE** (24168 pas prévus), pas par manque de mémoire — relancé
+  avec `--time=24:00:00` (jobs 44995/44996). `load_or_train_latent_terms_sae` n'a aucun
+  mécanisme de reprise (R1) : à ajouter si 24h ne suffit pas. Les seuls résultats Latent
+  Terms existants restent, pour l'instant, l'ancienne méthode phrase-level in-domain
+  (`RESULTS_TESTS.md` §26/§68(c)/§69(c), déjà marqués supersédés) — à ne pas citer comme
+  résultat de référence tant que 44995/44996 n'ont pas produit de JSON.
 - **Latent Terms — évaluation limitée** : `latent_retrieval_precision_eval.py` calcule
   Precision@10/@20 contre TF-IDF sur seulement 4 requêtes paraphrasées, avec un label de
   pertinence toujours basé sur le même filtre regex faible (`INTENT_KEYWORDS_FR`, cf. B6
