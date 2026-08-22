@@ -6,7 +6,7 @@ latent d'un SAE entraîné par pure reconstruction sur des activations token
 F2LLM d'un corpus GÉNÉRIQUE hors-domaine, §3.1).
 
 Remplace la version précédente (SAE phrase-level entraîné directement sur
-Mails.tsv) : RESULTS_TESTS.md §26/§68/§69, supersédés par §<N-À-COMPLÉTER>.
+Mails.tsv) : RESULTS_TESTS.md §26/§68/§69, supersédés par §80.
 
 Protocole (inchangé par rapport aux runs précédents, seule l'implémentation
 Latent Terms change) :
@@ -43,6 +43,9 @@ from src.sae.retrieval.latent_terms import (
     load_f2llm, build_token_training_pool, load_or_train_latent_terms_sae,
     latent_doc_weights, LatentTermsIndex, TRAIN_TOKENS,
 )
+
+os.makedirs(CACHE_DIR, exist_ok=True)  # saev5.py le fait au chargement du module, ce script autonome pas -- crash
+                                        # confirmé (job 44996) sur un SAVE_DIR fraîchement créé (dédoublonnage GPU)
 
 TOP_K = (10, 20)
 

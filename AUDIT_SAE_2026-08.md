@@ -72,22 +72,23 @@ d'OOM bloquant.
   l'initialisation PCA du décodeur sont des ajouts du dépôt absents du papier — légitimes,
   mais ils invalident la baseline « Extended SAE (random init) » de leur Table 3 comme
   point de comparaison si citée telle quelle.
-- **Latent Terms — OOM corrigé, aucun résultat encore produit.** Correction : cet audit
-  affirmait le pool d'entraînement toujours OOM ; en fait déjà corrigé (préallocation +
-  curseur d'écriture, `fbde008`, antérieur au clone sur lequel portait cet audit) — jamais
-  revérifié contre le code avant d'être reconduit ici. Le pool se construit avec succès
-  (job 44666 : 33M tokens, 144064 documents) ; le job a ensuite été tué par `--time=06:00:00`
-  **pendant l'entraînement du SAE** (24168 pas prévus), pas par manque de mémoire — relancé
-  avec `--time=24:00:00` (jobs 44995/44996). `load_or_train_latent_terms_sae` n'a aucun
-  mécanisme de reprise (R1) : à ajouter si 24h ne suffit pas. Les seuls résultats Latent
-  Terms existants restent, pour l'instant, l'ancienne méthode phrase-level in-domain
-  (`RESULTS_TESTS.md` §26/§68(c)/§69(c), déjà marqués supersédés) — à ne pas citer comme
-  résultat de référence tant que 44995/44996 n'ont pas produit de JSON.
+- **Latent Terms — premiers résultats chiffrés (job 44995, RESULTS_TESTS.md §80).** OOM
+  déjà corrigé avant cette session (`fbde008`) ; le blocage réel était `--time=06:00:00`
+  pendant l'entraînement du SAE (job 44666), relancé à `--time=24:00:00` et terminé en
+  seulement 11 min (pool déjà en cache). Pas de victoire uniforme sur TF-IDF : bat TF-IDF
+  largement sur `remboursement` (P@10 0,90 vs 0,30, taux de base faible), à égalité sur
+  `information`/`urgence`, dominé sur `réclamation` (P@10 0,50 vs 1,00 — TF-IDF profite
+  d'un vocabulaire homogène sur l'intention à taux de base le plus élevé). Le duplicata
+  a100 (job 44996) a échoué sur un bug distinct (répertoire de cache non créé sur un
+  `SAVE_DIR` fraîchement dédoublonné, corrigé) — sans conséquence, le job h100 a produit
+  le résultat de référence. `load_or_train_latent_terms_sae` n'a toujours aucun mécanisme
+  de reprise (R1), sans conséquence tant que le run tient dans le budget `--time`.
 - **Latent Terms — évaluation limitée** : `latent_retrieval_precision_eval.py` calcule
-  Precision@10/@20 contre TF-IDF sur seulement 4 requêtes paraphrasées, avec un label de
-  pertinence toujours basé sur le même filtre regex faible (`INTENT_KEYWORDS_FR`, cf. B6
-  ci-dessous) — à garder étiqueté comme évaluation indicative, pas benchmark IR (pas de
-  MAP/nDCG/BEIR).
+  Precision@10/@20 contre TF-IDF sur seulement 4 requêtes paraphrasées (une par intention,
+  pas de réplication), avec un label de pertinence toujours basé sur le même filtre regex
+  faible (`INTENT_KEYWORDS_FR`, cf. B6 ci-dessous) — à garder étiqueté comme évaluation
+  indicative, pas benchmark IR (pas de MAP/nDCG/BEIR — métriques désormais disponibles,
+  `src/analysis/metrics.py`, mais pas encore branchées sur ce protocole).
 - **Stockage de `e` en int8, à reformuler** : la correction de fidélité SAE Boost (encodeur
   lit `x`) rend caduque l'idée initiale de stocker `e` à la place de `x` — l'encodeur a
   maintenant besoin de `x`. Quantifier `x` en int8 par ligne est dangereux ici précisément
@@ -197,28 +198,26 @@ d'OOM bloquant.
 
 ## 5. Data science / méthodologie
 
-- **Corpus d'entraînement dominé par du texte généré par le modèle juge lui-même.**
-  `MAX_AUGMENTED_PER_MAIL=13` (défaut, `saev5.py`) sur 13 niveaux de perturbation ; le
-  README documente déjà la proportion (~41k documents augmentés contre ~2,2k mails réels
-  train/test) mais aucun test d'indépendance de la **distribution d'entraînement** n'existe
-  — seule l'indépendance du juge a été testée (§48/§50/§52). Le SAE d'extension **et**
-  `PhraseLevelSAE` apprennent donc majoritairement le style de réécriture de Gemma, le
-  modèle qui juge ensuite les features qu'il a lui-même généré la matière d'entraînement.
-  Test minimal : réentraîner l'extension sur les mails originaux seuls, comparer taux
-  d'interprétabilité et top-features de diffing.
-- **La métrique d'interprétabilité phare (45,3%, 68/150) reste mesurée par défaut sur un
-  échantillon biaisé par construction — sélection stratifiée ajoutée, pas encore par
-  défaut.** `feature_selection_by_magnitude` sélectionne les *N* features par magnitude
+- **Corpus d'entraînement dominé par du texte généré par le modèle juge lui-même — écart
+  énorme confirmé, réplication à pleine puissance en cours.** `MAX_AUGMENTED_PER_MAIL=13`
+  (défaut, `saev5.py`) sur 13 niveaux de perturbation. Premier test confondu par une part
+  de filler variable (§76, RESULTS_TESTS.md) ; test corrigé (part de filler recalibrée à
+  ~6,3% dans les deux bras, §77/§78) : 40,0% (8/20, corpus mixte) vs **95,0% (19/20,
+  originaux + filler recalibré)**, z=-3,71, p=0,0002, h de Cohen=-1,32 — l'écart
+  individuel le plus large et le plus significatif du dépôt à ce jour, devant layer 31 vs
+  layer 24 (§51). n=20 = signal, pas une réplication statistiquement puissante ;
+  réplication à n=150 lancée
+  (`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`).
+- **La métrique d'interprétabilité phare (45,3%, 68/150) était mesurée par défaut sur un
+  échantillon biaisé par construction — tranché, sélection stratifiée devenue le défaut.**
+  `feature_selection_by_magnitude` sélectionnait les *N* features par magnitude
   token-level moyenne — donc les plus denses, les plus proches de directions
-  génériques/stop-word. Non comparable à un chiffre publié (Bills et al. échantillonnent au
-  hasard, EleutherAI/Paulo stratifient, interp-embed rapporte par bins de fréquence
-  log-espacés, App. J) ni comparable entre les configurations du dépôt dès que la
-  distribution de magnitude change. `feature_selection_stratified_by_frequency`
-  (`judge.py`) existe désormais, opt-in via `FEATURE_SELECTION_METHOD=stratified` —
-  gardé opt-in plutôt que basculé par défaut faute d'un run de comparaison qui en valide
-  l'effet (même discipline que `BATCH_SIZE_EXTRA`). Comparaison lancée
-  (`scripts/b2_stratified_selection_rejudge.py`, jobs 44997/44998, réutilise le SAE et le
-  juge déjà en cache — pas de réentraînement).
+  génériques/stop-word. Comparaison directe sur le même SAE/juge déjà en cache
+  (`scripts/b2_stratified_selection_rejudge.py`, RESULTS_TESTS.md §79) : 68/150=45,3%
+  (magnitude) vs **134/150=89,3% (stratifié par fréquence)**, z=-8,12, p=4,5×10⁻¹⁶ — la
+  sélection par magnitude sous-estimait massivement le taux réel. `FEATURE_SELECTION_METHOD
+  =stratified` est maintenant le défaut (`src/sae/saev5.py`). Le chiffre 45,3% déjà publié
+  est à traiter comme un plancher, pas comme le taux réel du dictionnaire.
 - Problème de moindre gravité, non traité : `information\w*` et `coupure\w*` (« urgence »)
   restent des motifs larges dans `INTENT_KEYWORDS_FR`, moins sévères que ne l'était
   `avoir\w*` (corrigé) mais pas resserrés.
@@ -263,12 +262,15 @@ d'OOM bloquant.
 
 ## 7. Priorisation restante
 
+B2 et B1 sont tranchés à n=20/150 respectivement (§5) — seul B1 attend encore sa
+réplication à pleine puissance (n=150, en cours) avant d'être citable sans réserve.
 Ce qui rend un résultat déjà publié attaquable en soutenance, par ordre décroissant :
-métrique d'interprétabilité biaisée par sélection (§5, B2, en cours, jobs 44997/44998) ;
-corpus d'entraînement à 93% généré par le juge (§5, B1, en cours, jobs 44983/44985).
-Fallback layer=24 silencieux vérifié inoffensif (metadata de couche présente et correcte
-sur les quatre SAE du balayage §51). Les deux items restants se mesurent en quelques
-heures chacun sur des caches déjà existants, aucun ne demande un run de 20h.
+**le chiffre de référence 45,3%/68/150 lui-même est maintenant daté** — mesuré sous
+l'ancien défaut `FEATURE_SELECTION_METHOD=magnitude`, dont B2 vient de montrer qu'il
+sous-estime le taux réel d'un facteur ~2 (89,3% sous stratifié). Toute figure/table du
+rapport citant 45,3% comme LE taux d'interprétabilité du dépôt doit être requalifiée en
+plancher, ou refaite sous le nouveau défaut. Réplication B1 à n=150 en cours
+(`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`).
 
 Corrigés depuis : B7 (jointure de split par hash SHA1 du texte parent plutôt que par
 position — migration de `augmented_mails.jsonl` existant vers `parent_sha1` encore à faire,

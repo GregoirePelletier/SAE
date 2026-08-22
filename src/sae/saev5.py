@@ -295,12 +295,13 @@ ALLOW_SYNTHETIC_CORPUS_FALLBACK = os.environ.get("ALLOW_SYNTHETIC_CORPUS_FALLBAC
 # Batch size de extract_f2llm_embeddings (P2), en dur à 128 auparavant, jamais
 # balayé (AUDIT_SAE_2026-08.md, §2 Performance). Défaut 128 inchangé.
 F2LLM_EXTRACT_BATCH_SIZE = int(os.environ.get("F2LLM_EXTRACT_BATCH_SIZE", "128"))
-# "magnitude" (défaut inchangé) ou "stratified" (par bins de fréquence,
-# AUDIT_SAE_2026-08.md item B.2) : magnitude sélectionne systématiquement les
+# "stratified" (défaut, par bins de fréquence, AUDIT_SAE_2026-08.md item B.2)
+# ou "magnitude" (ancien défaut) : magnitude sélectionne systématiquement les
 # features les plus denses, ce que le taux d'interprétabilité mesuré dessus
-# hérite silencieusement. Pas basculé par défaut sans un run de comparaison
-# validant l'effet (même discipline que BATCH_SIZE_EXTRA, §2.9 item 7).
-FEATURE_SELECTION_METHOD = os.environ.get("FEATURE_SELECTION_METHOD", "magnitude")
+# hérite silencieusement -- comparaison directe 68/150 (magnitude) vs 134/150
+# (stratified), z=-8,12, p=4,5e-16 (RESULTS_TESTS.md §79) tranche largement
+# en faveur de stratified, basculé par défaut sur cette base.
+FEATURE_SELECTION_METHOD = os.environ.get("FEATURE_SELECTION_METHOD", "stratified")
 
 from src.config import (
     EMB_MODEL, EMB_POOLING, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,

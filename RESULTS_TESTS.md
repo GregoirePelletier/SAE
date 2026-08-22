@@ -4028,3 +4028,156 @@ run originaux-seuls a moins de données d'entraînement pour l'extension
 (rho_sae/dead_pct dégradés), un facteur de confusion supplémentaire non
 isolé de l'effet corpus lui-même ; réplication à n≥150 sur seed différente
 nécessaire avant de citer ce résultat comme établi.
+
+## 77. Validation post-correctif B.5 (négatifs valides) sur corpus mixte, n=20
+
+**Question** : le correctif B.5 (§75) répare la sélection de négatifs pour
+le juge odd-one-out (auparavant `neg_example=None` sur tout le run après le
+bug introduit cette session) — ce run vérifie qu'il produit bien des
+jugements exploitables sur le corpus mixte de référence (pas seulement sur
+le run de diagnostic ciblé de §75).
+
+**Écart à la configuration de référence** : `N_FEATURES_TO_LABEL=20` (signal
+rapide, pas n≥150), sinon config de référence (corpus mixte complet,
+`N_TOKENS_EXTRA_TRAIN=100000` au lieu de 500000 — budget réduit pour un
+tour rapide, cf. §12 pour la non-sensibilité déjà établie à ce paramètre).
+
+**n** : 20.
+
+**Résultat** : 8/20 = 40,0% interprétable (IC95% [22%, 61%]), **0/20
+`dead_feature`/insuffisant** — le correctif fonctionne sur un run complet, pas
+seulement le cas ciblé de §75.
+
+**Conclusion** : correctif B.5 confirmé opérationnel en conditions réelles.
+Sert aussi de bras de comparaison à n identique pour §78 (même
+`N_FEATURES_TO_LABEL=20`, même `N_TOKENS_EXTRA_TRAIN=100000`, seule variable
+: présence du corpus augmenté).
+
+**Limite connue** : n=20, un seul seed.
+
+## 78. B.1 corrigé : mails originaux + filler recalibré (~6,3%) vs corpus mixte, même échelle — écart énorme et significatif
+
+**Question** : §76 a montré que le run "originaux seuls" précédent
+confondait deux mécanismes (retrait du texte augmenté ET explosion de la
+part de filler FineWeb2 de 6,3% à 40,7%) — ce run isole la variable unique
+en fixant `N_VOLUME_FILLER_TARGET_CHUNKS=294` pour retrouver ~6,3% de filler
+avec le corpus réduit (294/(3300+174+900+294)=6,3%, cf. commentaire
+`run_validation_100k_layer24_v11_originals_filler_matched.slurm`).
+
+**Écart à la configuration de référence** : identique à §77
+(`N_FEATURES_TO_LABEL=20`, `N_TOKENS_EXTRA_TRAIN=100000`), sauf
+`LOCAL_AUGMENTED_MAILS_PATH` vide et `N_VOLUME_FILLER_TARGET_CHUNKS=294` (au
+lieu de la valeur par défaut, dimensionnée pour le corpus complet).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 20 features labellisées par run, comparaison à §77 (même n, même
+code, même jour, seule variable isolée par construction).
+
+**Résultat** : 8/20 = 40,0% (corpus mixte, §77) vs **19/20 = 95,0% (IC95%
+[76%, 99%], mails originaux + filler recalibré)** — z=-3,71, **p=0,0002**, h
+de Cohen=-1,32 (effet énorme). `dead_feature` : 0/20 dans les deux bras.
+
+**Conclusion** : à la différence de §76, ce résultat isole correctement la
+variable unique visée par B.1 (le retrait du texte généré par Gemma-3, à
+part de filler constante) — l'effet est encore plus large qu'en §76 (95%
+contre 85%), et cette fois sans le mécanisme confondant identifié. C'est,
+à ce jour, l'écart individuel le plus large et le plus significatif de
+tout le dépôt (devant layer 31 vs layer 24, §51, z=2,20). Réplication à
+n=150 lancée (`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`)
+pour confirmer avant de citer ce résultat comme établi — cf. limite
+ci-dessous.
+
+**Limite connue** : n=20 est un signal, pas une réplication statistiquement
+puissante (même réserve qu'en §76) ; un seul seed ; les indices de features
+comparés entre les deux bras ne référencent PAS les mêmes features
+sémantiques (deux SAE d'extension entraînés sur des corpus différents,
+comparaison de taux agrégés uniquement, pas appariée) ; fidélité de
+reconstruction non comparée ici (à vérifier que le SAE originaux-seuls
+n'est pas simplement sous-entraîné, cf. §76 où rho_sae était dégradé).
+
+## 79. B.2 tranché : sélection stratifiée par fréquence très significativement supérieure à la sélection par magnitude
+
+**Question** : B.2 (AUDIT_SAE_2026-08.md §5) — `feature_selection_by_magnitude`
+sélectionne systématiquement les features les plus denses (proches de
+directions génériques/stop-word), un échantillon non comparable à un chiffre
+publié (Bills et al. échantillonnent au hasard, EleutherAI/Paulo stratifient).
+`feature_selection_stratified_by_frequency` (App. J interp-embed, bins de
+fréquence log-espacés) existait en opt-in depuis cette session sans run de
+comparaison qui en valide l'effet.
+
+**Écart à la configuration de référence** : aucun — même SAE d'extension déjà
+entraîné (`results_v10_emails_main/`), même juge, mêmes caches d'activations.
+Seule la fonction de sélection des 150 features à juger change
+(`scripts/b2_stratified_selection_rejudge.py`).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 150 features par bras (deux échantillons disjoints à 16/150 près,
+cf. limite).
+
+**Résultat** : 68/150 = 45,3% (magnitude, référence) vs **134/150 = 89,3%
+(stratifié par fréquence)** — z=-8,12, **p=4,5×10⁻¹⁶**, h de Cohen=-1,00
+(effet énorme). Chevauchement des deux échantillons de 150 features :
+16/150 seulement.
+
+**Conclusion** : B.2 tranché sans ambiguïté — la sélection par magnitude
+sous-estimait massivement le taux d'interprétabilité réel du dictionnaire.
+`FEATURE_SELECTION_METHOD=stratified` passe par défaut (`src/sae/saev5.py`).
+Toute comparaison future entre configurations (K_EXTRA, D_EXTRA, volume,
+seed, layer) faite sous l'ancien défaut magnitude reste valide en tant que
+comparaison **relative** (même biais des deux côtés), mais aucune ne peut
+plus être lue comme une mesure absolue du taux d'interprétabilité du
+dictionnaire — le chiffre absolu de référence (45,3%) est à traiter comme un
+plancher, pas comme le taux réel.
+
+**Limite connue** : les deux échantillons de 150 ne sont pas appariés
+(seulement 16 features en commun) — l'écart mesure la différence entre deux
+échantillons de features différentes, pas un effet causal sur les mêmes
+features. Une fraction de l'écart pourrait aussi venir de features à
+fréquence très faible (peu d'exemples positifs disponibles) étant
+paradoxalement plus faciles à juger que des features dominantes/génériques
+au comportement diffus — non décomposé ici par bin de fréquence.
+
+## 80. Latent Terms (token-level, hors-domaine) : premiers résultats chiffrés — bat TF-IDF sur remboursement/urgence, perd sur réclamation
+
+**Question** : §26 avait établi que Latent Terms (Clavié et al. 2026) devait
+être réimplémenté token-level, hors-domaine (§3.1 du papier) — l'OOM de
+`build_token_training_pool` bloquait tout résultat chiffré depuis (déjà
+corrigé en réalité avant cette session, cf. correction de statut périmé,
+commit qui précède celui-ci). Premier run complet à produire un JSON de
+résultats.
+
+**Écart à la configuration de référence** : n/a, protocole dédié
+(`scripts/latent_retrieval_precision_eval.py`, docstring pour le détail) —
+SAE token-level entraîné par reconstruction pure sur 33M tokens FineWeb2-fr
+génériques (pool déjà en cache, job 44666), indexé sur les 3480 mails
+originaux entiers.
+
+**n** : 4 requêtes en paraphrase (une par intention), Precision@10/@20 contre
+TF-IDF, corpus complet.
+
+**Résultat** :
+
+| Intention (taux de base) | P@10 Latent Terms | P@10 TF-IDF | P@20 Latent Terms | P@20 TF-IDF |
+|---|---|---|---|---|
+| réclamation (54,8%) | 0,50 | **1,00** | 0,55 | **1,00** |
+| remboursement (11,1%) | **0,90** | 0,30 | **0,95** | 0,50 |
+| information (60,7%) | 0,70 | 0,70 | 0,55 | 0,70 |
+| urgence (33,8%) | 0,80 | 0,80 | 0,80 | 0,60 |
+
+**Conclusion** : pas de victoire uniforme d'une méthode sur l'autre — Latent
+Terms domine largement sur `remboursement` (taux de base faible, 11,1% :
+TF-IDF proche du hasard, Latent Terms très au-dessus), à égalité sur
+`information`/`urgence`, et nettement dominé sur `réclamation` où TF-IDF
+atteint P@10=1,00 (taux de base 54,8%, le plus élevé des quatre — TF-IDF
+profite mécaniquement d'un intitulé fréquent avec un vocabulaire régulier
+type "réclamation"/"insatisfait"). Cohérent avec la réserve méthodologique
+déjà documentée (`report/03_experiences_et_resultats.md`) : la vérité
+terrain (`INTENT_KEYWORDS_FR`) est elle-même lexicale, ce qui favorise
+structurellement TF-IDF sur les intentions à vocabulaire homogène.
+
+**Limite connue** : n=4 requêtes, une seule par intention (pas de réplication
+par paraphrase multiple) — évaluation indicative (AUDIT_SAE_2026-08.md),
+pas un benchmark IR (pas de MAP/nDCG/BEIR, cf. §1 métriques App. G
+disponibles mais pas encore branchées sur ce protocole).
