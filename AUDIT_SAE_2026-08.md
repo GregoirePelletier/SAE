@@ -43,9 +43,14 @@ d'OOM bloquant.
   papier documentée explicitement dans `docs/references.md` plutôt que silencieuse.
 - **interp-embed, Retrieval** : l'étape 1 de la Figure 10 (normaliser chaque latent par le
   90ᵉ percentile de ses activations non nulles) est corrigée
-  (`src/analysis/metrics.py::normalize_by_p90_and_score`). Manquent encore le rerank LLM
-  des latents (App. G), les métriques MAP/MP@50/MP@10, l'agrégation RRF, RBO — aucune
-  évaluation retrieval chiffrée n'existe.
+  (`src/analysis/metrics.py::normalize_by_p90_and_score`). Métriques App. G implémentées
+  et testées (`src/analysis/metrics.py::average_precision/precision_at_k/
+  mean_average_precision/mean_precision_at_k/reciprocal_rank_fusion/rank_biased_overlap`,
+  `tests/test_retrieval_metrics.py`, écarts documentés `docs/references.md`). Manque
+  encore l'intégration : le rerank LLM des latents (prompt App. G disponible,
+  `docs/PDF_APPENDICES_EXTRACT.md`), et le script d'évaluation qui les appelle sur de
+  vraies requêtes/documents — aucune évaluation retrieval chiffrée n'existe à ce jour,
+  seuls les blocs de calcul sont prêts.
 - **App. I (taille du modèle lecteur, 12B vs 27B)** : protocole F1 latent-vs-juge absent.
   Tant qu'il n'est pas écrit, la comparaison 12B/27B ne peut être arbitrée que par le taux
   odd-one-out, instable à 31% au niveau d'une feature (`CLAUDE.md`, §13.1).

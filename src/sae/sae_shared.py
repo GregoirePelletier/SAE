@@ -65,6 +65,12 @@ try:
         compute_rho_sae,
         downstream_classification,
         normalize_by_p90_and_score,
+        average_precision,
+        precision_at_k,
+        mean_average_precision,
+        mean_precision_at_k,
+        reciprocal_rank_fusion,
+        rank_biased_overlap,
     )
 except ImportError:
     from metrics import (
@@ -72,6 +78,12 @@ except ImportError:
         compute_rho_sae,
         downstream_classification,
         normalize_by_p90_and_score,
+        average_precision,
+        precision_at_k,
+        mean_average_precision,
+        mean_precision_at_k,
+        reciprocal_rank_fusion,
+        rank_biased_overlap,
     )
 
 try:

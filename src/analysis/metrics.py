@@ -5,7 +5,7 @@ Alignement strict sur les formules mathématiques de SAELens et interp_embed.
 
 import torch
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 def compute_metrics(
@@ -206,3 +206,85 @@ def normalize_by_p90_and_score(matched_acts: torch.Tensor, weights: torch.Tensor
             p90[j] = torch.quantile(nonzero, 0.9).clamp(min=1e-8)
     normalized_acts = matched_acts / p90
     return (normalized_acts * weights).sum(dim=-1)
+
+
+def average_precision(relevance: list[bool]) -> float:
+    """AP (interp_embed, App. G) : AP = (1/|R|) * Σ_k (précision@k) * 1{d_k pertinent},
+    `relevance` déjà classé par rang décroissant de score. |R| = nombre total de
+    documents pertinents dans `relevance` (suppose que tous les documents pertinents
+    du corpus apparaissent dans la liste classée -- vrai si `relevance` couvre le
+    corpus entier, sinon |R| sous-estimé)."""
+    n_relevant = sum(relevance)
+    if n_relevant == 0:
+        return 0.0
+    hits = 0
+    precision_sum = 0.0
+    for k, rel in enumerate(relevance, start=1):
+        if rel:
+            hits += 1
+            precision_sum += hits / k
+    return precision_sum / n_relevant
+
+
+def precision_at_k(relevance: list[bool], k: int) -> float:
+    """P@K (interp_embed, App. G) : fraction de documents pertinents dans les k premiers rangs."""
+    if k == 0:
+        return 0.0
+    return sum(relevance[:k]) / k
+
+
+def mean_average_precision(relevance_lists: list[list[bool]]) -> float:
+    """MAP = moyenne de `average_precision` sur les requêtes (App. G mentionne MAP comme
+    métrique agrégée mais n'écrit pas cette équation explicitement -- moyenne standard,
+    seule lecture cohérente avec AP/P@K telles que définies dans le texte)."""
+    if not relevance_lists:
+        return 0.0
+    return float(np.mean([average_precision(r) for r in relevance_lists]))
+
+
+def mean_precision_at_k(relevance_lists: list[list[bool]], k: int) -> float:
+    """MP@K = moyenne de `precision_at_k` sur les requêtes (même remarque que
+    `mean_average_precision` -- agrégation standard, non explicitée séparément dans le
+    texte de l'App. G)."""
+    if not relevance_lists:
+        return 0.0
+    return float(np.mean([precision_at_k(r, k) for r in relevance_lists]))
+
+
+def reciprocal_rank_fusion(rankings: list[list], k: int = 60) -> list[tuple]:
+    """RRF (Cormack, Clarke & Buettcher 2009 [83], cité mais pas reproduit dans le texte
+    de l'App. G) : score(d) = Σ_rankings 1/(k + rang(d)). `k=60` = constante conventionnelle
+    de l'article original -- l'App. G ne précise pas sa valeur pour OpenAI+LLM/Combined,
+    hypothèse à documenter (R6) si les chiffres sont comparés à ceux du papier. Rang 1-indexé ;
+    un document absent d'un ranking ne contribue aucun terme pour ce ranking. Retourne
+    [(doc_id, score), ...] trié par score décroissant."""
+    scores: dict = {}
+    for ranking in rankings:
+        for rank, doc_id in enumerate(ranking, start=1):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def rank_biased_overlap(ranking_a: list, ranking_b: list, p: float = 0.98, depth: Optional[int] = None) -> float:
+    """RBO de base, non extrapolé (Webber, Moffat & Zobel 2010 [84], cité mais pas
+    reproduit dans le texte de l'App. G, seul p=0.98 y est donné) :
+    RBO = (1-p) * Σ_{d=1}^{depth} p^(d-1) * |A_∩d ∩ B_∩d| / d. `depth` par défaut =
+    min(len(ranking_a), len(ranking_b)). L'extrapolation à profondeur infinie du papier
+    original (RBO_EXT, pour compenser la troncature) n'est pas implémentée (R6) : cette
+    formule de base ne vaut jamais exactement 1 pour deux classements identiques de
+    longueur finie (converge vers 1 seulement quand depth -> infini -- à depth=50,
+    p=0.98 comme dans l'App. G, deux classements identiques donnent 1-0.98^50≈0,64, pas
+    1), mais reste strictement croissante avec l'accord réel entre les deux classements
+    (identique > partiellement recouvrant > disjoint = 0), donc utilisable pour comparer
+    des méthodes de retrieval entre elles."""
+    depth = depth if depth is not None else min(len(ranking_a), len(ranking_b))
+    if depth == 0:
+        return 0.0
+    set_a, set_b = set(), set()
+    total = 0.0
+    for d in range(1, depth + 1):
+        set_a.add(ranking_a[d - 1])
+        set_b.add(ranking_b[d - 1])
+        overlap = len(set_a & set_b)
+        total += (p ** (d - 1)) * (overlap / d)
+    return (1 - p) * total
