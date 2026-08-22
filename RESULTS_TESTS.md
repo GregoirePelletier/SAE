@@ -3974,35 +3974,51 @@ d'interprétabilité.
 **Écart à la configuration de référence** : run de validation 100k tokens,
 layer 24, `N_FEATURES_TO_LABEL=20`, `LOCAL_AUGMENTED_MAILS_PATH` vide
 (train/test = mails réels seuls, ~3480 mails au lieu de ~41k train/2,2k test
-habituels). Confondu avec l'ensemble des correctifs perf/data-science de
-cette session (B.3/B.4/B.5/B.6/B.7/B.11, cf. §75) : ce run n'isole pas la
-composition du corpus comme seule variable — comparé ici au run de référence
+habituels). `N_VOLUME_FILLER_TARGET_CHUNKS=3000` inchangé — **confondu de
+façon significative** : le filler FineWeb2 (jamais dans `train_texts`, mais
+dans le réservoir résiduel qui entraîne les poids de l'extension) passe de
+6,3% du corpus (3000/47253, run de référence) à **40,7%** (3000/7374, ce
+run) puisque son volume absolu est fixe alors que `train_texts` a été divisé
+par 12. Le SAE de ce run n'est donc pas "entraîné sur les originaux seuls" :
+il est entraîné sur un réservoir ~6-7x plus dominé par du texte web
+générique non filtré. Confondu aussi avec l'ensemble des correctifs
+perf/data-science de cette session (B.3/B.4/B.5/B.6/B.7/B.11, cf. §75) : ce
+run n'isole aucune variable seule — comparé ici au run de référence
 `results_v21_validation_100k_layer24_v7_sharding` (job 44778), qui utilise
 encore le code d'AVANT cette session (donc sans le bug puis le correctif de
-§75).
+§75) et une part de filler à 6,3%.
 
 **Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
 
 **n** : 20 features labellisées par run.
 
-**Résultat** : interp_score 45% (9/20, corpus mixte, code de référence) vs
-**85% (17/20, mails originaux seuls, code de cette session)** — z=-2,65,
-**p=0,008**, h de Cohen=-0,88 (effet très large). `neg_example` non nul pour
-les 20/20 features (le correctif §75 fonctionne correctement sur ce run).
-Fidélité de reconstruction dégradée sans les augmentés (attendu, moins de
-données d'entraînement) : ρ_SAE 0,7904 (vs ~0,83), dead_pct 68,1% (vs
-~57,8%) — la sonde `acc_axes_email` n'a pas pu tourner (pas assez
-d'exemples par axe sans augmentation).
+**Résultat** : interp_score 45% (9/20, IC95% [26%, 66%], corpus mixte, code
+de référence) vs **85% (17/20, IC95% [64%, 95%], mails originaux seuls,
+code de cette session)** — IC non chevauchants, z=-2,65, **p=0,008**, h de
+Cohen=-0,88 (effet très large). `neg_example` non nul pour les 20/20
+features (le correctif §75 fonctionne correctement sur ce run). Fidélité de
+reconstruction dégradée sans les augmentés (attendu, moins de données
+d'entraînement) : ρ_SAE 0,7904 (vs ~0,83), dead_pct 68,1% (vs ~57,8%) — la
+sonde `acc_axes_email` n'a pas pu tourner (pas assez d'exemples par axe sans
+augmentation).
 
-**Conclusion** : direction et amplitude cohérentes avec l'hypothèse B.1 —
-le corpus généré par le juge lui-même semble bien dégrader l'interprétabilité
-mesurée, pas seulement un risque théorique d'indépendance du juge (déjà
-écarté séparément, §48/§50/§52). Deuxième résultat individuellement
-significatif du dépôt après layer 31 vs layer 24 (§51) — au même titre,
-**non répliqué sur une 2e graine**, et confondu ici avec les correctifs de
-session (§75) plutôt qu'isolé.
+**Conclusion** : effet large et significatif à cet effectif, mais **pas
+attribuable à l'hypothèse B.1 telle que formulée** — la part de filler passant
+de 6,3% à 40,7% (ci-dessus) est un mécanisme concurrent au moins aussi
+plausible que "retirer le texte généré par le juge améliore
+l'interprétabilité" : un SAE entraîné sur un réservoir dominé par du texte
+web générique peut apprendre des features plus faciles à interpréter pour
+des raisons sans rapport avec l'indépendance du juge. Ce run ne permet pas
+de trancher entre les deux mécanismes. Deuxième résultat individuellement
+significatif du dépôt après layer 31 vs layer 24 (§51), avec les mêmes
+réserves : **non répliqué**, et ici en plus confondu par construction, pas
+seulement par les correctifs de session (§75).
 
-**Limite connue** : n=20 très en dessous du n≥150 requis pour un taux agrégé
+**Limite connue** : pour isoler réellement B.1, refaire ce run avec
+`N_VOLUME_FILLER_TARGET_CHUNKS` réduit pour garder la même proportion de
+filler (~6,3%) que la référence, ou à 0 pour un originaux-seuls strict —
+condition nécessaire avant de citer ce résultat comme test de B.1. n=20 très
+en dessous du n≥150 requis pour un taux agrégé
 informatif (checklist diagnostics, `CLAUDE.md`) ; comparaison confondue par
 tous les correctifs de cette session, pas une ablation à variable unique ; le
 run originaux-seuls a moins de données d'entraînement pour l'extension
