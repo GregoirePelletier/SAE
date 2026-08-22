@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=SAE_b2_rejudge
+#SBATCH --partition=a100
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=90G
+#SBATCH --time=06:00:00
+#SBATCH --output=logs/pipeline_runs/sae_b2_rejudge_%j.log
+
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+
+# ── B2 (AUDIT_SAE_2026-08.md §5) : re-juge 150 features sélectionnées par
+# fréquence (feature_selection_stratified_by_frequency, App. J interp-embed)
+# plutôt que par magnitude token-level moyenne (défaut, référence 45,3%
+# 68/150) -- même SAE d'extension déjà entraîné, même juge, aucun
+# réentraînement ni nouvelle extraction. Décide si `FEATURE_SELECTION_METHOD
+# =stratified` (judge.py) devient le défaut.
+export SAVE_DIR="./results_v10_emails_main/"
+export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export DTYPE=bf16
+export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+
+export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+
+cd /home/h21486/SAE/
+.venv/bin/python scripts/b2_stratified_selection_rejudge.py

@@ -10,11 +10,12 @@ appliqués et de leur vérification (jobs GPU, tests d'équivalence) vit dans `g
 ici — ce document ne porte que ce qui reste à traiter.
 
 Priorité, si le temps manque, par ordre décroissant de ce qui rend un résultat déjà publié
-attaquable : **fallback layer=24 silencieux (tracké dans `docs/evaluation_protocol.md`
-→ Points ouverts, à vérifier en quelques minutes de log)**, puis B2 (métrique
-d'interprétabilité biaisée par sélection), B1 (corpus d'entraînement 93% généré par le
-modèle juge). B7 (jointure de split) et B6 (label `remboursement`) sont corrigés ; Latent
-Terms est relancé (§1, jobs 44995/44996), plus un OOM bloquant.
+attaquable : B2 (métrique d'interprétabilité biaisée par sélection, en cours, jobs
+44997/44998), B1 (corpus d'entraînement 93% généré par le modèle juge, en cours, jobs
+44983/44985). Fallback layer=24 silencieux vérifié non déclenché sur le balayage §51
+(`docs/evaluation_protocol.md` → Points ouverts) ; B7 (jointure de split) et B6 (label
+`remboursement`) sont corrigés ; Latent Terms est relancé (§1, jobs 44995/44996), plus
+d'OOM bloquant.
 
 ---
 
@@ -210,8 +211,9 @@ Terms est relancé (§1, jobs 44995/44996), plus un OOM bloquant.
   distribution de magnitude change. `feature_selection_stratified_by_frequency`
   (`judge.py`) existe désormais, opt-in via `FEATURE_SELECTION_METHOD=stratified` —
   gardé opt-in plutôt que basculé par défaut faute d'un run de comparaison qui en valide
-  l'effet (même discipline que `BATCH_SIZE_EXTRA`). **Reste à faire : lancer ce run et, si
-  concluant, en faire le défaut.**
+  l'effet (même discipline que `BATCH_SIZE_EXTRA`). Comparaison lancée
+  (`scripts/b2_stratified_selection_rejudge.py`, jobs 44997/44998, réutilise le SAE et le
+  juge déjà en cache — pas de réentraînement).
 - Problème de moindre gravité, non traité : `information\w*` et `coupure\w*` (« urgence »)
   restent des motifs larges dans `INTENT_KEYWORDS_FR`, moins sévères que ne l'était
   `avoir\w*` (corrigé) mais pas resserrés.
@@ -257,11 +259,11 @@ Terms est relancé (§1, jobs 44995/44996), plus un OOM bloquant.
 ## 7. Priorisation restante
 
 Ce qui rend un résultat déjà publié attaquable en soutenance, par ordre décroissant :
-fallback layer=24 silencieux (tracké `docs/evaluation_protocol.md` → Points ouverts, à
-vérifier sur les logs du run §51 en quelques minutes) ; métrique d'interprétabilité
-biaisée par sélection (§5, B2) ; corpus d'entraînement à 93% généré par le juge (§5, B1).
-Les deux derniers se mesurent en quelques heures chacun, aucun ne demande un run de 20h, et
-B2 se traite en rétro-analyse sur des caches déjà existants.
+métrique d'interprétabilité biaisée par sélection (§5, B2, en cours, jobs 44997/44998) ;
+corpus d'entraînement à 93% généré par le juge (§5, B1, en cours, jobs 44983/44985).
+Fallback layer=24 silencieux vérifié inoffensif (metadata de couche présente et correcte
+sur les quatre SAE du balayage §51). Les deux items restants se mesurent en quelques
+heures chacun sur des caches déjà existants, aucun ne demande un run de 20h.
 
 Corrigés depuis : B7 (jointure de split par hash SHA1 du texte parent plutôt que par
 position — migration de `augmented_mails.jsonl` existant vers `parent_sha1` encore à faire,

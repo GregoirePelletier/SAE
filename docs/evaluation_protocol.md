@@ -106,11 +106,12 @@ Items identifiés mais non résolus, à traiter avant de s'appuyer dessus sans r
   indépendant des originaux** (`src/analysis/cooccurrence.py:102-117`), alors qu'ils
   sont pairés par `parent_id` — un test apparié serait plus adapté à la structure
   réelle des données ; impact sur les p-values de diffing non quantifié.
-- **Fallback GemmaScope silencieux vers layer=24** en cas de config manquante :
-  mécanisme confirmé, mais pas vérifié si un run déjà publié (notamment celui qui
-  établit la préférence pour la couche 31, cf. `RESULTS_TESTS.md` §51 ci-dessus) est
-  passé par ce fallback plutôt que par la couche demandée — à vérifier avant de faire
-  confiance sans réserve au résultat de couche 31.
+- **Fallback GemmaScope silencieux vers layer=24** en cas de config manquante : vérifié
+  non déclenché sur le balayage §51 — `config.json` des quatre couches testées (12/24/
+  31/41) porte chacun un `hf_hook_point_in` explicite et correct
+  (`model.layers.N.output`), donc la couche résolue provient toujours de la métadonnée
+  réelle, jamais du repli. La préférence pour la couche 31 n'est pas un artefact de ce
+  bug.
 - **Prompt de labellisation du juge dupliqué dans 7 scripts** (pas de module partagé),
   refactor volontairement pas fait pour l'instant.
 - **8 constantes numériques du pipeline sans provenance documentée en commentaire**
