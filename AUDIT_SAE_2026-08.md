@@ -51,11 +51,6 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
 - **App. I (taille du modèle lecteur, 12B vs 27B)** : protocole F1 latent-vs-juge absent.
   Tant qu'il n'est pas écrit, la comparaison 12B/27B ne peut être arbitrée que par le taux
   odd-one-out, instable à 31% au niveau d'une feature (`CLAUDE.md`, §13.1).
-- **Matryoshka SAE** : non implémenté malgré son affichage comme contribution originale
-  (« hybride frozen-core Matryoshka SAE » — `MATRYOSHKA_DIM` n'est que la troncature MRL de
-  l'embedding F2LLM, sans rapport avec les dictionnaires imbriqués/pertes préfixes du
-  papier). Risque en soutenance et en review tant que non tranché (implémenter ou retirer
-  la revendication).
 - **SAE Boost — point de vigilance non résolu par le correctif d'encodage** : l'ancien
   encodeur (sur `e`) évitait par construction les activations massives de `x`
   (norme ~1e5) ; le nouveau (sur `x`) les expose, atténuées seulement par
@@ -260,11 +255,8 @@ modèle juge), puis le bug OOM bloquant de Latent Terms (§1). B7 (jointure de s
   duplication `_strip_leading_objet_line`/nettoyage « Objet : » est corrigée : source
   unique `dataset.strip_leading_objet_line`, utilisée par `augmentation.py` et
   `preparation.py`. (d) `pyproject.toml` : auteur/email réels, description en français.
-- **Reste ouvert : aucune `LICENSE`, aucune mention de régime des données**, dans un
-  dépôt qui traite des mails clients EDF et embarque une reproduction verbatim sous
-  copyright (`docs/PDF_APPENDICES_EXTRACT.md`, cf. §3) — décision qui dépasse une passe
-  de nettoyage (droits sur les données, régime de publication du dépôt) : à trancher
-  explicitement avant toute mise en public, pas à choisir seul.
+- **`LICENSE`/régime des données : tranché.** Dépôt privé pour l'instant, pas de licence
+  ni de mention de régime des données à ajouter tant que ça reste le cas.
 
 ## 7. Priorisation restante
 
