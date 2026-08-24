@@ -62,6 +62,25 @@ n'a besoin d'aucune étape d'import. Les SAE GemmaScope-2 n'y sont en revanche
 jamais présents (spécifique à ce projet), `download_sae.py` reste nécessaire
 pour eux.
 
+**Cache d'extraction partagé entre runs** (`local_data/activation_cache/`,
+`sae_shared.py::compute_activation_cache_key`/`shared_activation_cache_dir`) :
+les résidus bruts, activations core et fragments token-level sont partagés
+entre tous les runs de même modèle/couche/hook/corpus/budget de tokens, quel
+que soit `K_EXTRA`/`D_EXTRA`/`EPOCHS_EXTRA` (downstream, sans effet sur
+l'extraction) — via des liens symboliques créés sous `SAVE_DIR/cache/`, pas
+une redirection directe (une dizaine de scripts d'analyse lisent ces chemins
+sous `SAVE_DIR/cache` directement). **Conséquence sur la course de doublons
+a100/h100** (pratique établie pour réduire le temps de file d'attente,
+`AUDIT_SAE_2026-08.md`) : deux jobs qui partagent la MÊME clé d'extraction
+(même modèle/couche/hook/corpus/budget) écrivant simultanément dans le même
+cache partagé peuvent se marcher dessus (deux `ShardedFragmentWriter`, deux
+écritures memmap concurrentes sur le même fichier). Annuler le doublon perdant
+dès qu'un des deux passe en état `R` (politique déjà en vigueur) reste
+suffisant SI la vérification a lieu avant que les deux jobs atteignent la
+phase d'extraction (quelques minutes après le démarrage, le temps de charger
+le modèle) — ne pas laisser une course avec clé d'extraction identique tourner
+sans surveillance au-delà de cette fenêtre.
+
 ### Réseau et portabilité
 
 `CLUSTER_OFFLINE_MODE=1` (`src/config.py`) désactive la vérification SSL et

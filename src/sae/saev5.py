@@ -204,6 +204,7 @@ from sae_shared import (
     compute_sae_metrics,
     pool_embeddings_by_document,
     load_or_train_extended_sae,
+    compute_activation_cache_key, shared_activation_cache_dir,
 )
 
 from src.sae.judge import (
@@ -846,6 +847,62 @@ def run_llm_max_pool_pipeline(
     cache_residuals_path      = os.path.join(CACHE_DIR, "p1_raw_residuals.memmap")
     cache_residuals_meta_path = cache_residuals_path + ".meta.json"
     token_fragments_dir  = os.path.join(CACHE_DIR, "p1_token_fragments")
+
+    # Cache d'extraction PARTAGÉ entre runs, en amont des 3 chemins ci-dessus :
+    # ces artefacts ne dépendent que du modèle, de la couche, du hook, du SAE
+    # core, du budget de tokens et du corpus vu à l'extraction, PAS de
+    # K_EXTRA/D_EXTRA/EPOCHS_EXTRA (downstream, SAEBoostResidualSAE) -- deux
+    # runs qui ne diffèrent que par ces derniers partagent désormais la même
+    # extraction (coût dominant d'un run complet) au lieu de la refaire.
+    # Implémenté par LIEN SYMBOLIQUE plutôt que redirection directe des 3
+    # chemins ci-dessus : plus d'une dizaine de scripts d'analyse
+    # (scripts/judge_robustness_check.py, intent_urgency_probe.py, etc.)
+    # lisent ces fichiers directement sous SAVE_DIR/cache -- rediriger les
+    # variables les aurait tous cassés silencieusement. Le lien rend le cache
+    # partagé transparent : SAVE_DIR/cache/<nom> reste un chemin valide pour
+    # tout consommateur existant, qu'il ait été peuplé par ce run ou réutilisé
+    # d'un run antérieur au même hash. Clé mécanique (R5) :
+    # `sae_shared.compute_activation_cache_key`, testée
+    # (`tests/test_activation_cache_key.py`).
+    _act_cache_key = compute_activation_cache_key(
+        train_texts=train_texts, volume_filler_texts=volume_filler_texts,
+        test_texts=test_texts, diff_texts=diff_texts,
+        model_id=MODEL_ID, layer=LAYER, hook_type=HOOK_TYPE, dtype=DTYPE,
+        sae_id=SAE_ID, n_tokens_extra_train=N_TOKENS_EXTRA_TRAIN,
+    )
+    _act_cache_dir = shared_activation_cache_dir(_act_cache_key)
+    print(f"  [P1] Cache d'extraction partagé : {_act_cache_dir}")
+    for _local_path, _shared_name in (
+        (cache_acts_path, "p1_all_doc_acts.pt"),
+        (cache_residuals_path, "p1_raw_residuals.memmap"),
+        (cache_residuals_meta_path, "p1_raw_residuals.memmap.meta.json"),
+        (token_fragments_dir, "p1_token_fragments"),
+    ):
+        _shared_target = os.path.join(_act_cache_dir, _shared_name)
+        if not os.path.islink(_local_path) and not os.path.exists(_local_path):
+            if _shared_name == "p1_token_fragments":
+                # Cas répertoire : contrairement à un fichier (torch.save/
+                # open() créent la cible d'un lien symbolique pendante),
+                # ShardedFragmentWriter appelle os.makedirs(token_fragments_dir,
+                # exist_ok=True) -- exist_ok=True ne sauve PAS un lien pendant
+                # (os.path.isdir() suit le lien, renvoie False si la cible
+                # n'existe pas, donc FileExistsError persiste). La cible doit
+                # exister AVANT de créer le lien, jamais après.
+                os.makedirs(_shared_target, exist_ok=True)
+            # Lien créé même si _shared_target (fichier) n'existe pas encore
+            # (cache miss) -- un lien symbolique POSIX vers un FICHIER absent
+            # est valide, il devient résoluble dès que l'extraction l'écrit
+            # (open()/torch.save suivent le lien pour la création).
+            os.symlink(_shared_target, _local_path)
+        elif os.path.islink(_local_path) and os.readlink(_local_path) != _shared_target:
+            # SAVE_DIR/cache pointait vers un autre hash (config changée
+            # entre deux runs réutilisant le même SAVE_DIR) -- jamais résolu
+            # silencieusement vers le mauvais cache partagé.
+            raise RuntimeError(
+                f"{_local_path} pointe déjà vers {os.readlink(_local_path)!r}, "
+                f"attendu {_shared_target!r} pour la config actuelle -- "
+                "SAVE_DIR probablement réutilisé avec une config différente."
+            )
 
     n_train = len(train_texts)
     n_filler = len(volume_filler_texts)

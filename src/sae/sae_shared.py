@@ -8,6 +8,7 @@ import sys
 import math
 import json
 import re
+import hashlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -157,6 +158,46 @@ def pool_embeddings_by_document(phrase_embeddings, phrase_to_doc, n_docs=None):
         n_docs = int(phrase_to_doc.max()) + 1
     idx = torch.from_numpy(phrase_to_doc).to(phrase_embeddings.device)
     return scatter_maxpool(phrase_embeddings, idx, n_docs)
+
+
+# ─── CACHE D'ACTIVATIONS PARTAGÉ ENTRE RUNS (R5) ───
+
+def compute_activation_cache_key(
+    train_texts: List[str], volume_filler_texts: List[str],
+    test_texts: List[str], diff_texts: List[str],
+    model_id: str, layer: int, hook_type: str, dtype: str,
+    sae_id: str, n_tokens_extra_train: int,
+) -> str:
+    """Clé de cache mécanique (R5) pour les artefacts d'extraction PURE
+    (résidus bruts du réservoir, activations core max-poolées, fragments
+    token-level) -- partageables entre deux runs qui ne diffèrent QUE par des
+    paramètres downstream de SAEBoostResidualSAE (K_EXTRA/D_EXTRA/EPOCHS_EXTRA),
+    puisque ces artefacts ne dépendent que du modèle, de la couche, du hook,
+    du SAE core, du budget de tokens et du corpus réellement vu à
+    l'extraction. Hash du CONTENU du corpus (pas seulement de sa config de
+    génération : chemins de fichiers, seed) -- robuste à tout changement de
+    logique de génération qui produirait un corpus différent à longueurs
+    égales, sans quoi une collision de clé réutiliserait silencieusement les
+    activations d'un AUTRE corpus (piège cache/checkpoint, `CLAUDE.md`)."""
+    corpus_hash = hashlib.sha1(
+        "\n".join(train_texts + volume_filler_texts + test_texts + diff_texts)
+        .encode("utf-8", errors="ignore")
+    ).hexdigest()
+    payload = {
+        "corpus_hash": corpus_hash, "model_id": model_id, "layer": layer,
+        "hook_type": hook_type, "dtype": dtype, "sae_id": sae_id,
+        "n_tokens_extra_train": n_tokens_extra_train,
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
+
+
+def shared_activation_cache_dir(key: str) -> str:
+    """Répertoire physique du cache partagé pour une clé donnée
+    (`compute_activation_cache_key`) -- `local_data/activation_cache/<clé>/`,
+    hors de tout `SAVE_DIR` individuel, créé si absent."""
+    path = os.path.join(REPO_ROOT, "local_data", "activation_cache", key)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 # ─── HARNAIS D'ENTRAINEMENT ET CHARGEMENT DU FROZEN-CORE EXTENDED SAE ───
