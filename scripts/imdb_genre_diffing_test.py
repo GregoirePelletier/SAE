@@ -10,10 +10,14 @@ Appendix D.3, échelle yes/related/no -> 1/0.5/0), échantillonné 5x.
 
 Écarts DOCUMENTÉS par rapport au papier (décidés avec l'utilisateur avant
 ce script, pas des approximations silencieuses) :
-- Juge = Qwen3.8-27B local, quantifié 8-bit (bitsandbytes), PAS GPT-5 (pas de
-  clé API configurée dans ce projet, et bf16 ~52 Go ne tient pas de façon
-  fiable sur ce cluster -- cf. note GPU ci-dessous). Le prompt de similarité
-  de surface est repris verbatim ; seuls le modèle et la précision diffèrent.
+- Juge = Qwen3.8-27B-FP8 local (checkpoint pré-quantifié `unsloth/Qwen3.8-27B-FP8`,
+  ~31 Go, `quantization_config` natif e4m3 dans le config.json -- transformers
+  applique le quantizer directement, aucun `BitsAndBytesConfig` au chargement),
+  PAS GPT-5 (pas de clé API configurée dans ce projet). Le checkpoint bf16
+  complet (52 Go) a été supprimé après vérification que FP8 charge et génère
+  correctement -- int8 bitsandbytes/bf16 dynamiques ne sont plus une option
+  sans le retélécharger. Le prompt de similarité de surface est repris
+  verbatim ; seuls le modèle et la précision diffèrent.
 - Dataset genre = `adrienheymans/imdb-movie-genres` (HF Hub, 54214 lignes,
   colonnes title/text/genre) : le papier cite Maas et al. 2011 [33], qui est
   en réalité le dataset de SENTIMENT IMDB (pas de labels de genre) -- source
@@ -65,7 +69,7 @@ from huggingface_hub import hf_hub_download
 OUT_DIR = Path("/home/h21486/SAE/local_data/imdb_genre_diffing")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-JUDGE_MODEL_PATH = "/home/h21486/SAE/models/Qwen3.8-27B"
+JUDGE_MODEL_PATH = "/home/h21486/SAE/models/Qwen3.8-27B-FP8"
 GENRES = ["action", "romance", "horror", "comedy", "sci-fi", "thriller"]
 N_IN_GENRE_MAX = 500
 N_OUT_GENRE = 500
@@ -171,38 +175,37 @@ def main():
     encode_df = df.loc[all_indices].reset_index(drop=True)
     idx_map = {orig: i for i, orig in enumerate(all_indices)}  # orig df index -> position in encode_df
 
-    print("Loading Llama-3.1-8B-Instruct + Goodfire SAE-l19...", flush=True)
-    sae = GoodfireSAE(variant_name="Llama-3.1-8B-Instruct-SAE-l19", device="cuda:0")
-    full_ds = Dataset(
-        data=encode_df, sae=sae, field="text",
-        dataset_description="imdb_genre_diffing_encode_pool",
-        save_path=str(OUT_DIR / "encoded_pool.pkl"),
-        batch_size=16,
-    )
-    # sae.destroy() est déjà appelé en interne par Dataset._compute_latents.
-    torch.cuda.empty_cache()
-    print(f"Encoded {len(full_ds)} rows.", flush=True)
+    pool_path = OUT_DIR / "encoded_pool.pkl"
+    if pool_path.exists():
+        # Réutilise l'encodage déjà fait (job précédent tué par TIME LIMIT
+        # après l'encodage complet -- pas de raison de repayer ~20-30 min de
+        # GPU pour la même chose). Dataset.load_from_file(resume=False) ne
+        # relance aucune inférence.
+        print(f"Loading cached encoding from {pool_path}...", flush=True)
+        full_ds = Dataset.load_from_file(str(pool_path), resume=False, device="cuda:0")
+        print(f"Loaded {len(full_ds)} cached rows.", flush=True)
+    else:
+        print("Loading Llama-3.1-8B-Instruct + Goodfire SAE-l19...", flush=True)
+        sae = GoodfireSAE(variant_name="Llama-3.1-8B-Instruct-SAE-l19", device="cuda:0")
+        full_ds = Dataset(
+            data=encode_df, sae=sae, field="text",
+            dataset_description="imdb_genre_diffing_encode_pool",
+            save_path=str(pool_path),
+            batch_size=16,
+        )
+        # sae.destroy() est déjà appelé en interne par Dataset._compute_latents.
+        torch.cuda.empty_cache()
+        print(f"Encoded {len(full_ds)} rows.", flush=True)
 
-    # JUDGE_QUANT=int8 (défaut, sûr sur a100 40 Go dédié) ou bf16 (nécessite
-    # un GPU 80 Go non partagé, ex. h100/h100-bis quand vraiment idle -- rien
-    # ne garantit une carte 80 Go pleine là-bas, gpu:8,shard:16 -- à vérifier
-    # au cas par cas via squeue/sinfo avant de lancer en bf16 hors a100).
-    judge_quant = os.environ.get("JUDGE_QUANT", "int8")
-    print(f"Loading local {JUDGE_MODEL_PATH} judge ({judge_quant})...", flush=True)
-    from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer, BitsAndBytesConfig
+    # Checkpoint pré-quantifié FP8 (e4m3, quantization_config natif du
+    # config.json) -- transformers applique le quantizer directement au
+    # chargement, aucun BitsAndBytesConfig à construire ici. Remplace
+    # l'ancien double mode int8 (bitsandbytes dynamique)/bf16, qui exigeait le
+    # checkpoint bf16 complet (52 Go, supprimé).
+    print(f"Loading local {JUDGE_MODEL_PATH} judge (FP8, quantization_config natif)...", flush=True)
+    from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
     judge_tok = AutoTokenizer.from_pretrained(JUDGE_MODEL_PATH)
     load_kwargs = {"device_map": "cuda:0"}
-    if judge_quant == "int8":
-        # bitsandbytes, même mécanisme que GoodfireSAE.load_models(quantize=True)
-        # dans interp_embed (cf. local_sae.py) -> ~27 Go, tient dans un A100
-        # 40 Go dédié avec marge pour le KV-cache.
-        load_kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_8bit=True, bnb_8bit_compute_dtype=torch.bfloat16,
-        )
-    elif judge_quant == "bf16":
-        load_kwargs["torch_dtype"] = torch.bfloat16
-    else:
-        raise ValueError(f"JUDGE_QUANT invalide: {judge_quant!r} (int8/bf16)")
     # Qwen3.8-27B est un modèle vision-langage natif (pipeline_tag
     # image-text-to-text, classe Qwen3_5ForConditionalGeneration) -- pas
     # forcément reconnue par AutoModelForCausalLM selon la version de
@@ -213,9 +216,7 @@ def main():
         judge_model = AutoModelForImageTextToText.from_pretrained(JUDGE_MODEL_PATH, **load_kwargs)
     except Exception as e:
         print(f"  AutoModelForImageTextToText failed ({e}), falling back to AutoModelForCausalLM", flush=True)
-        judge_model = AutoModelForCausalLM.from_pretrained(
-            JUDGE_MODEL_PATH, quantization_config=bnb_config, device_map="cuda:0",
-        )
+        judge_model = AutoModelForCausalLM.from_pretrained(JUDGE_MODEL_PATH, **load_kwargs)
     judge_model.eval()
 
     def _apply_chat_and_extract(messages: list) -> torch.Tensor:
@@ -270,8 +271,18 @@ def main():
             out = judge_model.generate(input_ids=inputs, max_new_tokens=64, do_sample=False)
         return judge_tok.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True).strip()
 
-    results = {"genres": {}}
+    results_path = OUT_DIR / "results.json"
+    if results_path.exists():
+        with open(results_path) as f:
+            results = json.load(f)
+        print(f"Resuming from {results_path}: {list(results.get('genres', {}).keys())} already done.", flush=True)
+    else:
+        results = {"genres": {}}
+
     for genre in GENRES:
+        if genre in results["genres"]:
+            print(f"\n=== Genre: {genre} (skipped, déjà dans results.json) ===", flush=True)
+            continue
         print(f"\n=== Genre: {genre} ===", flush=True)
         in_pos = [idx_map[i] for i in selection[genre]["in"]]
         out_pos = [idx_map[i] for i in selection[genre]["out"]]
@@ -310,6 +321,11 @@ def main():
             "baseline_description": baseline_desc,
             "baseline_score": baseline_score,
         }
+        # Sauvegarde incrémentale : un genre = ~30-40 min de génération 8-bit,
+        # perdu la première fois (job tué par TIME LIMIT, résultats non
+        # sauvegardés avant la fin de la boucle). Écrit après CHAQUE genre.
+        with open(results_path, "w") as f:
+            json.dump(results, f, indent=2)
 
     results["sae_avg"] = float(np.mean([g["sae_score"] for g in results["genres"].values()]))
     results["baseline_avg"] = float(np.mean([g["baseline_score"] for g in results["genres"].values()]))

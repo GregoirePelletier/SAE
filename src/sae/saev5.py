@@ -971,6 +971,15 @@ def run_llm_max_pool_pipeline(
         #                modèle complet, non tronqué)
         #   attn_out   : entrée de self_attn.o_proj (pré-projection de sortie)
         #   mlp_out    : sortie de post_feedforward_layernorm (après le MLP, avant l'add résiduel)
+        # gemma-3-1b-it est le seul palier de taille SANS tour de vision : chargé
+        # par AutoModelForCausalLM comme Gemma3ForCausalLM pur (`llm.model` EST
+        # déjà la pile de blocs, pas de niveau `.language_model` intermédiaire),
+        # contrairement à 4B/12B/27B (Gemma3ForConditionalGeneration multimodal,
+        # `llm.model.language_model` requis) -- confirmé par échec réel (job
+        # 45136, AttributeError sur 'language_model'). `_decoder_stack` référence
+        # directement le bon niveau dans les deux cas, sans dupliquer les 4
+        # accès ci-dessous.
+        _decoder_stack = llm.model.language_model if hasattr(llm.model, "language_model") else llm.model
         _hook_capture = {}
         _hook_handle = None
         if HOOK_TYPE == "resid_post":
@@ -985,23 +994,23 @@ def run_llm_max_pool_pipeline(
                 # cette garde (AUDIT_SAE_2026-08.md, item "hook fragile").
                 _hook_capture["acts"] = output[0] if isinstance(output, tuple) else output
             _n_layers_needed = LAYER
-            _hook_handle = llm.model.language_model.layers[LAYER - 1].register_forward_hook(
+            _hook_handle = _decoder_stack.layers[LAYER - 1].register_forward_hook(
                 _capture_resid_post)
         elif HOOK_TYPE == "attn_out":
             def _capture_attn_in(module, args, kwargs):
                 _hook_capture["acts"] = args[0] if args else kwargs["input"]
             _n_layers_needed = LAYER + 1
-            _hook_handle = llm.model.language_model.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
+            _hook_handle = _decoder_stack.layers[LAYER].self_attn.o_proj.register_forward_pre_hook(
                 _capture_attn_in, with_kwargs=True)
         elif HOOK_TYPE == "mlp_out":
             def _capture_mlp_out(module, args, output):
                 _hook_capture["acts"] = output
             _n_layers_needed = LAYER + 1
-            _hook_handle = llm.model.language_model.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
+            _hook_handle = _decoder_stack.layers[LAYER].post_feedforward_layernorm.register_forward_hook(
                 _capture_mlp_out)
         else:
             raise ValueError(f"HOOK_TYPE={HOOK_TYPE!r} non supporté (resid_post/attn_out/mlp_out).")
-        llm.model.language_model.layers = llm.model.language_model.layers[:_n_layers_needed]
+        _decoder_stack.layers = _decoder_stack.layers[:_n_layers_needed]
 
         # Reprise : reconstruit les vecteurs déjà traités [0, _resume_from) depuis
         # leurs fragments (doc_maxpool, CPU, O(nnz) -- pas de GPU, quasi-instantané

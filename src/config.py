@@ -113,6 +113,11 @@ _PRESETS = {
     # coûte en couverture Neuronpedia (82,6% à 16k vs 87,8% à 65k, mesuré à
     # layer 24) mais reste la largeur
     # correspondant au résultat empirique retenu, pas une combinaison inédite.
+    # Couche 40 (~2/3 profondeur, 62 couches) : même logique que 12b ci-dessous --
+    # GemmaScope-2 27B publie resid_post curé à layers {16,31,40,53} (~25/50/65/85%
+    # de profondeur, mêmes proportions que le jeu 12/24/31/41 de 12b), 40 est le
+    # plus proche de 2/3. Jamais testé (nouvelle taille, ablation en cours).
+    "27b":  ("google/gemma-3-27b-it", "gemma-scope-2-27b-it", "layer_40_width_16k_l0_medium", 40, 5376),
     "12b":  ("google/gemma-3-12b-it", "gemma-scope-2-12b-it", "layer_31_width_16k_l0_medium", 31, 3840),
     "4b":   ("google/gemma-3-4b-it",  "gemma-scope-2-4b-it",  "layer_17_width_16k_l0_medium", 17, 2560),
     "1b":   ("google/gemma-3-1b-it",  "gemma-scope-2-1b-it",  "layer_13_width_16k_l0_medium", 13, 1152),
