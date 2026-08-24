@@ -50,6 +50,18 @@ vérifier qu'il n'est pas un **lien symbolique** vers la copie physique réelle
 doublon d'un dossier racine `saes/` était en réalité l'inverse : le lien
 pointait vers l'unique copie physique des poids SAE, supprimée par erreur.
 
+**Avant de télécharger un modèle de base (LM) volumineux, vérifier
+`/mnt/gvd/modeles_ia/`** (même filesystem `10.52.209.65:/DGX` que `/home`,
+donc même quota) : dépôt partagé large (Llama, Mistral, Qwen, Gemma, GPT-OSS,
+etc.) alimenté par d'autres utilisateurs du cluster, pas indexé nulle part
+dans ce projet. `gemma-3-27b-it` (52 Go) y était déjà présent en entier
+lorsqu'un téléchargement personnel redondant a été lancé faute de l'avoir
+vérifié d'abord (nettoyé depuis) — `MODEL_ID` peut pointer un chemin absolu
+sous ce répertoire directement, `from_pretrained(..., local_files_only=True)`
+n'a besoin d'aucune étape d'import. Les SAE GemmaScope-2 n'y sont en revanche
+jamais présents (spécifique à ce projet), `download_sae.py` reste nécessaire
+pour eux.
+
 ### Réseau et portabilité
 
 `CLUSTER_OFFLINE_MODE=1` (`src/config.py`) désactive la vérification SSL et
