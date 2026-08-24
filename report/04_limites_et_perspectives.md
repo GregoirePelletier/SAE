@@ -2,7 +2,20 @@
 
 ## Limites actuelles
 
-### Taux d'interprétabilité résiduel (~55% de features non interprétées)
+### Taux d'interprétabilité résiduel
+
+**Mise à jour du chiffre de référence** : la sélection des features à juger par
+magnitude d'activation moyenne (utilisée pour tous les chiffres 45,x%/2x,x% de
+ce chapitre) favorise systématiquement les features les plus denses,
+non représentative du dictionnaire. Remplacée par une sélection stratifiée par
+bins de fréquence (App. J, *Interpretable Embeddings with Sparse Autoencoders*,
+`RESULTS_TESTS.md` §79), le taux mesuré sur le même SAE et le même corpus passe
+de 45,3% (68/150) à **89,3% (134/150)** — c'est le taux de référence actuel du
+projet, le résidu non interprété tombe à ~11% plutôt que ~55%. Les analyses
+ci-dessous, menées sous l'ancienne méthode, restent valides comme diagnostic
+des SOURCES de bruit du protocole (elles ne dépendent pas de quelles features
+précisément sont jugées) mais leurs pourcentages absolus datent d'avant cette
+correction.
 
 Ce résidu n'est pas dû au volume de tokens du corpus (`03_experiences_et_resultats.md`).
 Il est en revanche en bonne partie attribuable au bruit du protocole de jugement :
@@ -221,6 +234,20 @@ d'une feature individuelle reste bruité (55,3% d'accord, 44,7% de bascule)
 mais le taux agrégé est stable. **La boucle auto-référentielle
 juge/générateur n'explique pas le taux d'interprétabilité mesuré dans ce
 rapport.**
+
+Une question plus fondamentale a été testée séparément : au-delà des exemples
+présentés au juge, le fait d'**entraîner** l'extension SAE sur un corpus dominé
+à 93% par du texte généré par Gemma (plutôt que sur les mails originaux
+uniquement) pourrait-il expliquer le taux mesuré ? Un premier test à petite
+échelle (n=20) montrait un écart énorme (40,0% contre 95,0%, `RESULTS_TESTS.md`
+§78) mais confondait deux variables (retrait du texte augmenté ET volume de
+texte web générique de remplissage dans le réservoir résiduel). Isolée
+correctement puis répliquée à pleine puissance (n=150, sélection stratifiée,
+`RESULTS_TESTS.md` §81) : l'écart disparaît (82,0% originaux seuls contre
+89,3% corpus mixte, non significatif, p=0,070, sens même légèrement inversé)
+— le signal à n=20 était du bruit d'échantillonnage. **Comme pour la boucle
+côté juge, la contamination du corpus d'entraînement par le style du modèle
+générateur n'explique pas le taux d'interprétabilité mesuré.**
 
 En contrepoint, un aspect qui est contrôlé : `src/data/augmentation.py::validate`
 rejette une variante générée si elle est trop courte (<30 caractères), si son

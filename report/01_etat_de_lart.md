@@ -125,15 +125,18 @@ de l'encodeur à des directions arbitraires.
 Ce résultat interroge directement le protocole d'auto-interprétation odd-one-out
 utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
 (`clf_acc_sae`, `03_experiences_et_resultats.md` §5.4) : nos taux mesurés
-(45,3% d'interprétabilité, >90% de classification) sont-ils réellement dus à un
-apprentissage de features significatives, ou un décodeur figé à l'initialisation
-obtiendrait-il des scores comparables ? Ce projet reproduit leur protocole de sanity
-check sur l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`,
-`src/sae/frozen_core.py`) — résultat **nuancé** : l'interprétabilité odd-one-out
-résiste bien (45,3% entraîné vs 29,3% décodeur figé aléatoire, écart significatif)
-mais la classification en aval y résiste beaucoup moins (93,5% vs 91,2%),
-répliquant partiellement le constat du papier. Méthode et résultats détaillés en
-`RESULTS_TESTS.md` §19, `report/03_experiences_et_resultats.md` §11.
+(45,3% d'interprétabilité sous l'ancienne sélection par magnitude, 89,3% sous
+la sélection stratifiée retenue depuis comme défaut, `RESULTS_TESTS.md` §79 —
+>90% de classification) sont-ils réellement dus à un apprentissage de features
+significatives, ou un décodeur figé à l'initialisation obtiendrait-il des
+scores comparables ? Ce projet reproduit leur protocole de sanity check sur
+l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`, `src/sae/frozen_core.py`,
+testé sous l'ancienne sélection) — résultat **nuancé** : l'interprétabilité
+odd-one-out résiste bien (45,3% entraîné vs 29,3% décodeur figé aléatoire,
+écart significatif) mais la classification en aval y résiste beaucoup moins
+(93,5% vs 91,2%), répliquant partiellement le constat du papier. Méthode et
+résultats détaillés en `RESULTS_TESTS.md` §19, `report/03_experiences_et_resultats.md`
+§11.
 
 ## Taxonomie des méthodes d'explication et d'évaluation
 

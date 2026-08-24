@@ -42,23 +42,44 @@ succès faible (20%) au test d'auto-interprétation des features propres au doma
 Une démarche de diagnostic par ablation contrôlée a établi que ce taux n'était pas
 limité par le volume d'entraînement, mais par le domaine du corpus
 d'entraînement (uniquement générique, sans texte du domaine cible) : une fois
-ce domaine corrigé, le taux d'interprétabilité atteint 45,3%.
+ce domaine corrigé, le taux d'interprétabilité atteint 45,3% (sous la méthode
+de sélection des features testées alors employée par défaut).
 
 Une campagne d'ablations exhaustive (plus de 20 configurations : largeur du SAE,
 capacité et parcimonie de l'extension, volume de tokens, graine d'entraînement,
-dimension d'embedding, backbone de Pipeline 2) montre qu'**aucun hyperparamètre du
-SAE ne modifie significativement ce taux** une fois le domaine corrigé — à
-l'exception d'un unique levier : **l'échelle du modèle extracteur/juge**, qui
-produit un effet dose-réponse net et hautement significatif (12,0% à 1 milliard de
-paramètres, 28,0% à 4 milliards, 45,3% à 12 milliards ; test de tendance de
-Cochran-Armitage, p≈1,6×10⁻¹⁰). Un sanity check contre un décodeur figé aléatoire (Korznikov et al., 2026) confirme
-que l'entraînement de l'extension apprend une structure réelle (45,3% contre
-29,3%, écart significatif) tout en révélant qu'une classification en aval résiste
-beaucoup mieux à cette dégradation que l'interprétation qualitative. Des tests
-complémentaires (fidélité et plausibilité de l'explication document-level,
-robustesse du protocole de jugement, biais multilingue, fidélité du steering,
-évaluation quantitative du retrieval) complètent la validation du système, avec un
-audit rétroactif de la méthodologie statistique employée.
+dimension d'embedding, backbone de Pipeline 2) montre qu'aucun de ces
+hyperparamètres du SAE ne modifie significativement ce taux une fois le domaine
+corrigé — à l'exception de deux leviers réels. **L'échelle du modèle
+extracteur/juge** produit un effet dose-réponse net et hautement significatif
+(12,0% à 1 milliard de paramètres, 28,0% à 4 milliards, 45,3% à 12 milliards ;
+test de tendance de Cochran-Armitage, p≈1,6×10⁻¹⁰) qui **plafonne** ensuite : un
+palier à 27 milliards, testé ultérieurement sous la méthode de sélection
+corrigée ci-dessous, n'apporte plus de gain significatif par rapport à 12
+milliards (83,3% contre 82,0%, p=0,76 ; comparé à 72,0% à 4 milliards, p=0,04).
+**La méthode de sélection des features à juger** s'est révélée être le second
+levier, plus important encore que l'échelle du modèle : la sélection par
+magnitude d'activation (utilisée pour tous les chiffres ci-dessus) favorise
+systématiquement les features les plus denses, un échantillon non représentatif
+du dictionnaire — remplacée par une sélection stratifiée par bins de fréquence
+(App. J, *Interpretable Embeddings with Sparse Autoencoders*), le taux
+d'interprétabilité mesuré sur le même SAE et le même corpus passe de 45,3%
+(68/150) à **89,3% (134/150)**, écart hautement significatif (z=−8,12,
+p=4,5×10⁻¹⁶). C'est la valeur de référence actuelle du projet ; les chiffres
+en 45,x%/2x,x% cités dans les chapitres d'ablation de ce rapport datent tous de
+la méthode de sélection par magnitude et se lisent comme un plancher, pas
+comme le taux réel du dictionnaire. Un sanity check contre un décodeur figé
+aléatoire (Korznikov et al., 2026) confirme que l'entraînement de l'extension
+apprend une structure réelle (45,3% contre 29,3% sous sélection par magnitude,
+écart significatif) tout en révélant qu'une classification en aval résiste
+beaucoup mieux à cette dégradation que l'interprétation qualitative. Une
+contamination possible du corpus d'entraînement par le style du modèle juge
+(93% du corpus généré par Gemma-3-12B-it) a également été testée directement
+et écartée à pleine puissance statistique (n=150) comme explication du taux
+mesuré. Des tests complémentaires (fidélité et plausibilité de l'explication
+document-level, robustesse du protocole de jugement, biais multilingue,
+fidélité du steering, évaluation quantitative du retrieval) complètent la
+validation du système, avec un audit rétroactif de la méthodologie
+statistique employée.
 
 **Mots-clés** : Sparse Autoencoders, interprétabilité mécaniste, GemmaScope,
 grands modèles de langage, explicabilité, traitement automatique des mails clients,

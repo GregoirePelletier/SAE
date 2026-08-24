@@ -28,12 +28,21 @@ l'entraînement.
 L'appariement de domaine entre le corpus d'entraînement de l'extension et le
 corpus cible conditionne directement l'interprétabilité mesurée des features :
 sur un corpus hors-domaine (energy/sports/support), le taux d'interprétabilité
-(protocole odd-one-out) est de 20% (2/10, IC95% Wilson [5,7%, 51,0%]) ; sur le
-corpus emails, il est de 45,3% (68/150). Écart non significatif à cet effectif
-(`two_proportion_test`, z=-1,56, p=0,12) — indicatif de la direction de
-l'effet, pas une preuve à n=10. Le volume d'entraînement, testé de 100k à 2M
-tokens à corpus identique, n'a lui aucun effet mesurable. Détail du diagnostic
-et des runs de validation : `RESULTS_TESTS.md` §12.
+(protocole odd-one-out) est de 20% (2/10) ; sur le corpus emails, il est de
+45,3% (68/150) à effectif apparié (n=150, `RESULTS_TESTS.md` §46, z=2,74,
+p≈0,006). Le volume d'entraînement, testé de 100k à 2M tokens à corpus
+identique, n'a lui aucun effet mesurable.
+
+Ces deux chiffres datent de l'ancienne sélection des features par magnitude
+d'activation (systématiquement biaisée vers les features les plus denses,
+non représentative du dictionnaire). Sous la sélection stratifiée retenue
+depuis comme défaut (`FEATURE_SELECTION_METHOD=stratified`), le taux mesuré
+sur le même SAE et le même corpus emails passe à **89,3% (134/150)**
+(`RESULTS_TESTS.md` §79, z=-8,12, p=4,5×10⁻¹⁶) — c'est le chiffre de
+référence actuel. Le corpus générique n'a pas été re-mesuré sous cette
+méthode ; l'effet de domaine lui-même (emails > générique) n'est donc plus
+quantifié dans sa forme actuelle, seule sa direction reste établie. Détail
+du diagnostic et des runs de validation : `RESULTS_TESTS.md` §12, §77-§82.
 
 ---
 

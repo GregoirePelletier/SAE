@@ -205,6 +205,22 @@ unique, également exposé dans le dashboard Streamlit.
   (~8h30 GPU cumulées pour les trois runs plutôt qu'un partage possible de l'étape
   d'extraction, identique entre les trois configurations).
 
+**Note méthodologique valable pour tout le reste de ce chapitre** : les sections
+2 à 12 ci-dessous, sauf mention contraire explicite, mesurent l'interprétabilité
+sur un échantillon de features sélectionnées par magnitude d'activation moyenne
+— une méthode depuis identifiée comme biaisée vers les features les plus
+denses du dictionnaire, donc non représentative (`RESULTS_TESTS.md` §79).
+Remplacée par une sélection stratifiée par bins de fréquence (App. J,
+*Interpretable Embeddings with Sparse Autoencoders*), le taux mesuré sur le
+même SAE de référence passe de 45,3% (68/150) à **89,3% (134/150)**, écart
+hautement significatif (z=-8,12, p=4,5×10⁻¹⁶) — `FEATURE_SELECTION_METHOD
+=stratified` est le défaut du dépôt depuis. Les comparaisons *au sein* d'une
+même section (les deux bras d'une ablation, mesurés sous la même méthode)
+restent des conclusions valides ; les pourcentages absolus cités
+(45,x%/2x,x%) ne sont plus comparables au taux de référence actuel du projet
+et se lisent comme un plancher. Le sweep taille de modèle (§4) est complété plus bas par un point remesuré
+sous la méthode actuelle (27 milliards de paramètres, sélection stratifiée).
+
 ## 2. Validité du protocole d'évaluation
 
 Question transversale : les métriques utilisées dans ce chapitre (taux
@@ -606,6 +622,23 @@ Complète également le balayage de largeur du SAE core (16k/65k/262k, job
 largeur testée ne change l'interprétabilité, et souligne par contraste à quel
 point l'effet de l'échelle du modèle ci-dessus est hors norme parmi tous les
 leviers testés dans ce projet. Détail complet : `RESULTS_TESTS.md` §29.
+
+**Palier 27 milliards de paramètres, et plafonnement de l'effet d'échelle** —
+remesuré sous la méthode de sélection stratifiée (défaut actuel, cf. note en
+tête de chapitre), avec le setup de configuration recommandé par le papier
+SAE Boost (K_EXTRA=5 au lieu de 32) :
+
+| Modèle | Taux interp. (stratifié) | z vs 12B |
+|---|---|---|
+| gemma-3-4b-it | 72,0% (108/150) | z=-2,06, p=0,040 |
+| gemma-3-12b-it | 82,0% (123/150) | — référence |
+| gemma-3-27b-it | 83,3% (125/150) | z=-0,31, p=0,76 |
+
+L'effet dose-réponse identifié ci-dessus **plafonne** au-delà de 12 milliards
+de paramètres : le gain 4B→12B reste significatif, mais 12B→27B ne l'est
+plus. Doubler la taille du modèle extracteur/juge au-delà de 12B n'apporte
+donc plus de gain mesurable à cette échelle de mesure (n=150). Détail
+complet : `RESULTS_TESTS.md` §82.
 
 ### 4.2. Layer d'extraction
 
