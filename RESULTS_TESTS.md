@@ -4181,3 +4181,96 @@ structurellement TF-IDF sur les intentions à vocabulaire homogène.
 par paraphrase multiple) — évaluation indicative (AUDIT_SAE_2026-08.md),
 pas un benchmark IR (pas de MAP/nDCG/BEIR, cf. §1 métriques App. G
 disponibles mais pas encore branchées sur ce protocole).
+
+## 81. B.1 à pleine puissance (n=150) : le signal de §78 ne réplique pas sous sélection stratifiée
+
+**Question** : réplication à n=150 de §78 (job 45081,
+`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`), qui
+avait mesuré 95% (19/20) vs 40% (8/20) à n=20 sous l'ancien défaut
+`FEATURE_SELECTION_METHOD=magnitude`.
+
+**Écart à la configuration de référence** : entre-temps, B.2 (§79) a basculé
+le défaut de sélection à `stratified` — ce run tourne donc sous stratifié,
+pas sous le même réglage que §78. La comparaison directement appariée sur
+la même méthode de sélection est contre §79 (mixte, stratifié, 134/150), pas
+contre le chiffre magnitude de §78/référence historique (68/150).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 150 features par bras.
+
+**Résultat** : 123/150 = 82,0% (originaux + filler recalibré, stratifié) vs
+**134/150 = 89,3% (mixte, stratifié, §79)** — z=-1,81, **p=0,070, non
+significatif**, et le sens de l'écart s'inverse par rapport au signal de
+§78 (mixte nominalement *au-dessus* des originaux, pas en dessous). Contre
+l'ancien plancher publié (68/150, mixte, magnitude) l'écart reste énorme
+(z=-6,60, p=4×10⁻¹¹) mais ce dernier chiffre confond désormais deux
+variables (corpus ET méthode de sélection), pas une comparaison valide de
+B.1 isolément.
+
+**Conclusion** : **le signal de §78 ne réplique pas à pleine puissance.**
+Sous la méthode de sélection maintenant retenue comme la plus fiable
+(stratifiée, §79), retirer le texte augmenté du corpus d'entraînement n'a
+pas d'effet démontrable sur le taux d'interprétabilité — au mieux un effet
+nul, au pire un léger effet inverse, dans tous les cas non significatif à
+n=150. L'énorme écart de §78 (h de Cohen -1,32) était vraisemblablement du
+bruit d'échantillonnage à n=20 amplifié par une interaction avec le biais
+de sélection par magnitude alors en vigueur dans les deux bras — pas un
+effet réel de l'indépendance du juge. **B.1 est donc résolu dans le sens
+négatif** : comme C2 (§48/§50/§52), l'hypothèse de contamination du corpus
+d'entraînement par le style du modèle juge n'est pas soutenue par les
+données à l'échelle testée.
+
+**Limite connue** : un seul seed pour le bras originaux+filler-matché ; pas
+de run originaux-seuls sous l'ancien défaut magnitude à n=150 pour vérifier
+si l'interaction sélection×corpus suspectée ci-dessus est réelle (piste de
+suite si le sujet redevient pertinent, coût faible — réutiliser
+`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm` avec
+`FEATURE_SELECTION_METHOD=magnitude`) ; fidélité de reconstruction non
+comparée entre bras dans ce run.
+
+## 82. Sweep taille du modèle extracteur (4B/12B/27B, setup classique K_EXTRA=5) : effet significatif 4B→12B, plateau 12B→27B
+
+**Question** : réplique et étend le sweep taille de modèle archivé
+(`docs/archived_runs_manifest.md`, pré-correctif juge) sous le code et le
+protocole actuels — setup classique du papier SAE Boost (K_EXTRA=5,
+D_EXTRA=1024), volume 25M tokens, sélection stratifiée (défaut depuis §79),
+n=150, corpus mixte de référence. Chaque palier utilise son layer "~2/3
+profondeur" propre (`src/config.py::_PRESETS`) : 4B→layer 17, 12B→layer 31,
+27B→layer 40 (62 couches, curation GemmaScope-2 confirmée aux mêmes
+proportions ~25/50/65/85% que 12B).
+
+**Écart à la configuration de référence** : uniquement `MODEL_SIZE`/`LAYER`/
+`SAE_ID`/`K_EXTRA` (5 au lieu de 32) — reste identique par ailleurs à la
+référence (`results_v10_emails_main/`, mixte, 25M tokens).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 150 features par palier.
+
+**Résultat** :
+
+| Modèle | Layer | Interp. | IC95% |
+|---|---|---|---|
+| 4B | 17 | 72,0% (108/150) | — |
+| 12B | 31 | 82,0% (123/150) | — |
+| 27B | 40 | 83,3% (125/150) | — |
+
+4B vs 12B : z=-2,06, **p=0,040** (significatif). 12B vs 27B : z=-0,31,
+p=0,76 (non significatif). 4B vs 27B : z=-2,36, **p=0,018** (significatif).
+
+**Conclusion** : confirme et affine l'effet déjà identifié comme le plus
+robuste du dépôt (checklist diagnostics, `CLAUDE.md` : "seul le choix de
+taille du modèle extracteur/juge produit un effet massif et répliqué à
+chaque palier") — mais avec des **rendements décroissants nets** : le gain
+4B→12B (+10 points, significatif) est bien plus large que 12B→27B
+(+1,3 point, dans le bruit). Doubler la taille du modèle au-delà de 12B
+n'apporte plus de gain mesurable à cette échelle de mesure (n=150). Sweep
+1B lancé en parallèle (job 45365, résultat à ajouter en suite de section une
+fois disponible).
+
+**Limite connue** : un seul seed par palier ; les layers diffèrent entre
+paliers (confondu avec la taille du modèle, pas isolé) — mais chaque layer
+est déjà la meilleure estimation "~2/3 profondeur" disponible pour son
+palier, pas un choix arbitraire qui introduirait un biais différent par
+palier.

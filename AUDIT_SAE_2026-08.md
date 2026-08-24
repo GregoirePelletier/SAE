@@ -198,16 +198,17 @@ d'OOM bloquant.
 
 ## 5. Data science / méthodologie
 
-- **Corpus d'entraînement dominé par du texte généré par le modèle juge lui-même — écart
-  énorme confirmé, réplication à pleine puissance en cours.** `MAX_AUGMENTED_PER_MAIL=13`
-  (défaut, `saev5.py`) sur 13 niveaux de perturbation. Premier test confondu par une part
-  de filler variable (§76, RESULTS_TESTS.md) ; test corrigé (part de filler recalibrée à
-  ~6,3% dans les deux bras, §77/§78) : 40,0% (8/20, corpus mixte) vs **95,0% (19/20,
-  originaux + filler recalibré)**, z=-3,71, p=0,0002, h de Cohen=-1,32 — l'écart
-  individuel le plus large et le plus significatif du dépôt à ce jour, devant layer 31 vs
-  layer 24 (§51). n=20 = signal, pas une réplication statistiquement puissante ;
-  réplication à n=150 lancée
-  (`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`).
+- **Corpus d'entraînement dominé par du texte généré par le modèle juge lui-même — résolu
+  négativement à pleine puissance.** `MAX_AUGMENTED_PER_MAIL=13` (défaut, `saev5.py`) sur
+  13 niveaux de perturbation. Premier test confondu par une part de filler variable (§76,
+  RESULTS_TESTS.md) ; test corrigé à n=20 (part de filler recalibrée à ~6,3% dans les deux
+  bras, §77/§78) montrait un écart énorme (40,0% vs 95,0%, p=0,0002) — **ne réplique pas à
+  n=150 sous la méthode de sélection retenue depuis (stratifiée, §79)** : 82,0% (123/150,
+  originaux + filler recalibré) vs 89,3% (134/150, mixte), z=-1,81, **p=0,070, non
+  significatif**, sens de l'écart inversé (§81). B.1 résolu dans le sens négatif, comme C2
+  (§48/§50/§52) : le corpus d'entraînement contaminé par le style du juge n'a pas d'effet
+  démontrable sur l'interprétabilité à l'échelle testée — le signal à n=20 était
+  vraisemblablement du bruit d'échantillonnage.
 - **La métrique d'interprétabilité phare (45,3%, 68/150) était mesurée par défaut sur un
   échantillon biaisé par construction — tranché, sélection stratifiée devenue le défaut.**
   `feature_selection_by_magnitude` sélectionnait les *N* features par magnitude
@@ -262,15 +263,14 @@ d'OOM bloquant.
 
 ## 7. Priorisation restante
 
-B2 et B1 sont tranchés à n=20/150 respectivement (§5) — seul B1 attend encore sa
-réplication à pleine puissance (n=150, en cours) avant d'être citable sans réserve.
-Ce qui rend un résultat déjà publié attaquable en soutenance, par ordre décroissant :
+B2 et B1 sont tous deux tranchés à pleine puissance (§5) : B2 positivement (sélection
+stratifiée nettement supérieure, devenue le défaut), B1 négativement (le signal à n=20 ne
+réplique pas à n=150). Ce qui rend un résultat déjà publié attaquable en soutenance :
 **le chiffre de référence 45,3%/68/150 lui-même est maintenant daté** — mesuré sous
 l'ancien défaut `FEATURE_SELECTION_METHOD=magnitude`, dont B2 vient de montrer qu'il
 sous-estime le taux réel d'un facteur ~2 (89,3% sous stratifié). Toute figure/table du
 rapport citant 45,3% comme LE taux d'interprétabilité du dépôt doit être requalifiée en
-plancher, ou refaite sous le nouveau défaut. Réplication B1 à n=150 en cours
-(`run_validation_500k_layer24_v12_originals_filler_matched_n150.slurm`).
+plancher, ou refaite sous le nouveau défaut.
 
 Corrigés depuis : B7 (jointure de split par hash SHA1 du texte parent plutôt que par
 position — migration de `augmented_mails.jsonl` existant vers `parent_sha1` encore à faire,
