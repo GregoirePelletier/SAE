@@ -9,13 +9,11 @@ vérifiés GPU, etc.) a été retiré plutôt que reconduit. Le détail des corr
 appliqués et de leur vérification (jobs GPU, tests d'équivalence) vit dans `git log`, pas
 ici — ce document ne porte que ce qui reste à traiter.
 
-Priorité, si le temps manque, par ordre décroissant de ce qui rend un résultat déjà publié
-attaquable : B2 (métrique d'interprétabilité biaisée par sélection, en cours, jobs
-44997/44998), B1 (corpus d'entraînement 93% généré par le modèle juge, en cours, jobs
-44983/44985). Fallback layer=24 silencieux vérifié non déclenché sur le balayage §51
-(`docs/evaluation_protocol.md` → Points ouverts) ; B7 (jointure de split) et B6 (label
-`remboursement`) sont corrigés ; Latent Terms est relancé (§1, jobs 44995/44996), plus
-d'OOM bloquant.
+B1/B2/fallback layer=24/B7/B6/Latent Terms sont tranchés (§5/§7 ci-dessous, détail et
+chiffres dans `RESULTS_TESTS.md` §77-§82). Priorité actuelle : la partie "fidélité aux
+papiers" (§1) reste très majoritairement à faire (HypothesisVerifier, NPMI_verified,
+clustering LLM, retrieval réel, App I) — voir §7 pour l'état précis et les jobs GPU en
+cours au moment de la dernière mise à jour de ce document.
 
 ---
 
@@ -265,15 +263,48 @@ d'OOM bloquant.
 
 B2 et B1 sont tous deux tranchés à pleine puissance (§5) : B2 positivement (sélection
 stratifiée nettement supérieure, devenue le défaut), B1 négativement (le signal à n=20 ne
-réplique pas à n=150). Ce qui rend un résultat déjà publié attaquable en soutenance :
-**le chiffre de référence 45,3%/68/150 lui-même est maintenant daté** — mesuré sous
-l'ancien défaut `FEATURE_SELECTION_METHOD=magnitude`, dont B2 vient de montrer qu'il
-sous-estime le taux réel d'un facteur ~2 (89,3% sous stratifié). Toute figure/table du
-rapport citant 45,3% comme LE taux d'interprétabilité du dépôt doit être requalifiée en
-plancher, ou refaite sous le nouveau défaut.
+réplique pas à n=150). **Le chiffre de référence 45,3%/68/150 est daté** — mesuré sous
+l'ancien défaut `FEATURE_SELECTION_METHOD=magnitude`, qui sous-estime le taux réel d'un
+facteur ~2 (89,3% sous stratifié). Toute figure/table du rapport citant 45,3% comme LE
+taux d'interprétabilité du dépôt doit être requalifiée en plancher, ou refaite sous le
+nouveau défaut.
 
-Corrigés depuis : B7 (jointure de split par hash SHA1 du texte parent plutôt que par
-position — migration de `augmented_mails.jsonl` existant vers `parent_sha1` encore à faire,
-§5) ; B6 (label `remboursement`, le résultat concerné — sonde à 0,846 vs 0,855 de majorité —
-reste à re-mesurer avec le label corrigé avant d'être cité) ; B3/B5 (protocole odd-one-out) ;
-B4 (dédup des positifs) ; B11 (matching lexical du corpus diffing).
+Corrigés depuis : B7 (jointure de split par hash SHA1) ; B6 (label `remboursement`,
+résultat concerné — sonde à 0,846 vs 0,855 de majorité — encore à re-mesurer avec le
+label corrigé) ; B3/B5 (protocole odd-one-out) ; B4 (dédup des positifs) ; B11 (matching
+lexical du corpus diffing).
+
+**Sweep taille de modèle étendu à 27B, setup classique (K_EXTRA=5), n=150, RESULTS_TESTS.md
+§82** : 4B 72,0% (108/150), 12B 82,0% (123/150, p=0,040 vs 4B), 27B 83,3% (125/150, p=0,76
+vs 12B — plateau net au-delà de 12B). 1B a échoué une première fois (`Gemma3TextModel` sans
+niveau `.language_model`, seul palier sans tour de vision — corrigé dans `saev5.py`),
+relancé (job 45439, a100, toujours PENDING à la dernière vérification). Réplication du
+balayage layer (§51) sous le même setup : layer 41 en cours (job 45367, h100, RUNNING),
+layer 12 relancé (job 45440, h100, PENDING) — layer 31 déjà couvert par le sweep modèle
+ci-dessus, layer 24 = référence. **À faire dès que ces jobs terminent** : ajouter la ligne
+1B à la table §82, écrire la section RESULTS_TESTS.md pour le balayage layer 12/41 (même
+format que §82), vérifier dans les logs que le nouveau cache d'extraction partagé
+(`local_data/activation_cache/`, `sae_shared.py::compute_activation_cache_key`) a bien
+fonctionné pour ces deux jobs (premiers runs sous ce code — vérifié seulement par tests
+unitaires jusqu'ici, pas en conditions réelles).
+
+**Nettoyage disque effectué cette session** : `results_v*/` réduits à leurs artefacts
+légers (`results.json`, labels du juge, plots) sauf `results_v10_emails_main/` (gardé
+complet, référence du dashboard Streamlit) — détail et scripts pour refaire chaque type
+d'ablation dans `docs/archived_runs_manifest.md`. Scripts slurm strictement supersédés
+supprimés (git log les préserve). Dashboard Streamlit vérifié fonctionnel après coup
+(`streamlit.testing.v1.AppTest`, toutes pages × plusieurs runs, zéro exception).
+
+**Reste à faire, jamais commencé cette session (le plus gros du travail "fidélité aux
+papiers", §1)** : `HypothesisVerifier` + taux de vérification (App K.1, Diffing — sans lui
+aucun chiffre de diffing n'est comparable au papier) ; NPMI_verified + filtres LLM
+(Corrélations) ; génération de mots-clés LLM + accuracy par cluster + z-score de
+conductance (Clustering) ; rerank LLM + agrégation RRF/RBO sur de vraies requêtes
+(Retrieval — les métriques existent, `src/analysis/metrics.py`, mais ne sont câblées sur
+aucun pipeline de requêtes réel) ; App I (protocole F1 latent-vs-juge 12B/27B — devenu plus
+pertinent maintenant que le palier 27B existe réellement, §82).
+
+**Qwen3.8-27B-FP8** (`scripts/imdb_genre_diffing_test.py`, hors pipeline SAE) : téléchargé,
+vérifié structurellement complet (66 shards, `quantization_config` natif e4m3), ancien
+checkpoint bf16 complet (52 Go) supprimé — mais jamais exécuté en conditions réelles
+depuis le changement de checkpoint, à vérifier avant de citer un résultat produit avec.
