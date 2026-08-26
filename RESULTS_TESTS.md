@@ -1023,6 +1023,11 @@ plus restreint (emails EDF) que son corpus d'entraînement d'origine ; ce chiffr
 n'était simplement jamais mesuré/reporté à ce grain avant ce run. Non comparable
 directement au 0% historique (qui ne concernait que l'extension).
 
+Calculé systématiquement depuis (`dead_pct_core`/`dead_pct_extension`,
+`src/analysis/metrics.py::dead_pct_core_extension`, `results.json` de tout run
+`USE_FROZEN_CORE=True`) plutôt que de dépendre d'un rappel manuel de cette
+section à chaque lecture d'un `dead_pct` élevé.
+
 ### 17.5. Ablations isolées : décomposition largeur / époques / capacité / N_FEATURES_TO_LABEL
 
 Le run combiné (§17.1) fait varier 4 leviers à la fois (largeur, époques, capacité

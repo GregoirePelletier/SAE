@@ -218,6 +218,7 @@ from src.sae.judge import (
     local_gemma_judge, load_judge_model,
 )
 from src.analysis.clustering_llm import select_latents_union
+from src.analysis.metrics import dead_pct_core_extension
 
 try:
     from src.analysis.cooccurrence import (
@@ -1882,7 +1883,14 @@ def run_llm_max_pool_pipeline(
     silhouette = compute_silhouette(test_doc_acts, test_labels)
     l0_mean    = (test_doc_acts > 1e-6).float().sum(dim=-1).mean().item()
     dead_pct   = (test_doc_acts.sum(dim=0) == 0).float().mean().item() * 100
-    
+    # dead_pct ci-dessus mélange CORE (GemmaScope figé) et EXTENSION -- cf.
+    # docstring de dead_pct_core_extension (RESULTS_TESTS.md §17.4). Sans
+    # coeur figé, dead_pct_extension reste NaN plutôt qu'un 0/100% trompeur.
+    if USE_FROZEN_CORE:
+        dead_pct_core, dead_pct_extension = dead_pct_core_extension(test_doc_acts, d_core)
+    else:
+        dead_pct_core, dead_pct_extension = dead_pct, float("nan")
+
     print("  [Metrics] Chargement des tokens bruts d'évaluation (cache dédié, non purgé)...")
     eval_raw_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt")
 
@@ -1974,7 +1982,9 @@ def run_llm_max_pool_pipeline(
     # GPU (262k×4096 bf16 ≈ 4 Go VRAM + copies hôte) et on rend les arènes glibc.
     test_doc_acts_out = test_doc_acts.clone()
     results = {
-        "L0": l0_mean, "dead_pct": dead_pct, "silhouette": silhouette,
+        "L0": l0_mean, "dead_pct": dead_pct,
+        "dead_pct_core": dead_pct_core, "dead_pct_extension": dead_pct_extension,
+        "silhouette": silhouette,
         "rho_sae": rho_sae,
         "n_clusters": umap_res_test["n_clusters"],
         "active_features": umap_res_test["n_active"],
@@ -2451,6 +2461,7 @@ if __name__ == "__main__":
             "NMSE":        "n/a",
             "L0":          f"{results_p1.get('L0', float('nan')):.1f}",
             "dead%":       f"{results_p1.get('dead_pct', float('nan')):.1f}",
+            "dead%_ext":   f"{results_p1.get('dead_pct_extension', float('nan')):.1f}",
             "ρ_SAE":       f"{results_p1.get('rho_sae', float('nan')):.4f}",
             "silhouette":  f"{results_p1.get('silhouette', float('nan')):.4f}",
             "acc_SAE":     f"{results_p1.get('clf_acc_sae', float('nan')):.4f}",
@@ -2464,6 +2475,7 @@ if __name__ == "__main__":
             "NMSE":        f"{results_p2.get('NMSE', float('nan')):.4f}",
             "L0":          f"{results_p2.get('L0', float('nan')):.1f}",
             "dead%":       f"{results_p2.get('dead_pct', float('nan')):.1f}",
+            "dead%_ext":   "—",  # pas de coeur figé côté P2 -- la distinction n'a pas de sens
             "ρ_SAE":       f"{results_p2.get('rho_sae', float('nan')):.4f}",
             "silhouette":  f"{results_p2.get('silhouette', float('nan')):.4f}",
             "acc_SAE":     f"{results_p2.get('clf_acc_sae', float('nan')):.4f}",

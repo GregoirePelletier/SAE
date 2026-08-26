@@ -5,7 +5,29 @@ Alignement strict sur les formules mathématiques de SAELens et interp_embed.
 
 import torch
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
+
+
+def dead_pct_core_extension(doc_acts: torch.Tensor, d_core: int) -> Tuple[float, float]:
+    """`dead_pct` par plage (core GemmaScope figé vs extension entraînée),
+    plutôt qu'un seul chiffre mélangeant les deux -- un SAE core généraliste
+    a une proportion normale de features jamais activées sur un corpus
+    spécifique et restreint (emails EDF) que son propre corpus
+    d'entraînement, donc le chiffre blended sur-estime structurellement le
+    taux de mort côté extension, la seule dont le taux de mort est un signal
+    de qualité d'ENTRAÎNEMENT pertinent (déjà noté une fois à la main,
+    RESULTS_TESTS.md §17.4, jamais calculé systématiquement par le pipeline
+    depuis). `doc_acts` : `[n_docs, d_core + d_extra]`, activations
+    documentaires max-poolées. Retourne (dead_pct_core, dead_pct_extension),
+    chacun dans [0, 100]. `d_core >= doc_acts.shape[1]` (pas d'extension,
+    ex. Latent Terms token-level) -> `(dead_pct_global, nan)`, la distinction
+    n'a pas de sens sans coeur figé."""
+    if d_core >= doc_acts.shape[1]:
+        dead_global = (doc_acts.sum(dim=0) == 0).float().mean().item() * 100
+        return dead_global, float("nan")
+    dead_core = (doc_acts[:, :d_core].sum(dim=0) == 0).float().mean().item() * 100
+    dead_extension = (doc_acts[:, d_core:].sum(dim=0) == 0).float().mean().item() * 100
+    return dead_core, dead_extension
 
 
 def compute_metrics(

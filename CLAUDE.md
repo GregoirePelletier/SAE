@@ -185,11 +185,22 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    `rho_sae` proche de 0 → l'extension n'apprend que du bruit sur le résidu.
    `fve_pretrained` très bas → le core lui-même n'explique déjà plus grand-chose
    à ce point du réseau, aucune extension ne peut compenser.
-3. **Budget de capacité** (`results.json → dead_pct`) : une fraction de
-   features mortes élevée n'est pas nécessairement un problème si
-   `rho_sae`/`interp_rate` restent bons — mais une hausse brutale entre deux
-   runs par ailleurs identiques signale un problème d'entraînement (LR,
-   époques), pas un choix de capacité.
+3. **Budget de capacité** (`results.json → dead_pct_extension`, PAS `dead_pct`
+   seul) : `dead_pct` mélange CORE (GemmaScope figé, généraliste — une
+   proportion normale de ses features ne s'active jamais sur un corpus
+   spécifique et restreint comme les emails EDF) et EXTENSION (la seule dont
+   le taux de mort est un signal de qualité d'ENTRAÎNEMENT pertinent) —
+   lire `dead_pct` seul sur-estime structurellement le taux de mort de
+   l'extension (RESULTS_TESTS.md §17.4, une lecture blended à 55,9% valait
+   0% une fois isolée à l'extension ; `dead_pct_core`/`dead_pct_extension`,
+   `src/analysis/metrics.py::dead_pct_core_extension`, calculés
+   systématiquement depuis ce correctif plutôt que sur rappel manuel). Une
+   fraction de features mortes élevée côté EXTENSION n'est pas nécessairement
+   un problème si `rho_sae`/`interp_rate` restent bons — mais une hausse
+   brutale entre deux runs par ailleurs identiques signale un problème
+   d'entraînement (LR, époques), pas un choix de capacité. Sans coeur figé
+   (`USE_FROZEN_CORE=False`), `dead_pct_extension` reste NaN — la distinction
+   n'a pas de sens, lire `dead_pct` seul dans ce cas.
 4. **Fiabilité du taux d'interprétabilité** (`p1_top_extended_features.json →
    interp_score`, `rho_interp`) : le protocole odd-one-out est bruité au
    niveau d'une feature isolée (`RESULTS_TESTS.md` §13.1 : ~31% de décisions
