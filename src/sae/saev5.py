@@ -1774,6 +1774,16 @@ def run_llm_max_pool_pipeline(
             _trim_host_memory()
             with open(judge_cache, "w", encoding="utf-8") as f:
                 json.dump(judge_ext_data, f, indent=2, ensure_ascii=False)
+            # Sidecar de métadonnées (fichier séparé, PAS une clé ajoutée au
+            # cache lui-même -- ~8 scripts consomment judge_cache comme un
+            # dict PLAT {f_idx: {...}}, y ajouter une clé casserait leur
+            # itération) : quel juge/quelle sélection a produit ce cache,
+            # pour que le dashboard cesse d'afficher un taux d'interprétabilité
+            # sans dire de quel juge il vient (AUDIT_SAE_2026-08.md §9).
+            with open(judge_cache + ".meta.json", "w", encoding="utf-8") as f:
+                json.dump({"judge_model_id": JUDGE_MODEL_ID,
+                           "feature_selection_method": FEATURE_SELECTION_METHOD,
+                           "doc_groups_dedup": True}, f, indent=2)
 
     # -- Fusion : core (Neuronpedia) ∪ extension (juge), préfixées [EXT] ----
     label_map_p1 = dict(labels_core)
@@ -2105,6 +2115,12 @@ def run_f2llm_pipeline(
         _trim_host_memory()
         with open(judge_cache, "w", encoding="utf-8") as f:
             json.dump(feature_labels_p2, f, indent=2, ensure_ascii=False)
+        # cf. commentaire équivalent côté P1 (sidecar de métadonnées, pas une
+        # clé ajoutée au cache lui-même).
+        with open(judge_cache + ".meta.json", "w", encoding="utf-8") as f:
+            json.dump({"judge_model_id": JUDGE_MODEL_ID,
+                       "feature_selection_method": FEATURE_SELECTION_METHOD,
+                       "doc_groups_dedup": True}, f, indent=2)
 
     label_map_p2 = {int(idx): entry.get("label", f"F{idx}") for idx, entry in feature_labels_p2.items()}
 

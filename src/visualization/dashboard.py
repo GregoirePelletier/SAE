@@ -45,6 +45,57 @@ def load_json(path: str) -> dict | None:
     return None
 
 
+def _judge_name(judge_model_id) -> str:
+    return os.path.basename(str(judge_model_id).rstrip("/")) or str(judge_model_id)
+
+
+def _judge_label_sources(run_dir: str, prefix: str) -> dict[str, dict]:
+    """Retourne {nom_affiché: features_dict} pour TOUTES les sources de
+    labels juge disponibles dans ce run, `prefix` = "p1" ou "p2".
+
+    Plusieurs formats de fichier coexistent depuis l'introduction du juge
+    Qwen (AUDIT_SAE_2026-08.md §9) : le cache plat d'origine
+    ({f_idx: {...}}, juge non enregistré dans le fichier avant le sidecar
+    `.meta.json` ajouté cette session), les comparaisons juge alternatif
+    ({summary, alt_per_feature}, `judge_model_separation_test.py`/
+    `b1_stratified_mixte_qwen_rejudge.py`), et le rejugement par sélection
+    stratifiée ({results, bin_info, ...}, `b2_stratified_selection_rejudge.py`,
+    P1 uniquement). Sans ce sélecteur, la page affichait TOUJOURS le cache
+    plat d'origine sans dire de quel juge il vient -- silencieusement
+    trompeur maintenant que Gemma et Qwen coexistent dans le même SAVE_DIR."""
+    cache_dir = os.path.join(REPO_ROOT, run_dir, "cache")
+    out: dict[str, dict] = {}
+
+    flat_name = f"{prefix}_judge_labels_extended.json" if prefix == "p1" else "p2_feature_labels.json"
+    flat_path = os.path.join(cache_dir, flat_name)
+    flat = load_json(flat_path)
+    if flat:
+        meta = load_json(flat_path + ".meta.json")
+        judge = _judge_name(meta["judge_model_id"]) if meta else "non enregistré (cache antérieur au sidecar de métadonnées)"
+        method = meta.get("feature_selection_method") if meta else "inconnue"
+        out[f"{flat_name} — juge : {judge}, sélection : {method}"] = flat
+
+    if prefix == "p1":
+        for path in sorted(glob.glob(os.path.join(cache_dir, "p1_judge_model_separation_*.json"))):
+            data = load_json(path)
+            if data and "alt_per_feature" in data:
+                judge = _judge_name(data.get("summary", {}).get("judge_alternative", "?"))
+                out[f"{os.path.basename(path)} — juge : {judge} (comparaison, mêmes exemples que la référence)"] = data["alt_per_feature"]
+
+        for path in sorted(glob.glob(os.path.join(cache_dir, "b1_stratified_mixte_qwen_rejudge_*.json"))):
+            data = load_json(path)
+            if data and "alt_per_feature" in data:
+                judge = _judge_name(data.get("summary", {}).get("judge_alternative", "?"))
+                out[f"{os.path.basename(path)} — juge : {judge} (arme mixte stratifiée, N4)"] = data["alt_per_feature"]
+
+        b2_path = os.path.join(cache_dir, "b2_stratified_selection_rejudge.json")
+        data = load_json(b2_path)
+        if data and "results" in data:
+            out["b2_stratified_selection_rejudge.json — juge : gemma-3-12b-it (isole la méthode de sélection, pas le juge — §79)"] = data["results"]
+
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pages
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,21 +233,31 @@ def page_features(run_dir: str) -> None:
             _full_neuronpedia_catalog()
 
     with tab_ext:
-        ext = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p1_judge_labels_extended.json"))
-        if ext:
+        sources = _judge_label_sources(run_dir, "p1")
+        if sources:
+            chosen = st.selectbox("Source des labels (juge)", list(sources.keys()), key="ext_judge_source")
+            ext = sources[chosen]
             n_interp = sum(1 for v in ext.values() if v.get("interp_score") == 1)
             st.metric("Taux d'interprétabilité (odd-one-out)", f"{100*n_interp/len(ext):.1f}%",
-                       help=f"{n_interp}/{len(ext)} features passent le test.")
+                       help=f"{n_interp}/{len(ext)} features passent le test — source : {chosen}")
+            if len(sources) > 1:
+                st.caption(f"{len(sources)} sources de labels trouvées pour ce run (juges/sélections "
+                           "différents coexistent depuis l'introduction du juge Qwen) — choisir ci-dessus.")
             _feature_search_box(ext, key="ext")
         else:
-            st.info("cache/p1_judge_labels_extended.json absent de ce run.")
+            st.info("Aucun cache de labels d'extension trouvé pour ce run.")
 
     with tab_p2:
-        p2 = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p2_feature_labels.json"))
-        if p2:
+        sources_p2 = _judge_label_sources(run_dir, "p2")
+        if sources_p2:
+            chosen_p2 = st.selectbox("Source des labels (juge)", list(sources_p2.keys()), key="p2_judge_source")
+            p2 = sources_p2[chosen_p2]
+            n_interp_p2 = sum(1 for v in p2.values() if v.get("interp_score") == 1)
+            st.metric("Taux d'interprétabilité (odd-one-out)", f"{100*n_interp_p2/len(p2):.1f}%",
+                       help=f"{n_interp_p2}/{len(p2)} features passent le test — source : {chosen_p2}")
             _feature_search_box(p2, key="p2")
         else:
-            st.info("cache/p2_feature_labels.json absent de ce run.")
+            st.info("Aucun cache de labels Pipeline 2 trouvé pour ce run.")
 
 
 @st.cache_data
@@ -442,7 +503,10 @@ def page_audit_2026_08() -> None:
     édition à chaque nouveau script d'audit."""
     st.header("Audit méthodologique — validité des résultats")
     st.caption("cf. `RESULTS_TESTS.md` §57-73. "
-               "Indépendant du run sélectionné dans la barre latérale.")
+               "Indépendant du run sélectionné dans la barre latérale. "
+               "Onglet temporaire : voué à disparaître une fois les audits en cours clos "
+               "(AUDIT_SAE_2026-08.md) -- pas la peine d'étendre ses motifs de recherche "
+               "à chaque nouveau script d'audit produit d'ici là.")
 
     patterns = [
         os.path.join(REPO_ROOT, "docs", "audit_*_results.json"),
