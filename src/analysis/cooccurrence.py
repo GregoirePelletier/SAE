@@ -148,6 +148,27 @@ def corpus_diff_stats(
     return df.sort_values("log_odds_ratio", key=abs, ascending=False).reset_index(drop=True)
 
 
+def select_top_diff_features_by_frequency(
+    diff_df: pd.DataFrame, threshold: float = 0.03, top_n: int = 200,
+) -> pd.DataFrame:
+    """Sélection App. D.2 (arXiv:2512.10092v2, docs/PDF_APPENDICES_EXTRACT.md
+    lignes 214/265) : "top 200 latents ayant la plus grande différence de
+    FRÉQUENCE au-dessus d'un seuil fixé à 0.03" -- critère de sélection
+    DIFFÉRENT de `corpus_diff_stats` (trié par |log-odds-ratio|, la mesure
+    utilisée ailleurs dans ce dépôt pour les corrélations). Réutilise
+    `freq_A`/`freq_B` déjà calculés par `corpus_diff_stats` (même définition :
+    fraction de documents où le latent s'active sur au moins un token) plutôt
+    que de recalculer une fréquence -- seul le critère de tri/filtre change.
+    `top_n=200`/`threshold=0.03` = valeurs du papier, pas garanties adaptées à
+    un corpus de diffing plus restreint que le leur (R6 -- le nombre de
+    features réellement retenues dépend du corpus, peut être très inférieur à
+    200)."""
+    out = diff_df.copy()
+    out["freq_diff"] = out["freq_A"] - out["freq_B"]
+    out = out[out["freq_diff"].abs() > threshold]
+    return out.sort_values("freq_diff", key=abs, ascending=False).head(top_n).reset_index(drop=True)
+
+
 # ─── Clustering en espace sparse ───
 
 def cluster_in_feature_space(
