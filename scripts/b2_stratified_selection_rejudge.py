@@ -62,8 +62,8 @@ def main() -> None:
     del _ckpt
     print(f"[b2-rejudge] plage extension [{d_core}, {d_total}) -- lue du checkpoint frozen-core")
 
-    train_texts, _, _, _ = build_email_train_test_corpus(
-        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
+    train_texts, _, _, _, train_groups, _ = build_email_train_test_corpus(
+        LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED, return_groups=True,
     )
     n_train = len(train_texts)
     print(f"[b2-rejudge] n_train={n_train}")
@@ -99,6 +99,7 @@ def main() -> None:
 
     results = odd_one_out_judge(
         model, tokenizer, top_ext_indices, TOKEN_FRAGMENTS_DIR, train_acts, offset=0, n_pos=9,
+        doc_groups=train_groups,
     )
 
     n = len(results)

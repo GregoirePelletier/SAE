@@ -164,6 +164,7 @@ def build_feature_examples_with_control(
     n_pos: int = 9,
     neg_quantile: float = 0.05,   # docs sous ce quantile d'activation → pool négatif
     return_magnitudes: bool = False,
+    doc_groups: Optional[list] = None,
 ):
     """
     Retourne (pos_examples, neg_example) pour le protocole odd-one-out.
@@ -174,6 +175,23 @@ def build_feature_examples_with_control(
     magnitude d'activation RÉELLE (token-level) de chaque exemple -- permet un
     ρ_interp fidèle à Bills et al. 2023 (magnitude réelle, pas un rang synthétique
     ni un négatif à 0.0 fixe).
+
+    `doc_groups` (optionnel, défaut None -> comportement inchangé) : `doc_groups[d_idx]`
+    = identifiant du mail D'ORIGINE de `acts[d_idx]` (même convention que
+    `train_groups`/`test_groups`, `build_email_train_test_corpus`). Sans lui, le top-9
+    par magnitude peut retenir plusieurs PARAPHRASES du même mail comme exemples
+    "positifs" distincts -- le corpus augmenté préserve quasi-verbatim les entités
+    numériques (`src/data/augmentation.py::validate` rejette une variante qui en perd
+    une), donc un bloc factuel (nom/adresse/contrat) traverse plusieurs variantes
+    quasiment mot pour mot. Mesuré empiriquement : 33,8% des 68 features interprétables
+    de `results_v10_emails_main` ont au moins une paire d'exemples positifs à >50% de
+    similarité de caractères, 22% à >70% (quasi-doublons) -- le juge peut alors repérer
+    l'intrus par ressemblance de surface entre les 8 autres plutôt que par le concept.
+    Avec `doc_groups` : un seul exemple par mail d'origine en priorité (préserve la
+    diversité) ; si moins de `n_pos` mails distincts activent la feature, complète avec
+    des répétitions du même mail plutôt que de réduire l'échantillon (dégradation
+    correcte vers l'ancien comportement pour les features authentiquement rares, pas
+    de nouvelle catégorie de `dead_feature` introduite par ce correctif).
     """
     f_acts = acts[:, f_idx].detach().float().numpy()
     threshold_pos = 1e-6
@@ -195,6 +213,8 @@ def build_feature_examples_with_control(
     sorted_desc = np.argsort(f_acts)[::-1]
     pos_examples = []
     pos_magnitudes = []
+    seen_parents = set()
+    deferred_examples = []  # candidats valides mais parent déjà représenté -- repli si besoin
     for d_idx in sorted_desc:
         if f_acts[d_idx] <= threshold_pos:
             break
@@ -207,10 +227,22 @@ def build_feature_examples_with_control(
             continue
         target_idx = int(token_acts.argmax())
         ctx = extract_causal_context(doc_data["token_strings"], target_idx)
+        if doc_groups is not None:
+            parent = doc_groups[int(d_idx)]
+            if parent in seen_parents:
+                deferred_examples.append((ctx, float(max_act)))
+                continue
+            seen_parents.add(parent)
         pos_examples.append(ctx)
         pos_magnitudes.append(float(max_act))
         if len(pos_examples) >= n_pos:
             break
+    if len(pos_examples) < n_pos and deferred_examples:
+        for ctx, mag in deferred_examples:
+            pos_examples.append(ctx)
+            pos_magnitudes.append(mag)
+            if len(pos_examples) >= n_pos:
+                break
 
     # Négatif : doc avec activation nulle ou quasi-nulle. Graine locale par feature
     # (pas random.shuffle sur le module global) : un rejeu du même f_idx reconstruit
@@ -532,6 +564,7 @@ def odd_one_out_judge(
     offset: int = 0,
     n_pos: int = 9,
     batch_size: int = 16,
+    doc_groups: Optional[list] = None,
 ) -> dict:
     """
     Pour chaque feature :
@@ -561,6 +594,7 @@ def odd_one_out_judge(
     for f_idx in feature_indices:
         pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_feature_examples_with_control(
             f_idx, token_fragments_dir, acts, offset=offset, n_pos=n_pos, return_magnitudes=True,
+            doc_groups=doc_groups,
         )
 
         if len(pos_examples) < 3:
@@ -716,14 +750,25 @@ def build_phrase_examples_with_control(
     n_pos: int = 9,
     neg_quantile: float = 0.05,
     return_magnitudes: bool = False,
+    phrase_to_doc: Optional["np.ndarray"] = None,
+    doc_groups: Optional[list] = None,
 ):
     """Équivalent phrase-level de build_feature_examples_with_control : pas de
     fragments à charger, la phrase elle-même est l'exemple. Déduplication sur
-    le texte de la phrase (nettoyé) pour éviter les répétitions.
+    le texte de la phrase (nettoyé) pour éviter les répétitions EXACTES.
 
     `return_magnitudes=True` (défaut False, rétrocompatible) : retourne en plus
     (pos_magnitudes, neg_magnitude), l'activation réelle de chaque exemple --
-    même correctif que build_feature_examples_with_control (B.5)."""
+    même correctif que build_feature_examples_with_control (B.5).
+
+    `phrase_to_doc`/`doc_groups` (optionnels, défaut None -> comportement
+    inchangé) : `phrase_to_doc[p_idx]` = index document de la phrase,
+    `doc_groups[doc_idx]` = mail d'origine -- même correctif de diversité par
+    mail parent que `build_feature_examples_with_control` (paraphrases quasi-
+    verbatim du corpus augmenté), transposé au niveau phrase plutôt que
+    document puisque P2 juge sur des phrases individuelles. Le dédoublonnage
+    par texte EXACT ci-dessus ne suffit pas : deux paraphrases reformulent le
+    texte, elles ne sont jamais identiques mot pour mot."""
     f_acts = phrase_acts[:, f_idx].detach().float().numpy()
     threshold_pos = 1e-6
     threshold_neg = float(np.quantile(f_acts, neg_quantile))
@@ -732,6 +777,8 @@ def build_phrase_examples_with_control(
     pos_examples = []
     pos_magnitudes = []
     seen = set()
+    seen_parents = set()
+    deferred_examples = []  # candidats valides mais parent déjà représenté -- repli si besoin
     for p_idx in sorted_desc:
         if f_acts[p_idx] <= threshold_pos:
             break
@@ -740,10 +787,23 @@ def build_phrase_examples_with_control(
         if not text or key in seen:
             continue
         seen.add(key)
-        pos_examples.append(f"<<{text}>>")
-        pos_magnitudes.append(float(f_acts[p_idx]))
+        entry = (f"<<{text}>>", float(f_acts[p_idx]))
+        if phrase_to_doc is not None and doc_groups is not None:
+            parent = doc_groups[int(phrase_to_doc[p_idx])]
+            if parent in seen_parents:
+                deferred_examples.append(entry)
+                continue
+            seen_parents.add(parent)
+        pos_examples.append(entry[0])
+        pos_magnitudes.append(entry[1])
         if len(pos_examples) >= n_pos:
             break
+    if len(pos_examples) < n_pos and deferred_examples:
+        for text, mag in deferred_examples:
+            pos_examples.append(text)
+            pos_magnitudes.append(mag)
+            if len(pos_examples) >= n_pos:
+                break
 
     # Graine locale par feature (B.28) -- cf. build_feature_examples_with_control.
     neg_pool = np.where(f_acts <= threshold_neg)[0].tolist()
@@ -781,6 +841,7 @@ def local_gemma_judge(
     phrase_to_doc: Optional[np.ndarray] = None,
     n_pos: int = 9,
     batch_size: int = 16,
+    doc_groups: Optional[list] = None,
 ) -> dict:
     """
     Labellisation locale (juge LLM local, JUDGE_MODEL_ID) des features du
@@ -790,8 +851,9 @@ def local_gemma_judge(
     Même batching en 3 passes par sous-ensemble décroissant, cf. docstring
     d'odd_one_out_judge (audit perf §2.6, item 1).
 
-    `phrase_to_doc` n'est pas requis pour la labellisation elle-même (conservé
-    pour compat/signature future si besoin de contexte inter-phrase).
+    `phrase_to_doc` : requis (avec `doc_groups`) pour la diversité par mail
+    parent des exemples positifs (cf. `build_phrase_examples_with_control`) --
+    sinon conservé pour compat/signature future.
     """
     from scipy.stats import spearmanr
 
@@ -803,6 +865,7 @@ def local_gemma_judge(
     for f_idx in feature_indices:
         pos_examples, neg_example, pos_magnitudes, neg_magnitude = build_phrase_examples_with_control(
             f_idx, phrase_texts, phrase_acts, n_pos=n_pos, return_magnitudes=True,
+            phrase_to_doc=phrase_to_doc, doc_groups=doc_groups,
         )
 
         if len(pos_examples) < 3:

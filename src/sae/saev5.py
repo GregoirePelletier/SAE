@@ -1767,6 +1767,7 @@ def run_llm_max_pool_pipeline(
                 feature_indices=top_ext_indices,
                 token_fragments_dir=label_fragments_dir,
                 acts=train_doc_acts, offset=0,
+                doc_groups=train_groups,
             )
             print("  [P1 Judge] Libération VRAM + malloc_trim...")
             del expert_model, expert_tokenizer
@@ -2098,7 +2099,7 @@ def run_f2llm_pipeline(
         feature_labels_p2 = local_gemma_judge(
             model=j_llm, tokenizer=j_tok, feature_indices=top_feat_indices,
             phrase_texts=test_phrases, phrase_acts=test_phrase_acts,
-            phrase_to_doc=test_p2d_arr,
+            phrase_to_doc=test_p2d_arr, doc_groups=test_groups,
         )
         del j_llm, j_tok
         _trim_host_memory()
