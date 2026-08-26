@@ -839,6 +839,29 @@ pour matcher les anciennes lignes du tableau) a été écrit puis annulé une
 fois la décision utilisateur connue — les deux scripts sont dans leur état
 d'origine, aucune modification livrée.
 
+**Deuxième bug attrapé en conditions réelles, celui-là un vrai crash** : job
+45725 (layer12) a démarré, tourné 1 min 15, puis planté —
+`saev5.py::run_llm_max_pool_pipeline` a levé un `RuntimeError` explicite
+("SAVE_DIR probablement réutilisé avec une config différente") plutôt que de
+continuer silencieusement : `results_v32_.../cache/` contenait encore des
+symlinks orphelins de la tentative précédente (crash N1, avant le correctif),
+pointant vers une clé de cache calculée par l'ANCIEN format
+(`compute_activation_cache_key`, avant N8 -- `max_length`/`sigma_clip`/
+`skip_first_content_token` ajoutés au payload) — la clé attendue sous le code
+actuel diffère, et `saev5.py` refuse à raison de mélanger les deux plutôt que
+de charger silencieusement le mauvais cache. Le garde-fou a fonctionné
+exactement comme prévu (R5) ; seul le nettoyage n'avait pas suivi. `results_
+v29_.../` (1B, job 45724, toujours PENDING au moment de la vérification)
+avait exactement le même problème latent — nettoyé avant que le job ne
+démarre, pas besoin de le relancer. Les deux caches orphelins (symlinks +
+`p1_eval_raw_tokens.pt` régénérable) supprimés ; job 45725 resoumis
+(45803). **À vérifier sur toute autre `SAVE_DIR` legacy réutilisée dans les
+jours qui viennent** : n'importe quel `results_v*/cache/` créé avant le
+correctif N8 et jamais entièrement nettoyé peut porter le même symlink
+orphelin — le symptôme (`RuntimeError` en tout début de Pipeline 1, avant
+toute extraction réelle) est sans ambiguïté et bon marché à corriger
+(supprimer les symlinks du cache local, pas le cache partagé lui-même).
+
 ### 1. État "branché et fonctionnel", par module
 
 - **HypothesisVerifier (App K.1, §84)** : run réel sain (40%/4 sur 10,
