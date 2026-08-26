@@ -3,6 +3,8 @@ correctif B.2 (AUDIT_SAE_2026-08.md) : feature_selection_by_magnitude
 sélectionne systématiquement les features les plus denses, rendant le taux
 d'interprétabilité mesuré non comparable à un chiffre publié ni entre
 configurations du dépôt."""
+import os
+
 import numpy as np
 import torch
 
@@ -13,6 +15,7 @@ from src.storage.fragment_store import save_fragment
 def _build_corpus(tmp_path, n_docs, d_sae, active_features_per_doc):
     """active_features_per_doc(doc_id) -> list[(f_idx, magnitude)]."""
     frag_dir = str(tmp_path)
+    os.makedirs(frag_dir, exist_ok=True)
     n_tok = 5
     for doc_id in range(n_docs):
         acts = torch.zeros(n_tok, d_sae)
@@ -101,3 +104,89 @@ def test_stratified_never_exceeds_n_features(tmp_path):
         frag_dir, list(range(n_docs)), d_sae, n_features=7, sample_docs=n_docs,
     )
     assert len(selected) <= 7
+
+
+def test_stratified_bin_info_matches_selected_and_is_self_consistent(tmp_path):
+    """N3 (AUDIT_SAE_2026-08.md §8) : return_bin_info=True doit couvrir
+    exactement les features sélectionnées, avec des tailles de strate
+    cohérentes (bin_n_sampled <= bin_population), et attribuer des strates
+    différentes à un groupe de features denses vs un groupe de features
+    rares -- plus de features vivantes que n_features, pour que la
+    stratification réelle s'exerce (pas le repli "prendre tout le monde")."""
+    n_docs, d_sae = 200, 100
+    dense_features = list(range(10))       # 90% des docs
+    rare_features = list(range(50, 60))    # 5% des docs
+
+    def active(doc_id):
+        out = []
+        if doc_id < 180:
+            out.extend((f, 2.0) for f in dense_features)
+        if doc_id < 10:
+            out.extend((f, 2.0) for f in rare_features)
+        return out
+
+    frag_dir = _build_corpus(tmp_path, n_docs, d_sae, active)
+    selected, bin_info = feature_selection_stratified_by_frequency(
+        frag_dir, list(range(n_docs)), d_sae, n_features=4, sample_docs=n_docs, n_bins=2, seed=0,
+        return_bin_info=True,
+    )
+    assert set(selected) == set(bin_info.keys())
+    for f in selected:
+        info = bin_info[f]
+        assert 0 < info["bin_n_sampled"] <= info["bin_population"]
+        assert info["freq"] > 0
+
+    selected_dense_bins = {bin_info[f]["bin"] for f in selected if f in dense_features}
+    selected_rare_bins = {bin_info[f]["bin"] for f in selected if f in rare_features}
+    assert selected_dense_bins, "au moins une feature dense sélectionnée"
+    assert selected_rare_bins, "au moins une feature rare sélectionnée"
+    # Le groupe dense et le groupe rare sont à des fréquences très éloignées
+    # (90% vs 5%) -> strates disjointes.
+    assert selected_dense_bins.isdisjoint(selected_rare_bins)
+
+
+def test_stratified_bin_info_degenerate_paths_return_tuple(tmp_path):
+    """Les deux replis dégénérés (tout mort, ou moins de features vivantes
+    que n_features) doivent respecter le contrat return_bin_info=True --
+    sinon un appelant qui déballe (selected, bin_info) plante selon le
+    chemin emprunté par le corpus, pas selon l'API demandée."""
+    n_docs, d_sae = 20, 10
+
+    frag_dir_dead = _build_corpus(tmp_path / "dead", n_docs, d_sae, lambda doc_id: [])
+    selected, bin_info = feature_selection_stratified_by_frequency(
+        frag_dir_dead, list(range(n_docs)), d_sae, n_features=3, sample_docs=n_docs,
+        return_bin_info=True,
+    )
+    assert selected == list(range(3))
+    assert set(bin_info.keys()) == set(selected)
+
+    def active_few(doc_id):
+        return [(0, 1.0)] if doc_id < 5 else []
+
+    frag_dir_few = _build_corpus(tmp_path / "few", n_docs, d_sae, active_few)
+    selected2, bin_info2 = feature_selection_stratified_by_frequency(
+        frag_dir_few, list(range(n_docs)), d_sae, n_features=5, sample_docs=n_docs,
+        return_bin_info=True,
+    )
+    assert selected2 == [0]   # seule feature vivante, <= n_features
+    assert set(bin_info2.keys()) == {0}
+
+
+def test_horvitz_thompson_mean_reduces_to_stratified_mean():
+    from src.analysis.stats import horvitz_thompson_mean
+
+    # Deux strates : 10 succès/10 dans une strate de 100 (π=0.1), 0 succès/10
+    # dans une strate de 10 (π=1.0) -- moyenne stratifiée attendue :
+    # (100*1.0 + 10*0.0) / 110.
+    values = [1.0] * 10 + [0.0] * 10
+    probs = [10 / 100] * 10 + [10 / 10] * 10
+    expected = (100 * 1.0 + 10 * 0.0) / 110
+    assert horvitz_thompson_mean(values, probs) == expected
+
+
+def test_horvitz_thompson_mean_equal_probs_is_plain_mean():
+    from src.analysis.stats import horvitz_thompson_mean
+
+    values = [1.0, 0.0, 1.0, 1.0]
+    probs = [0.5, 0.5, 0.5, 0.5]
+    assert horvitz_thompson_mean(values, probs) == np.mean(values)

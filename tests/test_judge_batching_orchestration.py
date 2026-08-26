@@ -97,6 +97,35 @@ def test_dead_features_never_reach_generation():
     assert calls == []  # aucun appel de génération
 
 
+def test_n_items_reflects_actual_positive_count_not_fixed_n_pos():
+    """N6 (AUDIT_SAE_2026-08.md §8) : le nombre d'items présentés au juge
+    n'est PAS fixe (3 à 9 positifs + 1 négatif selon la fréquence de la
+    feature) -- n_items doit refléter le compte RÉEL, pas toujours n_pos+1=10,
+    sans quoi un taux corrigé du hasard (stats.chance_corrected_rate) serait
+    calculé sur un niveau de hasard faux."""
+    phrase_texts, phrase_acts = _make_phrase_corpus()
+    # Feature rare : seulement 4 positifs distincts (minimum au-dessus du
+    # garde-fou <3) + 1 négatif = 5 items, hasard 20% -- pas 10 items/10%.
+    sparse_examples = ([f"ex{i}" for i in range(4)], "neg_ex", list(range(4, 0, -1)), 0.0)
+    dense_examples = ([f"ex{i}" for i in range(9)], "neg_ex", list(range(9, 0, -1)), 0.0)
+
+    def _fake_build(f_idx, *args, **kwargs):
+        return sparse_examples if f_idx == 0 else dense_examples
+
+    with patch("src.sae.judge.build_phrase_examples_with_control", side_effect=_fake_build):
+        with patch("random.shuffle", lambda lst: None):
+            fake_gen, _ = _fake_batched_generate_factory(["5", "10"])
+            with patch("src.sae.judge._batched_generate", fake_gen):
+                results = local_gemma_judge(
+                    model=MagicMock(), tokenizer=object(),
+                    feature_indices=[0, 1],
+                    phrase_texts=phrase_texts, phrase_acts=phrase_acts,
+                )
+
+    assert results["0"]["n_items"] == 5    # 4 positifs + 1 négatif
+    assert results["1"]["n_items"] == 10   # 9 positifs + 1 négatif
+
+
 def test_no_neg_example_skips_stage_3_but_keeps_label():
     """Feature interprétable mais sans contrôle négatif (correct_answer=None
     -> interp_score toujours 0 dans le code actuel) : vérifie juste que

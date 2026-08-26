@@ -668,6 +668,20 @@ wheels = [
 ]
 
 [[package]]
+name = "kernels"
+version = "0.12.3"
+source = { registry = "https://nexus.retd.edf.fr/repository/pypi-all/simple" }
+dependencies = [
+    { name = "huggingface-hub", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "packaging", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "pyyaml", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+sdist = { url = "https://nexus.retd.edf.fr/repository/pypi-all/packages/kernels/0.12.3/kernels-0.12.3.tar.gz", hash = "sha256:87e29716578e7e71dc5a7578e0132bfdae305bedaeb602698f87c88ca6c60e32" }
+wheels = [
+    { url = "https://nexus.retd.edf.fr/repository/pypi-all/packages/kernels/0.12.3/kernels-0.12.3-py3-none-any.whl", hash = "sha256:5d1d33fcb774e03bb7f0688ac24d91ef6b963692f80f0a85ddd2286e69f3cf2f" },
+]
+
+[[package]]
 name = "kiwisolver"
 version = "1.5.0"
 source = { registry = "https://nexus.retd.edf.fr/repository/pypi-all/simple" }
@@ -1421,6 +1435,7 @@ dependencies = [
     { name = "hdbscan", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "hf", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "huggingface-hub", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "kernels", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "matplotlib", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "networkx", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "numpy", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1445,6 +1460,7 @@ requires-dist = [
     { name = "hdbscan", specifier = ">=0.8.40" },
     { name = "hf", specifier = ">=1.21.0" },
     { name = "huggingface-hub", specifier = ">=1.21.0" },
+    { name = "kernels", specifier = ">=0.12.0,<0.13" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "networkx", specifier = ">=3.4" },
     { name = "numpy", specifier = "<2.0.0" },

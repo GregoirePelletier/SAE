@@ -17,6 +17,10 @@ except ImportError:
     from fragment_store import (
         load_fragment, fragment_exists, feature_column, sum_columns, doc_maxpool,
     )
+try:
+    from src.config import JUDGE_MODEL_ID as _DEFAULT_JUDGE_MODEL_ID
+except ImportError:
+    from config import JUDGE_MODEL_ID as _DEFAULT_JUDGE_MODEL_ID
 import random
 import numpy as np
 import torch
@@ -75,8 +79,16 @@ def _batched_generate(model, tokenizer, list_of_messages: list[list[dict]],
     n = len(list_of_messages)
     responses: list[str] = [""] * n
     try:
+        # enable_thinking=False : Qwen3(.5/.8)-family templates activent par défaut un
+        # préambule de raisonnement <think>...</think> qui peut à lui seul dépasser
+        # max_new_tokens=8 (étape odd-one-out) sans jamais atteindre la réponse
+        # attendue -- observé en conditions réelles (job 45615, interp_rate=0,0/150,
+        # 0 alors qu'un tirage aléatoire donnerait ~10% sur 10 items). Kwarg ignoré
+        # sans erreur par les templates qui ne le déclarent pas (Gemma, vérifié).
         texts = [
-            tokenizer.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+            tokenizer.apply_chat_template(
+                msgs, add_generation_prompt=True, tokenize=False, enable_thinking=False,
+            )
             for msgs in list_of_messages
         ]
         order = sorted(range(n), key=lambda i: len(texts[i]))
@@ -299,7 +311,8 @@ def feature_selection_stratified_by_frequency(
     hi: int = None,
     n_bins: int = 10,
     seed: int = 0,
-) -> list[int]:
+    return_bin_info: bool = False,
+):
     """
     Sélection stratifiée par bins de fréquence log-espacés (interp-embed, App. J)
     plutôt que par magnitude moyenne. `feature_selection_by_magnitude` sélectionne
@@ -318,6 +331,18 @@ def feature_selection_stratified_by_frequency(
     Échantillonnage aléatoire (`np.random.default_rng(seed)`) DANS chaque bin,
     pas les n_features/n_bins premières par indice -- éviter un biais positionnel
     au sein d'un bin qui remplacerait le biais de magnitude par un autre biais.
+
+    Retourne `list[int]` (indices sélectionnés) par défaut. Si
+    `return_bin_info=True` (N3, AUDIT_SAE_2026-08.md §8), retourne
+    `(list[int], dict[int, dict])` -- le dict associe chaque feature
+    sélectionnée à sa strate d'origine (`bin`), sa fréquence mesurée
+    (`freq`), la taille de sa strate dans la population vivante
+    (`bin_population`) et le nombre réellement tiré de cette strate
+    (`bin_n_sampled`) -- de quoi publier un taux d'interprétabilité par bin
+    plutôt qu'un seul scalaire qui sur-pondère les strates rares échantillonnées
+    à taux fixe, et calculer un estimateur repondéré (Horvitz-Thompson,
+    `src/analysis/stats.py::horvitz_thompson_mean`) si un scalaire reste
+    nécessaire.
     """
     hi = d_sae if hi is None else hi
     sample_docs = min(sample_docs, len(doc_indices))
@@ -331,15 +356,27 @@ def feature_selection_stratified_by_frequency(
         doc_vec = doc_maxpool(frag).numpy()
         freq += (doc_vec[lo:hi] > 1e-6).astype(np.float64)
         n_docs_seen += 1
+    def _degenerate(idxs) -> list[int] | tuple[list[int], dict]:
+        # Repli dégénéré (pas assez de documents/features vivantes pour
+        # stratifier) : une seule strate fictive "0" couvrant tout -- garde
+        # le contrat de retour cohérent avec return_bin_info plutôt que de
+        # renvoyer un type différent selon le chemin emprunté.
+        result_ = list(idxs)
+        if not return_bin_info:
+            return result_
+        n_ = len(result_)
+        return result_, {f: {"bin": 0, "freq": float(freq[f - lo]) if 0 <= f - lo < len(freq) else 0.0,
+                              "bin_population": n_, "bin_n_sampled": n_} for f in result_}
+
     if n_docs_seen == 0:
-        return list(range(lo, min(lo + n_features, hi)))
+        return _degenerate(range(lo, min(lo + n_features, hi)))
     freq /= n_docs_seen
 
     alive_idx = np.nonzero(freq > 0)[0]
     if len(alive_idx) == 0:
-        return list(range(lo, min(lo + n_features, hi)))
+        return _degenerate(range(lo, min(lo + n_features, hi)))
     if len(alive_idx) <= n_features:
-        return (alive_idx + lo).tolist()
+        return _degenerate((alive_idx + lo).tolist())
 
     log_freq = np.log10(freq[alive_idx])
     lo_edge, hi_edge = log_freq.min(), log_freq.max()
@@ -368,12 +405,75 @@ def feature_selection_stratified_by_frequency(
             extra = rng.choice(pool, size=min(remaining, len(pool)), replace=False)
             selected.extend(extra.tolist())
 
-    return (np.array(selected[:n_features], dtype=int) + lo).tolist()
+    selected = selected[:n_features]
+    result = (np.array(selected, dtype=int) + lo).tolist()
+    if not return_bin_info:
+        return result
+
+    # bin_info (N3, AUDIT_SAE_2026-08.md §8) : par feature SÉLECTIONNÉE, sa
+    # strate d'origine, sa fréquence mesurée, et deux tailles utiles au
+    # rééquilibrage a posteriori (Horvitz-Thompson, src/analysis/stats.py) --
+    # taille de la strate dans la population vivante (`bin_population`) et
+    # nombre RÉELLEMENT tiré de cette strate dans l'échantillon
+    # (`bin_n_sampled`), qui peut différer de `per_bin` si le pool de repli
+    # ci-dessus a complété au-delà de l'allocation uniforme par strate (rare :
+    # seulement si une strate a moins de membres vivants que `per_bin`).
+    # `bin_n_sampled` traite un tirage de repli comme s'il appartenait à
+    # l'allocation normale de sa strate d'origine -- approximation assumée,
+    # pas une estimation formelle de plan de sondage à probabilités inégales
+    # multi-étapes.
+    alive_pos_of = {int(f): p for p, f in enumerate(alive_idx)}
+    selected_bin = {int(f): int(bin_ids[alive_pos_of[int(f)]]) for f in selected}
+    bin_population = {b: int(np.sum(bin_ids == b)) for b in range(n_bins_eff)}
+    bin_n_sampled = {b: 0 for b in range(n_bins_eff)}
+    for f in selected:
+        bin_n_sampled[selected_bin[int(f)]] += 1
+
+    bin_info = {
+        int(f) + lo: {
+            "bin": selected_bin[int(f)],
+            "freq": float(freq[int(f)]),
+            "bin_population": bin_population[selected_bin[int(f)]],
+            "bin_n_sampled": bin_n_sampled[selected_bin[int(f)]],
+        }
+        for f in selected
+    }
+    return result, bin_info
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 5. JUDGE — odd-one-out + ρ_interp (Bills 2023)
 # ──────────────────────────────────────────────────────────────────────────────
+
+def load_judge_model(judge_model_id: Optional[str] = None, device: str = "cuda"):
+    """Charge le juge LLM local, DÉCOUPLÉ du modèle d'extraction (JUDGE_MODEL_ID
+    dans src/config.py, par défaut Qwen3.8-27B bf16 -- cf. docstring de ce
+    module). `torch_dtype="auto"` : lit le dtype déclaré par le checkpoint
+    (bf16 pour Qwen3.8-27B) au lieu du défaut fp32 de `from_pretrained`, qui
+    doublerait la VRAM/le temps de chargement sans rien apporter -- LA
+    variante FP8 (`unsloth/Qwen3.8-27B-FP8`, essayée avant Qwen3.8-27B bf16)
+    n'a jamais pu générer sur ce dépôt : son chemin d'inférence rapide
+    (`deep-gemm`) n'a de binaire précompilé qu'à partir de torch>=2.9, et son
+    repli (`kernels-community/finegrained-fp8`, Triton, pas de binaire) référence
+    `torch.float8_e8m0fnu`, absent de torch==2.6.0 (pin actuel du dépôt) --
+    échec confirmé sur les DEUX chemins, pas une histoire de paquet manquant.
+    Qwen3.8-27B est un VLM natif (pipeline_tag image-text-to-text) :
+    AutoModelForImageTextToText en premier, repli sur AutoModelForCausalLM si
+    l'architecture est en fait bien mappée dans la version de transformers
+    installée -- même repli que `scripts/imdb_genre_diffing_test.py`.
+
+    Retourne (model, tokenizer)."""
+    from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
+
+    model_id = judge_model_id or _DEFAULT_JUDGE_MODEL_ID
+    tokenizer = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
+    load_kwargs = {"device_map": device, "torch_dtype": "auto"}
+    try:
+        model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
+    except Exception:
+        model = AutoModelForCausalLM.from_pretrained(model_id, **load_kwargs)
+    return model.eval(), tokenizer
+
 
 def odd_one_out_judge(
     model,
@@ -539,6 +639,15 @@ def odd_one_out_judge(
             "rho_interp": pf.get("rho_interp", float("nan")),
             "pos_examples": pf["pos_examples"],
             "neg_example": pf["neg_example"],  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
+            # n_items (N6, AUDIT_SAE_2026-08.md §8) : nombre d'items RÉELLEMENT
+            # présentés au juge (positifs + 1 négatif) -- varie de 4 (garde-fou
+            # len(pos_examples)<3, donc 3+1 minimum survivant) à n_pos+1=10
+            # selon la fréquence de la feature (une feature rare atteint plus
+            # difficilement n_pos positifs distincts). Le hasard associé
+            # (1/n_items) varie donc de 25% à 10% et est confondu avec le bin
+            # de fréquence -- cf. src.analysis.stats.chance_corrected_rate
+            # pour un taux agrégé corrigé du hasard variable.
+            "n_items": len(pf["pos_examples"]) + (1 if pf["neg_example"] else 0),
         }
 
     return results
@@ -626,7 +735,8 @@ def local_gemma_judge(
     batch_size: int = 16,
 ) -> dict:
     """
-    Labellisation locale (Gemma-3) des features du Phrase-Level SAE (Pipeline 2).
+    Labellisation locale (juge LLM local, JUDGE_MODEL_ID) des features du
+    Phrase-Level SAE (Pipeline 2).
     Même protocole odd-one-out + ρ_interp que odd_one_out_judge (Pipeline 1),
     mais construit directement sur les phrases (pas de fragments tokens à charger).
     Même batching en 3 passes par sous-ensemble décroissant, cf. docstring
@@ -767,6 +877,7 @@ def local_gemma_judge(
             "rho_interp": pf.get("rho_interp", float("nan")),
             "pos_examples": pf["pos_examples"],
             "neg_example": pf["neg_example"],  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
+            "n_items": len(pf["pos_examples"]) + (1 if pf["neg_example"] else 0),  # N6, cf. odd_one_out_judge
         }
 
     return results

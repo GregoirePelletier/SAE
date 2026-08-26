@@ -1,18 +1,27 @@
 """
-scripts/judge_model_separation_test.py — jusqu'à l'introduction de
-JUDGE_MODEL_ID (src/config.py), le juge d'auto-interprétation et le modèle
-dont on extrait le residual stream étaient le même checkpoint rechargé deux
-fois (saev5.py) : risque de biais d'auto-préférence jamais mesuré. Rejuge les
-mêmes 150 features déjà en cache avec ALT_JUDGE_MODEL_ID au lieu du juge par
-défaut, même protocole odd-one-out, mêmes exemples -- isole l'effet du CHOIX
-du modèle juge, à activations extraites identiques. `load_judge_model`
-(chargement partagé avec le pipeline principal) gère aussi bien un juge même
-famille que famille différente (Qwen3.8-27B-FP8, VLM natif + quantization_config
-e4m3) sans changement de ce script.
+scripts/b1_stratified_mixte_qwen_rejudge.py -- N4 (AUDIT_SAE_2026-08.md §8) :
+§81 (B.1) conclut "résolu négativement" sur un écart -7,3 pts (89,3% mixte vs
+82,0% originaux+filler, tous deux stratifiés, p=0,070) sans pouvoir distinguer
+"pas de contamination" de "le juge Gemma est complaisant avec du texte généré
+par Gemma" -- §48/§50/§52 ont testé juge et corpus séparément, jamais leur
+interaction. Rejuge les 150 features de l'arme MIXTE (stratifié, §79,
+`b2_stratified_selection_rejudge.json`, déjà en cache dans
+`results_v10_emails_main/`) avec Qwen3.8-27B au lieu de gemma-3-12b-it --
+même patron que `judge_model_separation_test.py`, mêmes exemples, seul le
+juge change.
+
+L'arme "originaux+filler" (§81, `results_v26_validation_layer24_v12_originals_
+filler_matched_n150_h100/`) N'A PAS pu être rejugée de la même façon : ses
+fragments token-level ont été supprimés par le nettoyage disque de cette
+session (`docs/archived_runs_manifest.md`, seul `results_v10_emails_main/`
+gardé complet) -- rejuger cette arme demanderait une extraction complète
+fraîche, pas "quelques minutes de GPU" comme prévu par N4. Ce script mesure
+donc seulement si Qwen est systématiquement plus/moins généreux que Gemma sur
+l'arme mixte, pas l'interaction complète juge×corpus.
 
 Usage :
     SAVE_DIR=./results_v10_emails_main/ PYTHONPATH=. \
-      .venv/bin/python scripts/judge_model_separation_test.py
+      .venv/bin/python scripts/b1_stratified_mixte_qwen_rejudge.py
 """
 from __future__ import annotations
 
@@ -33,29 +42,26 @@ from src.data.preparation import build_email_train_test_corpus
 from src.storage.fragment_store import resolve_extension_fragments_dir
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "/home/h21486/SAE/models/gemma-3-4b-it")
-# SEED ajouté (audit 2026-08 round 2, §1, B.17) : cf. c2_original_only_rejudge.py
-# pour la justification -- ce script n'était jamais seedé avant ce correctif.
+ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "/home/h21486/SAE/models/Qwen3.8-27B")
 SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
-JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
+# Arme MIXTE stratifiée (§79) -- PAS p1_judge_labels_extended.json (arme
+# magnitude/référence, §43/§63/§65/§83, déjà rejugée par judge_model_separation_test.py).
+B2_CACHE = os.path.join(CACHE_DIR, "b2_stratified_selection_rejudge.json")
 TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
-# Tag dérivé mécaniquement d'ALT_JUDGE_MODEL_ID (R5) -- sans lui, deux juges
-# alternatifs différents lancés à la même SEED écrasent le même fichier de
-# sortie (OUT_PATH n'était keyé QUE par SEED avant ce correctif, jamais un
-# problème tant qu'un seul juge alternatif -- gemma-3-4b-it -- avait jamais
-# été testé).
 _ALT_JUDGE_TAG = os.path.basename(ALT_JUDGE_MODEL_ID.rstrip("/"))
-OUT_PATH = os.path.join(CACHE_DIR, f"p1_judge_model_separation_{_ALT_JUDGE_TAG}_seed{SEED}.json")
+OUT_PATH = os.path.join(CACHE_DIR, f"b1_stratified_mixte_qwen_rejudge_{_ALT_JUDGE_TAG}_seed{SEED}.json")
 
 
 def main() -> None:
     random.seed(SEED)
-    with open(JUDGE_CACHE, encoding="utf-8") as f:
-        original = json.load(f)
+    with open(B2_CACHE, encoding="utf-8") as f:
+        b2 = json.load(f)
+    original = b2["results"]
     feature_indices = [int(k) for k in original.keys()]
-    print(f"[separation] {len(feature_indices)} features, juge alternatif={ALT_JUDGE_MODEL_ID}")
+    print(f"[b1-mixte-qwen] {len(feature_indices)} features (arme mixte stratifiée, §79), "
+          f"juge alternatif={ALT_JUDGE_MODEL_ID}")
 
     all_doc_acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts_ext_d1024.pt")
     if not os.path.exists(all_doc_acts_path):
@@ -88,7 +94,7 @@ def main() -> None:
 
     summary = {
         "n_tested": len(feature_indices),
-        "judge_original": f"juge ayant produit {JUDGE_CACHE} (cf. src.config.JUDGE_MODEL_ID pour le juge par défaut actuel)",
+        "judge_original": f"gemma-3-12b-it (juge ayant produit {B2_CACHE}, arme mixte stratifiée §79)",
         "judge_alternative": ALT_JUDGE_MODEL_ID,
         "interp_rate_original": n_orig_interp / len(feature_indices),
         "interp_rate_alternative": n_alt_interp / len(feature_indices),

@@ -30,7 +30,10 @@ class _FakeTokenizer:
         self.pad_token_id = 0
         self.padding_side = "right"
 
-    def apply_chat_template(self, msgs, add_generation_prompt=True, tokenize=False):
+    def apply_chat_template(self, msgs, add_generation_prompt=True, tokenize=False, **kwargs):
+        # **kwargs : accepte enable_thinking (et tout autre paramètre spécifique à un
+        # modèle) comme le fait le vrai apply_chat_template -- même signature tolérante
+        # que Gemma/Qwen, cf. src/sae/judge.py::_batched_generate.
         idx = msgs[0]["content"]  # l'appelant y met l'index d'origine (str)
         pad_len = int(idx) % 5  # longueur de prompt variable et déterministe
         return ("x" * pad_len) + f"##IDX{idx}##"

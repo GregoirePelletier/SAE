@@ -17,6 +17,7 @@ import random
 import sys
 
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
@@ -24,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.config import HF_TOKEN, DTYPE, SAVE_DIR, MODEL_ID, CORPUS_SPLIT_SEED, D_EXTRA, N_FEATURES_TO_LABEL, LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH
 from src.data.preparation import build_email_train_test_corpus
+from src.storage.fragment_store import resolve_extension_fragments_dir
 from src.sae.judge import feature_selection_stratified_by_frequency, odd_one_out_judge
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -32,7 +34,7 @@ SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 REF_JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
-TOKEN_FRAGMENTS_DIR = os.path.join(CACHE_DIR, "p1_token_fragments")
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 OUT_PATH = os.path.join(CACHE_DIR, "b2_stratified_selection_rejudge.json")
 
 
@@ -41,8 +43,24 @@ def main() -> None:
     with open(REF_JUDGE_CACHE, encoding="utf-8") as f:
         reference = json.load(f)
     ref_indices = [int(k) for k in reference.keys()]
-    d_core, d_total = min(ref_indices), max(ref_indices) + 1  # plage extension observée dans le cache de référence
-    print(f"[b2-rejudge] plage extension [{d_core}, {d_total}) déduite du cache de référence")
+
+    # d_core/d_total lus du checkpoint frozen-core (state_dict, forme exacte)
+    # -- PAS min/max(ref_indices) : la référence magnitude ne couvre pas
+    # nécessairement toute la plage [d_core, d_total), la sélection stratifiée
+    # tronquerait alors silencieusement la queue de plage jamais atteinte par
+    # la référence (trouvé N3, AUDIT_SAE_2026-08.md §8 -- écart mesuré : 4
+    # colonnes manquantes sur 1024, 17404 au lieu de 17408 dans le run qui a
+    # produit b2_stratified_selection_rejudge.json).
+    _frozen_core_ckpts = [f for f in os.listdir(SAVE_DIR) if f.startswith("p1_frozen_core_d")]
+    assert len(_frozen_core_ckpts) == 1, (
+        f"attendu exactement 1 checkpoint p1_frozen_core_d*.pt dans {SAVE_DIR}, "
+        f"trouvé {_frozen_core_ckpts} -- d_core/d_total ambigus."
+    )
+    _ckpt = torch.load(os.path.join(SAVE_DIR, _frozen_core_ckpts[0]), map_location="cpu", weights_only=False)
+    d_core = _ckpt["state_dict"]["core_sae.W_dec"].shape[0]
+    d_total = d_core + _ckpt["config"]["d_extra"]
+    del _ckpt
+    print(f"[b2-rejudge] plage extension [{d_core}, {d_total}) -- lue du checkpoint frozen-core")
 
     train_texts, _, _, _ = build_email_train_test_corpus(
         LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,
@@ -50,9 +68,16 @@ def main() -> None:
     n_train = len(train_texts)
     print(f"[b2-rejudge] n_train={n_train}")
 
-    top_ext_indices = feature_selection_stratified_by_frequency(
+    # return_bin_info=True (N3, AUDIT_SAE_2026-08.md §8) : capture la strate
+    # d'origine de chaque feature AU MOMENT de la sélection -- une
+    # reconstruction rétroactive (rejouer cette fonction plus tard avec le
+    # même seed) s'est révélée non fiable (fragments/corpus ayant pu dériver
+    # depuis, cache non horodaté ni fingerprinté sur ce SAVE_DIR "legacy"),
+    # ne JAMAIS dépendre d'une reproduction a posteriori pour ce genre de
+    # métadonnée -- la sauvegarder directement dans OUT_PATH ci-dessous.
+    top_ext_indices, bin_info = feature_selection_stratified_by_frequency(
         TOKEN_FRAGMENTS_DIR, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
-        lo=d_core, hi=d_total, seed=SEED,
+        lo=d_core, hi=d_total, seed=SEED, return_bin_info=True,
     )
     print(f"[b2-rejudge] {len(top_ext_indices)} features sélectionnées par fréquence "
           f"(vs {len(ref_indices)} par magnitude dans la référence)")
@@ -62,7 +87,7 @@ def main() -> None:
     all_doc_acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts_ext_d1024.pt")
     if not os.path.exists(all_doc_acts_path):
         all_doc_acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
-    all_doc_sae_acts = torch.load(all_doc_acts_path, map_location="cpu", weights_only=True)
+    all_doc_sae_acts = load_all_doc_acts(all_doc_acts_path)
     train_acts = all_doc_sae_acts[:n_train]
 
     print(f"[b2-rejudge] Chargement du juge {MODEL_ID} (même modèle que la référence)...")
@@ -86,7 +111,8 @@ def main() -> None:
     print(f"[b2-rejudge] Référence (magnitude) : {n_ref_interp}/{len(reference)} = {n_ref_interp/len(reference):.4f}")
 
     json.dump(
-        {"selected_features": top_ext_indices, "overlap_with_magnitude_selection": len(overlap), "results": results},
+        {"selected_features": top_ext_indices, "overlap_with_magnitude_selection": len(overlap),
+         "results": results, "bin_info": bin_info},
         open(OUT_PATH, "w"), indent=2, ensure_ascii=False,
     )
     print(f"[b2-rejudge] Sauvé : {OUT_PATH}")

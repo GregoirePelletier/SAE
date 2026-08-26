@@ -150,3 +150,60 @@ def minimum_detectable_effect(n_per_group: int, baseline_rate: float, power: flo
         else:
             hi = mid
     return hi
+
+
+@dataclass
+class ChanceCorrectedResult:
+    obs_rate: float
+    chance_rate: float
+    corrected_rate: float
+    n: int
+
+
+def chance_corrected_rate(scores: list[int] | np.ndarray,
+                           n_items: list[int] | np.ndarray) -> ChanceCorrectedResult:
+    """Taux d'interprétabilité corrigé du hasard variable (N6,
+    AUDIT_SAE_2026-08.md §8) : le protocole odd-one-out d'`odd_one_out_judge`
+    (src/sae/judge.py) ne fixe PAS le nombre d'items présentés au juge -- une
+    feature rare peut n'atteindre que 3 positifs + 1 négatif (4 items, hasard
+    25%), une feature dense les 9+1=10 prévus (hasard 10%), confondu avec le
+    bin de fréquence (donc avec la stratification, N3). Formule de type Cohen
+    kappa appliquée au niveau agrégé (pas par item, pour éviter qu'un
+    micro-échantillon par feature ne rende le correctif par-item instable) :
+    `(obs - c) / (1 - c)`, où `c = moyenne(1/n_items)` sur le MÊME ensemble de
+    features que `obs = moyenne(scores)` -- le niveau de hasard attendu sous
+    H0 ("chaque item jugé indépendamment au hasard uniforme"), pas un seuil
+    fixe arbitraire.
+
+    `scores` : 0/1 par feature (`interp_score`). `n_items` : nombre d'items
+    RÉELLEMENT présentés à cette feature (`odd_one_out_judge(...)[f]["n_items"]`,
+    absent des caches produits avant N6 -- reconstructible depuis
+    `len(pos_examples) + 1` si `neg_example` est présent)."""
+    scores = np.asarray(scores, dtype=np.float64)
+    n_items = np.asarray(n_items, dtype=np.float64)
+    obs_rate = float(scores.mean())
+    chance_rate = float((1.0 / n_items).mean())
+    denom = 1.0 - chance_rate
+    corrected = (obs_rate - chance_rate) / denom if denom > 0 else float("nan")
+    return ChanceCorrectedResult(obs_rate=obs_rate, chance_rate=chance_rate,
+                                  corrected_rate=corrected, n=len(scores))
+
+
+def horvitz_thompson_mean(values: list[float] | np.ndarray,
+                           inclusion_probs: list[float] | np.ndarray) -> float:
+    """Estimateur de Horvitz-Thompson de la moyenne populationnelle à partir
+    d'un échantillon à probabilités d'inclusion inégales (N3,
+    AUDIT_SAE_2026-08.md §8) : ŷ = (Σ y_i/π_i) / (Σ 1/π_i). Se réduit à la
+    moyenne stratifiée classique (Σ_h N_h·ȳ_h / N) quand π_i est constant au
+    sein de chaque strate -- exactement le cas de
+    `feature_selection_stratified_by_frequency` (src/sae/judge.py), qui
+    échantillonne un nombre à peu près fixe de features par bin de fréquence
+    quelle que soit la taille du bin (π_i ≈ bin_n_sampled/bin_population).
+    Corrige le biais qu'introduirait une moyenne brute non pondérée sur un tel
+    échantillon : les bins rares (peu de features, mêmes qu'un bin dense dans
+    l'échantillon) y seraient sur-représentés par rapport à la population
+    complète de features vivantes."""
+    values = np.asarray(values, dtype=np.float64)
+    inclusion_probs = np.asarray(inclusion_probs, dtype=np.float64)
+    weights = 1.0 / inclusion_probs
+    return float(np.sum(values * weights) / np.sum(weights))

@@ -10,14 +10,17 @@ Appendix D.3, échelle yes/related/no -> 1/0.5/0), échantillonné 5x.
 
 Écarts DOCUMENTÉS par rapport au papier (décidés avec l'utilisateur avant
 ce script, pas des approximations silencieuses) :
-- Juge = Qwen3.8-27B-FP8 local (checkpoint pré-quantifié `unsloth/Qwen3.8-27B-FP8`,
-  ~31 Go, `quantization_config` natif e4m3 dans le config.json -- transformers
-  applique le quantizer directement, aucun `BitsAndBytesConfig` au chargement),
-  PAS GPT-5 (pas de clé API configurée dans ce projet). Le checkpoint bf16
-  complet (52 Go) a été supprimé après vérification que FP8 charge et génère
-  correctement -- int8 bitsandbytes/bf16 dynamiques ne sont plus une option
-  sans le retélécharger. Le prompt de similarité de surface est repris
-  verbatim ; seuls le modèle et la précision diffèrent.
+- Juge = Qwen3.8-27B local (`Qwen/Qwen3.8-27B`, bf16, ~55 Go), PAS GPT-5 (pas
+  de clé API configurée dans ce projet). La variante pré-quantifiée FP8
+  (`unsloth/Qwen3.8-27B-FP8`, ~31 Go) a été essayée en premier pour son
+  empreinte VRAM réduite, mais aucun des deux chemins d'inférence FP8 de
+  transformers ne fonctionne avec torch==2.6.0 (pin du dépôt) : `deep-gemm`
+  n'a de binaire précompilé qu'à partir de torch>=2.9, et son repli Triton
+  (`kernels-community/finegrained-fp8`) référence `torch.float8_e8m0fnu`,
+  absent de cette version de torch -- échec confirmé au premier `generate()`
+  réel sur ce checkpoint (jamais exercé avant), pas un problème de paquet
+  manquant. Le prompt de similarité de surface est repris verbatim ; seuls le
+  modèle et la précision diffèrent.
 - Dataset genre = `adrienheymans/imdb-movie-genres` (HF Hub, 54214 lignes,
   colonnes title/text/genre) : le papier cite Maas et al. 2011 [33], qui est
   en réalité le dataset de SENTIMENT IMDB (pas de labels de genre) -- source
@@ -50,6 +53,7 @@ import importlib.util
 from pathlib import Path
 
 sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
+sys.path.insert(0, "/home/h21486/SAE")  # src.sae.judge (load_judge_model partagé)
 
 import numpy as np
 import pandas as pd
@@ -69,7 +73,7 @@ from huggingface_hub import hf_hub_download
 OUT_DIR = Path("/home/h21486/SAE/local_data/imdb_genre_diffing")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-JUDGE_MODEL_PATH = "/home/h21486/SAE/models/Qwen3.8-27B-FP8"
+JUDGE_MODEL_PATH = "/home/h21486/SAE/models/Qwen3.8-27B"
 GENRES = ["action", "romance", "horror", "comedy", "sci-fi", "thriller"]
 N_IN_GENRE_MAX = 500
 N_OUT_GENRE = 500
@@ -197,40 +201,24 @@ def main():
         torch.cuda.empty_cache()
         print(f"Encoded {len(full_ds)} rows.", flush=True)
 
-    # Checkpoint pré-quantifié FP8 (e4m3, quantization_config natif du
-    # config.json) -- transformers applique le quantizer directement au
-    # chargement, aucun BitsAndBytesConfig à construire ici. Remplace
-    # l'ancien double mode int8 (bitsandbytes dynamique)/bf16, qui exigeait le
-    # checkpoint bf16 complet (52 Go, supprimé).
-    print(f"Loading local {JUDGE_MODEL_PATH} judge (FP8, quantization_config natif)...", flush=True)
-    from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
-    judge_tok = AutoTokenizer.from_pretrained(JUDGE_MODEL_PATH)
-    load_kwargs = {"device_map": "cuda:0"}
-    # Qwen3.8-27B est un modèle vision-langage natif (pipeline_tag
-    # image-text-to-text, classe Qwen3_5ForConditionalGeneration) -- pas
-    # forcément reconnue par AutoModelForCausalLM selon la version de
-    # transformers. Usage texte seul ici (juge), aucune image passée --
-    # AutoModelForImageTextToText en premier, repli sur AutoModelForCausalLM
-    # si l'architecture est en fait bien mappée dans cette version.
-    try:
-        judge_model = AutoModelForImageTextToText.from_pretrained(JUDGE_MODEL_PATH, **load_kwargs)
-    except Exception as e:
-        print(f"  AutoModelForImageTextToText failed ({e}), falling back to AutoModelForCausalLM", flush=True)
-        judge_model = AutoModelForCausalLM.from_pretrained(JUDGE_MODEL_PATH, **load_kwargs)
-    judge_model.eval()
+    # Checkpoint bf16 (cf. docstring en tête de fichier -- la variante FP8 ne
+    # génère avec aucun de ses deux chemins d'inférence sous torch==2.6.0).
+    # Chargement partagé avec le juge par défaut du pipeline SAE
+    # (src.sae.judge.load_judge_model, src.config.JUDGE_MODEL_ID) -- même
+    # repli AutoModelForImageTextToText/AutoModelForCausalLM, `torch_dtype="auto"`,
+    # pas de logique dupliquée.
+    print(f"Loading local {JUDGE_MODEL_PATH} judge (bf16)...", flush=True)
+    from src.sae.judge import load_judge_model, _apply_chat_and_extract as _apply_chat_and_extract_shared
+    judge_model, judge_tok = load_judge_model(judge_model_id=JUDGE_MODEL_PATH, device="cuda:0")
 
     def _apply_chat_and_extract(messages: list) -> torch.Tensor:
-        """Même correctif que src/sae/judge.py::_apply_chat_and_extract --
-        apply_chat_template peut retourner un BatchEncoding (pas un Tensor
-        nu) selon le tokenizer (Qwen3.8-27B, natif VLM, en fait partie) ;
-        .shape planterait alors avec KeyError('shape') via
-        BatchEncoding.__getattr__."""
-        out = judge_tok.apply_chat_template(
-            messages, add_generation_prompt=True, return_tensors="pt",
+        # enable_thinking=False : cf. src/sae/judge.py::_batched_generate, même piège
+        # Qwen3(.8)-family (<think>...</think> par défaut, ignoré sans erreur par les
+        # templates qui ne le déclarent pas).
+        return _apply_chat_and_extract_shared(
+            judge_tok, messages, judge_model.device,
+            add_generation_prompt=True, return_tensors="pt", enable_thinking=False,
         )
-        if hasattr(out, "input_ids"):
-            out = out.input_ids
-        return out.to(judge_model.device)
 
     def judge_surface_similarity(text_a: str, text_b: str, n_samples: int = N_JUDGE_SAMPLES) -> float:
         prompt = SURFACE_SIMILARITY_PROMPT.format(text_a=text_a, text_b=text_b)
