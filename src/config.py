@@ -62,6 +62,20 @@ LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
 BATCH_SIZE_EXTRA = int(os.environ.get("BATCH_SIZE_EXTRA", "1024"))
 USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
 N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
+# Longueur de troncature du tokenizer à l'extraction (saev5.py, boucle
+# "Extraction P1") -- 512 était codé en dur, appliqué aux mails ENTIERS (pas
+# chunkés, contrairement au filler) et jamais mesuré à ce seuil précis (N7,
+# AUDIT_SAE_2026-08.md §8 ; §74/RESULTS_TESTS.md mesure une troncature à 2048,
+# sur le corpus d'AUGMENTATION, seuil et corpus différents). À rapprocher de
+# ρ(longueur, n_features)=0,906 (§59) : une troncature agressive pourrait
+# elle-même être une source de ce signal de longueur, pas juste le corréler.
+MAX_LENGTH = int(os.environ.get("MAX_LENGTH", "512"))
+# Seuil de clip des outliers de norme (src/analysis/activations.py::norm_outlier_mask,
+# appelé depuis saev5.py) -- 4.0 codé en dur jusqu'ici (N8, AUDIT_SAE_2026-08.md §8).
+SIGMA_CLIP = float(os.environ.get("SIGMA_CLIP", "4.0"))
+# Exclut le premier token de contenu (après les tokens spéciaux BOS/rôle) du
+# masquage -- True codé en dur jusqu'ici (N8, AUDIT_SAE_2026-08.md §8).
+SKIP_FIRST_CONTENT_TOKEN = os.environ.get("SKIP_FIRST_CONTENT_TOKEN", "1").strip() in ("1", "true", "True")
 # Taille de batch pour l'extraction Gemma-3 (saev5.py, boucle "Extraction P1") --
 # 4 était codé en dur, jamais mesuré contre une valeur plus grande sur A100/H100
 # (12B en simple passe avant, marge VRAM probable). Configurable pour permettre
@@ -137,6 +151,20 @@ HOOK_TYPE = os.environ.get("HOOK_TYPE", "resid_post")
 # cohérence (le layer y est encodé dans le nom, ex. "layer_24_width_16k_l0_medium").
 LAYER = int(os.environ.get("LAYER", LAYER))
 LOCAL_SAE_ROOT = os.environ.get("LOCAL_SAE_DIR", f"./local_data/saes/{RELEASE_ID}")
+
+# Juge LLM (odd_one_out_judge, local_gemma_judge), DÉCOUPLÉ de MODEL_ID
+# (l'extracteur) -- recharger le même checkpoint Gemma-3 comme juge de ses
+# propres features expose à un biais d'auto-préférence jamais isolé d'un
+# simple effet de capacité (RESULTS_TESTS.md §43/§63/§65 : gemma-3-4b-it vs
+# gemma-3-12b-it, même famille, écart de juge confirmé et robuste au seed
+# mais ne tranche pas entre les deux explications -- un juge de famille
+# différente était identifié comme manquant). Qwen3.8-27B (capacité
+# comparable au palier 27b, famille différente) sert de juge par défaut --
+# bf16, PAS la variante FP8 (`unsloth/Qwen3.8-27B-FP8`) : son inférence
+# échoue sur les deux chemins possibles avec torch==2.6.0 (pin du dépôt),
+# aucun rapport avec un paquet manquant -- cf. docstring de
+# src/sae/judge.py::load_judge_model pour le détail des deux échecs.
+JUDGE_MODEL_ID = os.environ.get("JUDGE_MODEL_ID", "/home/h21486/SAE/models/Qwen3.8-27B")
 SAE_SNAPSHOT   = os.environ.get("SAE_SNAPSHOT", "0" * 40)
 
 # ─── Précision ───

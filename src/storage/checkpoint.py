@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import threading
 
 
 def checkpoint_path(cache_dir: str, name: str) -> str:
@@ -43,6 +44,32 @@ def write_checkpoint(path: str, **fields) -> None:
     with open(tmp_path, "w") as f:
         json.dump(fields, f)
     os.replace(tmp_path, path)
+
+
+def atomic_create_exclusive(path: str, **fields) -> bool:
+    """Crée `path` de façon atomique avec un contenu JSON déjà complet, en
+    échouant proprement (sans effet) si `path` existe déjà -- primitive pour
+    tout verrou de type `O_CREAT|O_EXCL` qui a aussi besoin d'écrire un
+    contenu non trivial (ex. `acquire_shared_cache_lock`, sae_shared.py).
+
+    `O_CREAT|O_EXCL` suivi d'une écriture séparée dans le même fd laisse une
+    fenêtre où le fichier est visible avec un contenu vide/tronqué : un
+    lecteur concurrent qui tombe dans cette fenêtre peut le juger corrompu ou
+    périmé. Ici, le contenu est entièrement écrit dans un fichier temporaire
+    AVANT que `os.link` ne l'expose sous `path` -- `os.link` échoue
+    atomiquement si `path` existe déjà (même garantie que O_EXCL), mais ne
+    rend jamais visible un contenu partiel : soit `path` n'existe pas encore,
+    soit il pointe déjà vers un inode entièrement écrit."""
+    tmp_path = path + f".tmp{os.getpid()}.{threading.get_ident()}"
+    with open(tmp_path, "w") as f:
+        json.dump(fields, f)
+    try:
+        os.link(tmp_path, path)
+        return True
+    except FileExistsError:
+        return False
+    finally:
+        os.remove(tmp_path)
 
 
 def clear_checkpoint(path: str) -> None:

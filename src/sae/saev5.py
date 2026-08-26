@@ -10,7 +10,7 @@ embeddings de phrase.
 import os
 import sys
 import time
-import shutil
+import atexit
 import urllib3
 import requests
 import glob
@@ -19,6 +19,7 @@ import json
 import math
 import random
 import re
+from typing import Optional
 from contextlib import contextmanager
 from requests.sessions import Session
 from sae_lens.registry import SAE_CLASS_REGISTRY
@@ -43,7 +44,7 @@ except ImportError:
 
 from src.config import (
     MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, D_MODEL, HOOK_TYPE,
-    LOCAL_SAE_ROOT, SAE_SNAPSHOT, DTYPE, CLUSTER_OFFLINE_MODE,
+    LOCAL_SAE_ROOT, SAE_SNAPSHOT, DTYPE, CLUSTER_OFFLINE_MODE, JUDGE_MODEL_ID,
 )
 
 # Compatibilité Gemma Scope 2
@@ -205,14 +206,17 @@ from sae_shared import (
     pool_embeddings_by_document,
     load_or_train_extended_sae,
     compute_activation_cache_key, shared_activation_cache_dir,
+    acquire_shared_cache_lock,
+    save_doc_acts_sparse_filler, load_doc_acts_sparse_filler,
 )
 
 from src.sae.judge import (
     extract_causal_context, build_feature_examples_with_control,
     feature_selection_by_magnitude, feature_selection_stratified_by_frequency,
     odd_one_out_judge, _apply_chat_and_extract,
-    local_gemma_judge,
+    local_gemma_judge, load_judge_model,
 )
+from src.analysis.clustering_llm import select_latents_union
 
 try:
     from src.analysis.cooccurrence import (
@@ -309,6 +313,7 @@ from src.config import (
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
     EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA, REENCODE_BATCH_SIZE,
+    MAX_LENGTH, SIGMA_CLIP, SKIP_FIRST_CONTENT_TOKEN,
 )
 # MODEL_SIZE, MODEL_ID, RELEASE_ID, SAE_ID, LAYER, HOOK_TYPE, LOCAL_SAE_ROOT, SAE_SNAPSHOT
 # sont déjà importés depuis src.config plus haut dans ce fichier — source unique de vérité,
@@ -486,25 +491,51 @@ def targeted_clustering_by_axis(
     axis_query: str,
     top_k_features: int = 150,
     n_clusters: int = 3,
+    keywords: Optional[list] = None,
+    max_docs_for_jaccard: int = 5000,
 ) -> dict:
+    """`keywords` (App. F.1) : si fourni, remplace `axis_query` par l'UNION des
+    top-`top_k_features` latents par mot-clé (`select_latents_union`) au lieu
+    d'un unique `axis_query` -- `axis_query` reste utilisé pour le libellé
+    d'affichage et le fallback. `max_docs_for_jaccard` : `pdist` est O(n²) en
+    mémoire (R4) -- sous-échantillonne au-delà (le corpus test_texts actuel,
+    ~2200 docs, reste largement en dessous)."""
     from sklearn.cluster import SpectralClustering
+    from scipy.spatial.distance import pdist, squareform
+
     print(f"\n  [Task 3] Targeted Clustering axe : '{axis_query}'")
-    matched_indices = select_latents_by_similarity(axis_query, feature_labels, top_k=top_k_features)
+    if keywords:
+        matched_indices = select_latents_union(
+            keywords, feature_labels, select_fn=select_latents_by_similarity, top_k=top_k_features,
+        )
+    else:
+        matched_indices = select_latents_by_similarity(axis_query, feature_labels, top_k=top_k_features)
     if len(matched_indices) < 5:
         print("  [Task 3] Fallback : latents les plus actifs.")
         matched_indices = sae_acts.float().mean(dim=0).topk(
             min(top_k_features, sae_acts.shape[1])
         ).indices.tolist()
 
+    if len(texts) > max_docs_for_jaccard:
+        rng = np.random.default_rng(SEED)
+        keep = np.sort(rng.choice(len(texts), size=max_docs_for_jaccard, replace=False))
+        texts = [texts[i] for i in keep]
+        sae_acts = sae_acts[keep]
+
     sub_binarized = (sae_acts[:, matched_indices].float().detach().cpu().numpy() > 1e-6).astype(np.float32)
     if sub_binarized.sum() == 0:
         sub_binarized = (sae_acts.float().detach().cpu().numpy() > 1e-6).astype(np.float32)
 
+    # Affinité de Jaccard (App. F : "spectral cluster their Jaccard similarity
+    # matrix"), PAS cosine sur binaire -- métrique différente, corrigé
+    # (AUDIT_SAE_2026-08.md §1). jaccard_dist=0 -> similarité 1 sur la
+    # diagonale, cohérent par construction de squareform(pdist(...)).
+    jaccard_sim = 1.0 - squareform(pdist(sub_binarized, metric="jaccard"))
     spectral = SpectralClustering(
-        n_clusters=n_clusters, affinity="cosine",
+        n_clusters=n_clusters, affinity="precomputed",
         assign_labels="kmeans", random_state=SEED
     )
-    cluster_labels = spectral.fit_predict(sub_binarized)
+    cluster_labels = spectral.fit_predict(jaccard_sim)
     cluster_texts = {c: [] for c in range(n_clusters)}
     for i, c in enumerate(cluster_labels):
         cluster_texts[c].append(texts[i])
@@ -836,7 +867,17 @@ def run_llm_max_pool_pipeline(
     pretrained_sae.requires_grad_(False)
     d_core = pretrained_sae.cfg.d_sae
 
-    d_total_expected = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
+    # Largeur des vecteurs/fragments écrits PENDANT L'EXTRACTION (cache
+    # partagé, compute_activation_cache_key) : toujours d_core, jamais
+    # d_core+D_EXTRA -- D_EXTRA est un paramètre downstream
+    # (SAEBoostResidualSAE), pas un paramètre d'extraction (cf. docstring de
+    # la clé de cache), et deux runs partageant cette clé peuvent différer
+    # sur D_EXTRA (N1, AUDIT_SAE_2026-08.md §8). Padder ici graverait une
+    # largeur figée par le run qui écrit EN PREMIER dans un artefact partagé
+    # entre runs à D_EXTRA différents. Le padding vers d_core+D_EXTRA, quand
+    # nécessaire, se fait exclusivement en aval, dans ext_fragments_dir
+    # (privé par run, cf. plus bas).
+    d_total_expected = d_core
 
     cache_acts_path      = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
     # Réservoir memmap disque (pas un .pt chargé intégralement en RAM, cf.
@@ -869,9 +910,31 @@ def run_llm_max_pool_pipeline(
         test_texts=test_texts, diff_texts=diff_texts,
         model_id=MODEL_ID, layer=LAYER, hook_type=HOOK_TYPE, dtype=DTYPE,
         sae_id=SAE_ID, n_tokens_extra_train=N_TOKENS_EXTRA_TRAIN,
+        max_length=MAX_LENGTH, sigma_clip=SIGMA_CLIP,
+        skip_first_content_token=SKIP_FIRST_CONTENT_TOKEN,
     )
     _act_cache_dir = shared_activation_cache_dir(_act_cache_key)
     print(f"  [P1] Cache d'extraction partagé : {_act_cache_dir}")
+    # Verrou du cache partagé (N2, AUDIT_SAE_2026-08.md §8) : tient de l'entrée
+    # ci-dessus jusqu'à la fin de l'extraction RAW ci-dessous (relâché juste
+    # avant `d_total = d_core`, cf. plus bas) -- couvre la création des liens
+    # symboliques, la décision cache-hit/miss, et toute la boucle
+    # d'extraction/écriture réservoir, seule section qui touche réellement
+    # `_act_cache_dir`. Le ré-encodage (ext_sae) qui suit n'écrit plus jamais
+    # dans le cache partagé (cf. ext_fragments_dir, N1) et n'a donc plus
+    # besoin de ce verrou. __enter__()/__exit__() manuels (pas de `with`) pour
+    # ne pas ré-indenter tout le bloc d'extraction existant.
+    _act_cache_lock = acquire_shared_cache_lock(_act_cache_dir)
+    _act_cache_lock.__enter__()
+    # Filet de sécurité pour toute sortie qui saute l'__exit__() explicite
+    # plus bas (exception non rattrapée sur un chemin d'erreur du bloc
+    # d'extraction -- OOM, disque plein, etc. -- pas seulement les sorties
+    # anticipées déjà documentées) : atexit tourne sur un déroulement Python
+    # normal (exception non gérée jusqu'au top-level, sys.exit()), pas sur
+    # SIGKILL/segfault, cas déjà couverts par l'auto-expiration du heartbeat.
+    # Idempotent avec l'__exit__() explicite (celui-ci gère déjà un fichier
+    # de verrou absent).
+    atexit.register(lambda: _act_cache_lock.__exit__(None, None, None))
     for _local_path, _shared_name in (
         (cache_acts_path, "p1_all_doc_acts.pt"),
         (cache_residuals_path, "p1_raw_residuals.memmap"),
@@ -920,7 +983,7 @@ def run_llm_max_pool_pipeline(
         fragment_ids = list_fragment_ids(token_fragments_dir)
         if len(fragment_ids) == n_fragmented_expected:
             print("  [P1] Restauration du cache (activations documents et fragments disques)...")
-            all_doc_sae_acts = torch.load(cache_acts_path, map_location="cpu", weights_only=True)
+            all_doc_sae_acts = load_doc_acts_sparse_filler(cache_acts_path)
             _need_extraction = False
             
             if _need_residuals:
@@ -1148,7 +1211,7 @@ def run_llm_max_pool_pipeline(
                 batch = all_texts[i: i + EXTRACTION_BATCH_SIZE]
                 inputs = tokenizer(
                     batch, return_tensors="pt", padding=True,
-                    truncation=True, max_length=512,
+                    truncation=True, max_length=MAX_LENGTH,
                 ).to(DEVICE)
                 # logits_to_keep=1 : seul le hook nous intéresse ici ; sans ça, le
                 # forward calcule par défaut les logits sur TOUTE la séquence et le
@@ -1172,9 +1235,9 @@ def run_llm_max_pool_pipeline(
                 # justifie ce choix).
                 keep_bt = valid_token_mask(
                     inputs["input_ids"], inputs["attention_mask"],
-                    tokenizer, skip_first_content_token=True,
+                    tokenizer, skip_first_content_token=SKIP_FIRST_CONTENT_TOKEN,
                 )
-                keep_bt = norm_outlier_mask(acts, keep_bt, sigma_clip=4.0)
+                keep_bt = norm_outlier_mask(acts, keep_bt, sigma_clip=SIGMA_CLIP)
                 for b in range(acts.shape[0]):
                     doc_global_idx = i + b
                     keep = keep_bt[b]
@@ -1197,20 +1260,17 @@ def run_llm_max_pool_pipeline(
                         token_sae_acts = pretrained_sae.encode(filtered)
 
                         # Stockage SPARSE (CSR) : ~250 Ko/doc au lieu de ~400 Mo dense a width 262k.
-                        d_total_frag = d_core + D_EXTRA if USE_FROZEN_CORE else d_core
-                        if USE_FROZEN_CORE:
-                            doc_sae_vec = torch.cat([
-                                token_sae_acts.max(dim=0).values,
-                                torch.zeros(D_EXTRA, dtype=token_sae_acts.dtype, device=token_sae_acts.device),
-                            ])
-                        else:
-                            doc_sae_vec = token_sae_acts.max(dim=0).values
+                        # Largeur core UNIQUEMENT (jamais D_EXTRA -- N1, cf.
+                        # d_total_expected ci-dessus) : ce fragment/vecteur vit
+                        # dans le cache d'extraction PARTAGÉ, D_EXTRA n'y a pas
+                        # sa place.
+                        doc_sae_vec = token_sae_acts.max(dim=0).values
 
                         _fragment_writer.add(
                             doc_global_idx,
                             token_strings=tokenizer.convert_ids_to_tokens(filtered_ids.tolist()),
-                            acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_total_frag
-                            d_total=d_total_frag,
+                            acts_dense=token_sae_acts,   # nnz core uniquement, shape logique d_core
+                            d_total=d_core,
                             raw_acts=filtered,
                         )
                         all_doc_sae_acts.append(doc_sae_vec.cpu())
@@ -1294,7 +1354,7 @@ def run_llm_max_pool_pipeline(
         _clear_checkpoint(_extraction_progress_path(CACHE_DIR))
 
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
-        torch.save(all_doc_sae_acts, cache_acts_path)
+        save_doc_acts_sparse_filler(all_doc_sae_acts, n_train, n_filler, cache_acts_path)
 
         if USE_FROZEN_CORE and reservoir is not None:
             # Corpus plus petit que N_TOKENS_EXTRA_TRAIN : le buffer préalloué n'a
@@ -1314,8 +1374,23 @@ def run_llm_max_pool_pipeline(
         del llm, tokenizer
         _trim_host_memory()
 
+    # Extraction RAW terminée (cache-hit ou fraîche) -- libère le verrou du
+    # cache partagé (N2) avant d'entrer dans le ré-encodage (privé,
+    # ext_fragments_dir, N1), qui n'en a plus besoin. Une sortie anticipée
+    # PENDANT l'extraction (sys.exit(0), reprise checkpointée) saute cette
+    # libération -- acceptable, cf. docstring acquire_shared_cache_lock
+    # (auto-guérison par expiration du heartbeat, pas de libération garantie
+    # sur toute sortie).
+    _act_cache_lock.__exit__(None, None, None)
+
     d_total = d_core
     active_sae = pretrained_sae
+    # Répertoire de lecture par défaut pour tout consommateur de fragments en
+    # aval (juge, UMAP) -- réassigné à ext_fragments_dir une fois le
+    # ré-encodage terminé (cf. plus bas, N1 AUDIT_SAE_2026-08.md §8) : sans
+    # extension entraînée, les fragments core-only du cache partagé restent
+    # la seule source valide.
+    label_fragments_dir = token_fragments_dir
 
     if USE_FROZEN_CORE:
         frozen_core_path = os.path.join(SAVE_DIR, f"p1_frozen_core_d{D_EXTRA}_k{K_EXTRA}.pt")
@@ -1420,6 +1495,22 @@ def run_llm_max_pool_pipeline(
                 ext_sae = None
 
         if ext_sae is not None:
+            # Répertoire PRIVÉ (SAVE_DIR/cache, jamais symlinké dans le cache
+            # partagé) pour les fragments RÉENCODÉS (core+extra fusionnés) --
+            # distinct de token_fragments_dir (partagé entre runs différant
+            # par K_EXTRA/D_EXTRA/EPOCHS_EXTRA, cf. compute_activation_cache_key).
+            # Avant ce correctif, save_fragment écrivait le résultat fusionné
+            # DANS token_fragments_dir lui-même (individuel prioritaire sur le
+            # shard, cf. load_fragment) et purgeait raw_acts au passage : un
+            # second run de D_EXTRA différent partageant la même clé
+            # d'extraction perdait silencieusement raw_acts (KeyError au
+            # prochain ré-encodage) ou lisait des colonnes extra héritées d'un
+            # AUTRE D_EXTRA -- N1, AUDIT_SAE_2026-08.md §8. token_fragments_dir
+            # reste désormais toujours lecture seule après l'extraction :
+            # aucun consommateur ne doit plus jamais y écrire.
+            ext_fragments_dir = os.path.join(CACHE_DIR, "p1_token_fragments_ext")
+            os.makedirs(ext_fragments_dir, exist_ok=True)
+            label_fragments_dir = ext_fragments_dir
             cache_acts_ext = os.path.join(CACHE_DIR, f"p1_all_doc_acts_ext_d{D_EXTRA}.pt")
             if os.path.exists(cache_acts_ext) and not _need_extraction:
                 all_doc_sae_acts = torch.load(cache_acts_ext, map_location="cpu", weights_only=True)
@@ -1473,7 +1564,7 @@ def run_llm_max_pool_pipeline(
                     for _pos in tqdm(range(_reencode_resume_from),
                                      desc="Reprise (fragments->vecteurs, ré-encodage)"):
                         _di = re_encode_targets[_pos]
-                        all_doc_sae_acts[_di].copy_(doc_maxpool(load_fragment(token_fragments_dir, _di)))
+                        all_doc_sae_acts[_di].copy_(doc_maxpool(load_fragment(ext_fragments_dir, _di)))
                     # p1_eval_raw_tokens.pt (raw_acts du split test, capturés AVANT purge) :
                     # si le run précédent a été coupé pendant ou après la fenêtre
                     # d'évaluation, ce fichier peut déjà contenir une capture partielle --
@@ -1539,9 +1630,9 @@ def run_llm_max_pool_pipeline(
                                 _eval_raw.append(raw_acts.float().cpu())
 
                             csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
-                            save_fragment(token_fragments_dir, i,
+                            save_fragment(ext_fragments_dir, i,
                                           token_strings=frag["token_strings"],
-                                          csr=csr, d_total=d_core + D_EXTRA,  # raw_acts non repassé -> purgé
+                                          csr=csr, d_total=d_core + D_EXTRA,  # raw_acts non repassé -> purgé, jamais dans le cache partagé (N1)
                                           writer=_fragment_writer)
                             all_doc_sae_acts[i].copy_(
                                 doc_maxpool({
@@ -1589,18 +1680,13 @@ def run_llm_max_pool_pipeline(
                 if _eval_raw:
                     torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
 
-                # Nettoyage des shards d'extraction (item 3) : re_encode_targets
-                # couvre TOUS les documents fragmentés (train+test+diff, filler
-                # jamais fragmenté, G7) -- une fois le ré-encodage NATURELLEMENT
-                # complet (jamais sur early-exit, cf. sys.exit(0) ci-dessus), 100%
-                # des documents d'un shard ont désormais un fichier individuel à
-                # jour (save_fragment, prioritaire à la lecture, cf.
-                # load_fragment) : le contenu des shards est entièrement
-                # redondant, le garder doublerait le disque utilisé pour rien.
-                _shards_dir = os.path.join(token_fragments_dir, "shards")
-                if os.path.isdir(_shards_dir):
-                    shutil.rmtree(_shards_dir)
-                    print("  [P1] Shards d'extraction supprimés (redondants après ré-encodage complet).")
+                # Les shards d'extraction (token_fragments_dir) ne sont PLUS
+                # nettoyés ici : depuis le correctif N1 (AUDIT_SAE_2026-08.md
+                # §8), le ré-encodage écrit dans ext_fragments_dir (privé),
+                # jamais dans token_fragments_dir -- ce dernier reste le cache
+                # PARTAGÉ entre runs différant par K_EXTRA/D_EXTRA/EPOCHS_EXTRA
+                # (compute_activation_cache_key), donc jamais "redondant" du
+                # point de vue d'un run tiers qui n'a pas encore ré-encodé.
 
             d_total = d_core + D_EXTRA
             active_sae = ext_sae
@@ -1651,8 +1737,11 @@ def run_llm_max_pool_pipeline(
     )
     top_ext_indices = []
     if USE_FROZEN_CORE and d_total > d_core:
+        # label_fragments_dir = ext_fragments_dir ici (jamais token_fragments_dir,
+        # qui ne contient plus que du core -- N1) : seul le cache privé du
+        # ré-encodage porte des colonnes >= d_core.
         top_ext_indices = _select_features(
-            token_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
+            label_fragments_dir, list(range(n_train)), d_total, N_FEATURES_TO_LABEL,
             lo=d_core, hi=d_total,
         )
 
@@ -1669,20 +1758,13 @@ def run_llm_max_pool_pipeline(
             with open(judge_cache, "r", encoding="utf-8") as f:
                 judge_ext_data = json.load(f)
         else:
-            print(f"  [P1 Judge] Chargement Gemma-3 — labellisation des "
+            print(f"  [P1 Judge] Chargement du juge ({JUDGE_MODEL_ID}) — labellisation des "
                   f"{len(top_ext_indices)} features EXTENSION uniquement...")
-            expert_tokenizer = AutoTokenizer.from_pretrained(
-                MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-            )
-            expert_model = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
-                low_cpu_mem_usage=True,
-                token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-            ).eval()
+            expert_model, expert_tokenizer = load_judge_model(device=DEVICE)
             judge_ext_data = odd_one_out_judge(
                 model=expert_model, tokenizer=expert_tokenizer,
                 feature_indices=top_ext_indices,
-                token_fragments_dir=token_fragments_dir,
+                token_fragments_dir=label_fragments_dir,
                 acts=train_doc_acts, offset=0,
             )
             print("  [P1 Judge] Libération VRAM + malloc_trim...")
@@ -1712,14 +1794,14 @@ def run_llm_max_pool_pipeline(
         texts=test_texts, sae_acts=test_doc_acts, labels=test_labels,
         filename="umap_pipeline1_emails.html",
         title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (Emails EDF, test)",
-        token_fragments_dir=token_fragments_dir, offset=n_train + n_filler, feature_labels=label_map_p1,
+        token_fragments_dir=label_fragments_dir, offset=n_train + n_filler, feature_labels=label_map_p1,
     )
     if diff_texts:
         analyze_with_umap(
             texts=diff_texts, sae_acts=diff_doc_acts, labels=diff_labels,
             filename="umap_pipeline1_diffcorpus.html",
             title=f"Pipeline 1: Gemma-3 L{LAYER} → Max-Pool SAE Acts (energy/sports/support, post-hoc)",
-            token_fragments_dir=token_fragments_dir, offset=n_train + n_filler + n_test, feature_labels=label_map_p1,
+            token_fragments_dir=label_fragments_dir, offset=n_train + n_filler + n_test, feature_labels=label_map_p1,
         )
 
     # Diffing cross-domaine (démonstration, corpus secondaire post-hoc -- cf.
@@ -1739,19 +1821,14 @@ def run_llm_max_pool_pipeline(
         diff_df.to_csv(os.path.join(SAVE_DIR, "p1_diff_energy_sports.csv"), index=False)
 
         if os.environ.get("RUN_DIFF_HYPOTHESIS", "1") == "1":
-            j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
-            j_llm = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
-                low_cpu_mem_usage=True,
-                token=HF_TOKEN, trust_remote_code=True, local_files_only=True
-            ).eval()
+            j_llm, j_tok = load_judge_model(device=DEVICE)
             with torch.no_grad():
                 diff_hypothesis = generate_llm_diff_hypothesis(j_llm, j_tok, diff_df, "Énergie", "Sports")
             print(f"  [Task 1] Hypothèse LLM :\n  {diff_hypothesis}\n")
             del j_llm, j_tok
             _trim_host_memory()
         else:
-            print("  [Task 1] RUN_DIFF_HYPOTHESIS=0 — hypothèse LLM sautée (3e chargement 12B évité).")
+            print("  [Task 1] RUN_DIFF_HYPOTHESIS=0 — hypothèse LLM sautée (rechargement du juge évité).")
 
     freq = (test_doc_acts > 1e-6).float().mean(0)
     keep_npmi = ((freq >= 0.01) & (freq <= 0.5)).nonzero(as_tuple=True)[0][:4000]
@@ -1998,11 +2075,7 @@ def run_f2llm_pipeline(
         with open(judge_cache, "r", encoding="utf-8") as f:
             feature_labels_p2 = json.load(f)
     else:
-        j_tok = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, local_files_only=True)
-        j_llm = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
-            low_cpu_mem_usage=True, local_files_only=True
-        ).eval()
+        j_llm, j_tok = load_judge_model(device=DEVICE)
         # local_gemma_judge attend les activations et textes au niveau PHRASE
         # (pas au niveau document max-poolé) — ce sont les phrases individuelles
         # (test_phrases / test_phrase_emb) qui servent d'exemples au juge LLM.

@@ -25,6 +25,7 @@ import re
 import numpy as np
 import pandas as pd
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 
 from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, SAVE_DIR, CORPUS_SPLIT_SEED
 from src.data.dataset import load_mails_tsv
@@ -82,7 +83,7 @@ def main():
     if not os.path.exists(acts_path):
         acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
     print(f"[intent-probe] Chargement des activations : {acts_path}")
-    all_doc_acts = torch.load(acts_path, map_location="cpu", weights_only=True)
+    all_doc_acts = load_all_doc_acts(acts_path)
     original_train_acts = all_doc_acts[:k_train_original]  # cf. justification dans le docstring du module
 
     # Labels intent_* alignés : train_positions[j] est l'index dans real_texts (0..n_real-1)

@@ -85,6 +85,18 @@ lots différente), donc le réservoir résiduel d'un run repris ≠ celui d'un r
 continu. Scientifiquement bénin (échantillon aléatoire dans les deux cas), mais
 `SEED` ne garantit une reconstruction bit-exacte que pour un run jamais interrompu.
 
+Depuis le cache d'extraction partagé (`sae_shared.py::compute_activation_cache_key`),
+**`SEED` n'a plus le même effet qu'avant son introduction** (N9,
+AUDIT_SAE_2026-08.md §8) : `SEED` n'entre PAS dans la clé de cache (volontaire, la clé
+ne couvre que ce qui affecte l'EXTRACTION -- corpus, modèle, layer, hook, troncature).
+Deux runs ne différant que par `SEED` réutilisent donc le MÊME réservoir de tokens
+extrait ; l'ablation de graine ne fait plus varier que l'initialisation et l'ordre de
+mélange (shuffle) de l'entraînement du SAE, pas le tirage du réservoir Vitter
+lui-même. Tout chiffre "seed dans le bruit" cité d'avant l'introduction du cache
+partagé mesurait un effet de graine plus large (réservoir + init + shuffle) que ce
+qu'une nouvelle ablation de seed mesurerait aujourd'hui (init + shuffle seul) — ne
+pas les comparer directement sans noter cette différence de protocole.
+
 ## Pièges PyTorch/HuggingFace rencontrés
 
 - `@torch.no_grad()` en décorateur sur une fonction **génératrice** ne protège que
@@ -192,9 +204,20 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    significatif entre eux mais ni l'un ni l'autre ne l'est contre `resid_post`
    isolément. Tout le reste (`K_EXTRA`, `D_EXTRA`, volume, seed) reste dans le
    bruit à n=150 — seul le choix de taille du modèle extracteur/juge produit
-   un effet massif et répliqué à chaque palier.
+   un effet massif et répliqué à chaque palier. Le chiffre "seed" ci-dessus
+   date d'avant le cache d'extraction partagé — cf. section Seeds plus haut
+   (N9, AUDIT_SAE_2026-08.md §8) : une nouvelle ablation de seed sous le cache
+   partagé mesure un effet plus étroit (init/shuffle SAE seuls, plus le
+   réservoir de tokens) que ce chiffre historique.
 6. **Indépendance du juge** (uniquement si le corpus de test inclut du texte
    généré par le même modèle que le juge, ex. corpus augmenté) : vérifié
    résolu négativement sur ce projet (`RESULTS_TESTS.md` §48/§50/§52) — à
    revérifier explicitement sur tout nouveau corpus/juge dans cette
-   configuration, ce n'est pas une propriété générique du protocole.
+   configuration, ce n'est pas une propriété générique du protocole. Risque
+   distinct, structurel celui-là : le juge ne doit jamais être rechargé
+   depuis `MODEL_ID` (le modèle dont on extrait les activations) — biais
+   d'auto-préférence démontré et non négligeable (`RESULTS_TESTS.md`
+   §43/§63/§65). `JUDGE_MODEL_ID` (`src/config.py`,
+   `src/sae/judge.py::load_judge_model`) est découplé de `MODEL_ID` pour
+   cette raison ; ne pas réintroduire un rechargement de `MODEL_ID` comme
+   juge dans `saev5.py` ou un script d'audit.

@@ -9,6 +9,10 @@ import math
 import json
 import re
 import hashlib
+import time
+import socket
+import threading
+import contextlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -120,6 +124,19 @@ except ImportError:
         ENERGY_URL_PATTERNS, SPORTS_URL_PATTERNS, SUPPORT_URL_PATTERNS,
     )
 
+try:
+    from src.storage.checkpoint import (
+        atomic_create_exclusive as _lock_atomic_create_exclusive,
+        write_checkpoint as _lock_write_checkpoint,
+        read_checkpoint as _lock_read_checkpoint,
+    )
+except ImportError:
+    from checkpoint import (
+        atomic_create_exclusive as _lock_atomic_create_exclusive,
+        write_checkpoint as _lock_write_checkpoint,
+        read_checkpoint as _lock_read_checkpoint,
+    )
+
 
 # ─── STEERING ───
 
@@ -167,18 +184,26 @@ def compute_activation_cache_key(
     test_texts: List[str], diff_texts: List[str],
     model_id: str, layer: int, hook_type: str, dtype: str,
     sae_id: str, n_tokens_extra_train: int,
+    max_length: int, sigma_clip: float, skip_first_content_token: bool,
 ) -> str:
     """Clé de cache mécanique (R5) pour les artefacts d'extraction PURE
     (résidus bruts du réservoir, activations core max-poolées, fragments
     token-level) -- partageables entre deux runs qui ne diffèrent QUE par des
     paramètres downstream de SAEBoostResidualSAE (K_EXTRA/D_EXTRA/EPOCHS_EXTRA),
     puisque ces artefacts ne dépendent que du modèle, de la couche, du hook,
-    du SAE core, du budget de tokens et du corpus réellement vu à
-    l'extraction. Hash du CONTENU du corpus (pas seulement de sa config de
-    génération : chemins de fichiers, seed) -- robuste à tout changement de
-    logique de génération qui produirait un corpus différent à longueurs
-    égales, sans quoi une collision de clé réutiliserait silencieusement les
-    activations d'un AUTRE corpus (piège cache/checkpoint, `CLAUDE.md`)."""
+    du SAE core, du budget de tokens, du corpus VU à l'extraction (après
+    troncature -- `max_length` fait partie du payload pour cette raison
+    précise, N8, AUDIT_SAE_2026-08.md §8 : le hash du corpus ci-dessous porte
+    sur le texte AVANT troncature, `max_length` est le seul signal qui
+    distingue deux runs dont le texte tronqué diffère à texte source
+    identique) et du masquage des tokens (`sigma_clip`,
+    `skip_first_content_token` -- mêmes arguments passés tels quels à
+    `valid_token_mask`/`norm_outlier_mask`, saev5.py). Hash du CONTENU du
+    corpus (pas seulement de sa config de génération : chemins de fichiers,
+    seed) -- robuste à tout changement de logique de génération qui
+    produirait un corpus différent à longueurs égales, sans quoi une
+    collision de clé réutiliserait silencieusement les activations d'un
+    AUTRE corpus (piège cache/checkpoint, `CLAUDE.md`)."""
     corpus_hash = hashlib.sha1(
         "\n".join(train_texts + volume_filler_texts + test_texts + diff_texts)
         .encode("utf-8", errors="ignore")
@@ -187,6 +212,8 @@ def compute_activation_cache_key(
         "corpus_hash": corpus_hash, "model_id": model_id, "layer": layer,
         "hook_type": hook_type, "dtype": dtype, "sae_id": sae_id,
         "n_tokens_extra_train": n_tokens_extra_train,
+        "max_length": max_length, "sigma_clip": sigma_clip,
+        "skip_first_content_token": skip_first_content_token,
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:20]
 
@@ -198,6 +225,188 @@ def shared_activation_cache_dir(key: str) -> str:
     path = os.path.join(REPO_ROOT, "local_data", "activation_cache", key)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def save_doc_acts_sparse_filler(tensor: "torch.Tensor", n_train: int, n_filler: int, path: str) -> None:
+    """Sauvegarde compacte de `all_doc_sae_acts` (N10, AUDIT_SAE_2026-08.md
+    §8) : la plage filler `[n_train, n_train+n_filler)` est connue a priori
+    et n'est JAMAIS lue en aval (aucun consommateur n'indexe cette plage, cf.
+    saev5.py -- placeholders "jamais lus en aval") -- son contenu ne mérite
+    aucune place sur le cache d'extraction PARTAGÉ et persistant (avant ce
+    correctif, ~42 Go de lignes filler, généralement des zéros, vivaient dans
+    `local_data/activation_cache/<clé>/`, dupliqués par clé de cache -- alors
+    qu'un `SAVE_DIR` individuel jetable les aurait au moins vus supprimés au
+    nettoyage disque). Stocke uniquement les lignes hors filler + assez de
+    métadonnées pour reconstruire un tenseur de la bonne forme, zero-paddé sur
+    la plage filler, via `load_doc_acts_sparse_filler`."""
+    n_total = tensor.shape[0]
+    keep = torch.ones(n_total, dtype=torch.bool)
+    keep[n_train:n_train + n_filler] = False
+    torch.save({
+        "n_total": n_total, "d": tensor.shape[1],
+        "n_train": n_train, "n_filler": n_filler,
+        "dtype": str(tensor.dtype).removeprefix("torch."),
+        "kept_rows": tensor[keep].clone(),
+    }, path)
+
+
+def _reconstruct_sparse_filler_payload(payload: dict) -> "torch.Tensor":
+    dtype = getattr(torch, payload["dtype"])
+    out = torch.zeros(payload["n_total"], payload["d"], dtype=dtype)
+    n_train, n_filler = payload["n_train"], payload["n_filler"]
+    keep = torch.ones(payload["n_total"], dtype=torch.bool)
+    keep[n_train:n_train + n_filler] = False
+    out[keep] = payload["kept_rows"]
+    return out
+
+
+def load_doc_acts_sparse_filler(path: str) -> "torch.Tensor":
+    """Inverse de `save_doc_acts_sparse_filler` : reconstruit un tenseur
+    `[n_total, d]` avec la plage filler `[n_train, n_train+n_filler)`
+    zero-paddée -- équivalent, pour tout consommateur en aval, au tenseur
+    dense original (les lignes filler n'y étaient de toute façon jamais lues
+    qu'à zéro ou en valeurs jamais consommées, cf. docstring ci-dessus)."""
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    return _reconstruct_sparse_filler_payload(payload)
+
+
+def load_all_doc_acts(path: str) -> "torch.Tensor":
+    """Charge un tenseur `all_doc_sae_acts`, qu'il soit au format dense
+    classique (`p1_all_doc_acts_ext_d*.pt`, ré-encodage privé par run, jamais
+    compacté -- les lignes filler n'y sont jamais matérialisées, cf.
+    `build_reencode_targets`) ou au format compact filler-creux
+    (`p1_all_doc_acts.pt`, cache d'extraction PARTAGÉ, N10,
+    AUDIT_SAE_2026-08.md §8). Dispatché sur le CONTENU du fichier (dict vs
+    tenseur), pas sur son nom -- un appelant qui suit la convention de
+    repli `p1_all_doc_acts_ext_d*.pt` puis `p1_all_doc_acts.pt` (une
+    dizaine de scripts d'analyse) n'a pas besoin de savoir laquelle des deux
+    conventions de stockage s'applique."""
+    obj = torch.load(path, map_location="cpu", weights_only=False)
+    if isinstance(obj, dict) and "kept_rows" in obj:
+        return _reconstruct_sparse_filler_payload(obj)
+    return obj
+
+
+class SharedCacheLockTimeout(RuntimeError):
+    """Levée par `acquire_shared_cache_lock` quand `max_wait_s` est dépassé
+    sans obtenir le verrou -- un tiers le tient depuis plus longtemps que
+    `stale_after_s` sans jamais rafraîchir son heartbeat serait un bug (ou un
+    job mort dont le heartbeat a cessé net, cf. docstring) : abandon explicite
+    plutôt qu'un blocage indéfini d'un job dont le budget SLURM est de toute
+    façon borné."""
+
+
+def _shared_cache_lock_owner_id() -> str:
+    """Identité mécanique du détenteur du verrou -- `SLURM_JOB_ID` si présent
+    (cas normal, run soumis via `sbatch`), sinon hostname:pid (run
+    interactif/débogage)."""
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if job_id:
+        return f"slurm:{job_id}"
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+@contextlib.contextmanager
+def acquire_shared_cache_lock(
+    cache_dir: str,
+    heartbeat_interval_s: float = 30.0,
+    stale_after_s: float = 300.0,
+    poll_interval_s: float = 10.0,
+    max_wait_s: float = 6 * 3600.0,
+):
+    """Verrou de création exclusive (`atomic_create_exclusive`, équivalent
+    `O_EXCL` sans fenêtre de contenu partiel, cf. `src/storage/checkpoint.py`)
+    sur `cache_dir/.extraction.lock` (N2, AUDIT_SAE_2026-08.md §8) -- la
+    méthode de travail de ce dépôt lance
+    délibérément des jobs de MÊME clé de cache en parallèle sur plusieurs
+    partitions (course, l'utilisateur annulant le perdant une fois qu'un des
+    deux démarre réellement), mais sans ce verrou, deux jobs qui
+    démarreraient tous les deux leur extraction avant que l'annulation
+    manuelle n'intervienne écriraient concurremment le même memmap/shards/
+    checkpoint de progression -- corruption silencieuse possible.
+
+    Un second processus qui rencontre un verrou actif ATTEND (poll) que le
+    premier le libère, plutôt que d'échouer ou de se replier sur un cache
+    privé -- cohérent avec le workflow de course : le perdant doit de toute
+    façon attendre le résultat du gagnant, dupliquer le travail dans un
+    cache privé serait pire (double coût GPU pour le même résultat). Un
+    verrou dont le heartbeat n'a plus été rafraîchi depuis `stale_after_s`
+    (job mort/tué, ou sortie anticipée par `_GracefulShutdown`/`sys.exit(0)`
+    sans repasser par la libération normale du verrou -- cf. appelant) est
+    considéré abandonné et repris par le prochain prétendant.
+
+    N'essaie PAS de garantir une libération propre sur toute sortie anticipée
+    (`sys.exit(0)` de reprise checkpointée, notamment) : le thread de
+    heartbeat, démon, meurt avec le process sans repasser par `finally` --
+    le verrou s'auto-guérit via l'expiration `stale_after_s` au prochain
+    prétendant plutôt que par une libération explicite. Acceptable ici (un
+    job repris n'est typiquement pas resoumis dans la même minute) mais à
+    garder en tête si `stale_after_s` est un jour resserré."""
+    lock_path = os.path.join(cache_dir, ".extraction.lock")
+    owner = _shared_cache_lock_owner_id()
+    deadline = time.monotonic() + max_wait_s
+
+    while True:
+        # atomic_create_exclusive (src/storage/checkpoint.py) : écrit le
+        # contenu complet dans un fichier temporaire PUIS l'expose sous
+        # lock_path via os.link (échoue atomiquement si lock_path existe déjà)
+        # -- contrairement à O_CREAT|O_EXCL suivi d'une écriture séparée dans
+        # le même fd, aucune fenêtre où un lecteur concurrent verrait
+        # lock_path vide/tronqué et le jugerait à tort corrompu ou périmé.
+        if _lock_atomic_create_exclusive(lock_path, owner=owner, heartbeat=time.time()):
+            break
+
+        stale = True
+        try:
+            info = _lock_read_checkpoint(lock_path)
+            stale = info is None or (time.time() - info.get("heartbeat", 0)) > stale_after_s
+        except (OSError, ValueError):
+            stale = True   # fichier illisible/corrompu : traité comme abandonné
+
+        if stale:
+            try:
+                os.remove(lock_path)
+            except FileNotFoundError:
+                pass
+            continue   # retente l'acquisition immédiatement, sans attendre poll_interval_s
+
+        if time.monotonic() >= deadline:
+            raise SharedCacheLockTimeout(
+                f"{lock_path} : verrou tenu par un autre run depuis plus de "
+                f"{max_wait_s:.0f}s sans expirer -- abandon plutôt que blocage indéfini."
+            )
+        time.sleep(poll_interval_s)
+
+    stop_heartbeat = threading.Event()
+
+    def _heartbeat_loop():
+        while not stop_heartbeat.wait(heartbeat_interval_s):
+            try:
+                # write_checkpoint (tmp + os.replace) : remplacement atomique,
+                # jamais de troncature en place -- même raison que
+                # atomic_create_exclusive ci-dessus (R1, un lecteur concurrent
+                # ne doit jamais voir un contenu partiel).
+                _lock_write_checkpoint(lock_path, owner=owner, heartbeat=time.time())
+            except OSError:
+                pass   # verrou déjà supprimé/volé -- rien à faire ici, cf. libération ci-dessous
+
+    hb_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    hb_thread.start()
+    try:
+        yield
+    finally:
+        stop_heartbeat.set()
+        hb_thread.join(timeout=heartbeat_interval_s + 5)
+        # Ne supprime le fichier que s'il nous appartient TOUJOURS -- jamais
+        # volé entretemps par un tiers qui l'aurait cru abandonné (fenêtre
+        # improbable mais réelle si ce process a été suspendu > stale_after_s
+        # sans que son thread de heartbeat n'ait pu tourner).
+        try:
+            info = _lock_read_checkpoint(lock_path)
+            if info is not None and info.get("owner") == owner:
+                os.remove(lock_path)
+        except (OSError, ValueError):
+            pass
 
 
 # ─── HARNAIS D'ENTRAINEMENT ET CHARGEMENT DU FROZEN-CORE EXTENDED SAE ───

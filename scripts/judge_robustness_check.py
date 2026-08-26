@@ -30,6 +30,7 @@ import sys
 
 import numpy as np
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
@@ -37,6 +38,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
 from src.config import MODEL_ID, HF_TOKEN, DTYPE, SAVE_DIR, CORPUS_SPLIT_SEED
 from src.sae.judge import build_feature_examples_with_control, _apply_chat_and_extract
 from src.data.preparation import build_email_train_test_corpus
+from src.storage.fragment_store import resolve_extension_fragments_dir
 from src.config import LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,7 +48,7 @@ SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
-TOKEN_FRAGMENTS_DIR = os.path.join(CACHE_DIR, "p1_token_fragments")
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 OUT_PATH = os.path.join(CACHE_DIR, "p1_judge_robustness.json")
 
 
@@ -107,7 +109,7 @@ def main():
     if not os.path.exists(all_doc_acts_path):
         all_doc_acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
     print(f"[robustness] Chargement des activations : {all_doc_acts_path}")
-    all_doc_sae_acts = torch.load(all_doc_acts_path, map_location="cpu", weights_only=True)
+    all_doc_sae_acts = load_all_doc_acts(all_doc_acts_path)
     train_doc_acts = all_doc_sae_acts[:n_train]
 
     print(f"[robustness] Chargement du juge : {MODEL_ID}")

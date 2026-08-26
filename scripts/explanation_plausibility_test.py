@@ -33,6 +33,7 @@ import sys
 import numpy as np
 import pandas as pd
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "sae"))
@@ -86,7 +87,7 @@ def load_real_emails_and_acts():
     acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts_ext_d1024.pt")
     if not os.path.exists(acts_path):
         acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
-    all_doc_acts = torch.load(acts_path, map_location="cpu", weights_only=True)
+    all_doc_acts = load_all_doc_acts(acts_path)
     original_train_acts = all_doc_acts[:k_train_original].float()
     real_texts = train_texts[:k_train_original]
     return original_train_acts, real_texts

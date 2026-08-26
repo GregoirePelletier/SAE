@@ -64,6 +64,7 @@ import time
 
 import numpy as np
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 from sklearn.decomposition import PCA
 from sklearn.metrics import adjusted_mutual_info_score, adjusted_rand_score, silhouette_score
 from sklearn.metrics.pairwise import cosine_distances
@@ -94,7 +95,7 @@ def load_test_split(save_dir: str = SAVE_DIR) -> tuple[np.ndarray, list[str]]:
     `scripts/feature_group_reproducibility_test.py`)."""
     cache_dir = os.path.join(save_dir, "cache")
     all_doc_acts_path = os.path.join(cache_dir, "p1_all_doc_acts.pt")
-    all_acts = torch.load(all_doc_acts_path, map_location="cpu", weights_only=True)
+    all_acts = load_all_doc_acts(all_doc_acts_path)
 
     train_texts, _, test_texts, test_labels = build_email_train_test_corpus(
         LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH, seed=CORPUS_SPLIT_SEED,

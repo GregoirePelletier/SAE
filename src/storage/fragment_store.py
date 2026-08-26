@@ -101,6 +101,21 @@ def _pkl_path(d: str, i: int) -> str: return os.path.join(d, f"doc_{i:05d}.pkl")
 SHARD_SIZE = 1000
 
 
+def resolve_extension_fragments_dir(cache_dir: str) -> str:
+    """Répertoire de fragments à lire pour les features EXTENSION (idx >=
+    d_core) -- `<cache_dir>/p1_token_fragments_ext` si présent (run postérieur
+    au correctif N1, AUDIT_SAE_2026-08.md §8 : le ré-encodage écrit désormais
+    dans un répertoire privé, jamais dans le cache d'extraction PARTAGÉ) ;
+    repli sur `<cache_dir>/p1_token_fragments` sinon (run "legacy", antérieur
+    au cache d'extraction partagé -- ex. `results_v10_emails_main/` -- où les
+    fragments fusionnés core+extra vivent directement dans ce répertoire,
+    jamais séparés en deux)."""
+    ext_dir = os.path.join(cache_dir, "p1_token_fragments_ext")
+    if os.path.isdir(ext_dir):
+        return ext_dir
+    return os.path.join(cache_dir, "p1_token_fragments")
+
+
 def _shard_dir(fragments_dir: str) -> str:
     return os.path.join(fragments_dir, "shards")
 

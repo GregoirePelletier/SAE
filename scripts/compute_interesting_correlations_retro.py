@@ -12,6 +12,7 @@ import os
 import sys
 
 import torch
+from src.sae.sae_shared import load_all_doc_acts
 
 from src.analysis.cooccurrence import cooccurrence_graph, find_interesting_pairs
 from src.data.preparation import build_email_train_test_corpus
@@ -46,7 +47,7 @@ def main():
     acts_path = os.path.join(cache_dir, "p1_all_doc_acts_ext_d1024.pt")
     if not os.path.exists(acts_path):
         acts_path = os.path.join(cache_dir, "p1_all_doc_acts.pt")
-    all_doc_acts = torch.load(acts_path, map_location="cpu", weights_only=True)
+    all_doc_acts = load_all_doc_acts(acts_path)
     test_doc_acts = all_doc_acts[n_train:n_train + n_test]
     print(f"[retro-corr] test_doc_acts: {test_doc_acts.shape}")
 

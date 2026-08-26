@@ -57,7 +57,7 @@ from src.data.dataset import load_mails_tsv
 from src.data.preparation import build_email_train_test_corpus
 from src.sae import load_gemma_scope_sae
 from src.sae.frozen_core import SAEBoostResidualSAE
-from src.sae.sae_shared import steer_and_decode
+from src.sae.sae_shared import steer_and_decode, load_all_doc_acts
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -105,7 +105,7 @@ def load_real_email_acts_and_intents():
     acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts_ext_d1024.pt")
     if not os.path.exists(acts_path):
         acts_path = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
-    all_doc_acts = torch.load(acts_path, map_location="cpu", weights_only=True)
+    all_doc_acts = load_all_doc_acts(acts_path)
     original_train_acts = all_doc_acts[:k_train_original].float().numpy()
 
     row_indices_for_train_original = [kept_row_indices[i] for i in train_positions]
