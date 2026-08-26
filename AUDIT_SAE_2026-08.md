@@ -10,22 +10,27 @@ appliqués et de leur vérification (jobs GPU, tests d'équivalence) vit dans `g
 ici — ce document ne porte que ce qui reste à traiter.
 
 B1/B2/fallback layer=24/B7/B6/Latent Terms sont tranchés (§5/§7 ci-dessous, détail et
-chiffres dans `RESULTS_TESTS.md` §77-§82). Priorité actuelle : la partie "fidélité aux
-papiers" (§1) reste très majoritairement à faire (HypothesisVerifier, NPMI_verified,
-clustering LLM, retrieval réel, App I) — voir §7 pour l'état précis et les jobs GPU en
-cours au moment de la dernière mise à jour de ce document.
+chiffres dans `RESULTS_TESTS.md` §77-§82). HypothesisVerifier, NPMI_verified, clustering
+LLM, génération structurée de diffing (App. D.2), retrieval réel (RRF+rerank+RBO) sont
+implémentés et testés (§7/§8) ; App. I a son calcul F1 prêt mais pas exécuté (fragments
+manquants, extraction fraîche nécessaire, coût non engagé sans confirmation). Voir §7/§8
+pour l'état précis et les jobs GPU en cours au moment de la dernière mise à jour de ce
+document.
 
 ---
 
 ## 1. Fidélité aux papiers
 
-- **interp-embed, Diffing** : manquent (a) relabellisation des top-200 latents avant
-  génération d'hypothèses (App. D.2, seuil 0,03), (b) `HypothesisVerifier` + taux de
-  vérification (App. K.1, *la* métrique de la Figure 11 — sans elle aucun chiffre de
-  diffing n'est comparable au papier), (c) `diff_features_multi`, (d)
-  `limit_feature_differences`. `generate_llm_diff_hypothesis` produit une hypothèse texte
-  libre là où App. D.2 impose un JSON structuré à ≤10 hypothèses avec
-  `percentage_difference`/`confidence` — non comparable en l'état.
+- **interp-embed, Diffing** : (b) `HypothesisVerifier` + taux de vérification (App. K.1)
+  implémentés, testés, mesurés (RESULTS_TESTS.md §84). (a) **génération JSON structurée
+  App. D.2 implémentée** cette session (`src/analysis/diff_hypothesis_generator.py`,
+  prompt verbatim, ≤N hypothèses avec `percentage_difference`/`confidence`/`feature_ids` ;
+  sélection top-200/seuil 0,03 par différence de FRÉQUENCE — pas log-odds-ratio —
+  `src/analysis/cooccurrence.py::select_top_diff_features_by_frequency`), pipelinée avec
+  `HypothesisVerifier` (`scripts/diffing_structured_hypotheses_test.py`, job 45750 lancé,
+  résultat en attente). `generate_llm_diff_hypothesis` (texte libre) reste pour le résumé
+  affiché dans `results.json`, coexiste avec la génération structurée sans la remplacer.
+  Manquent encore (c) `diff_features_multi`, (d) `limit_feature_differences`.
 - **interp-embed, Corrélations** : manquent (a) filtre LLM des latents syntaxiques (E.1),
   (b) filtre des paires triviales co-activées sur le même token, (c) NPMI_verified (juge
   reclasse *i*/*j* indépendamment puis recalcule le NPMI — toute la Figure 4 du papier),
@@ -44,14 +49,28 @@ cours au moment de la dernière mise à jour de ce document.
   (`src/analysis/metrics.py::normalize_by_p90_and_score`). Métriques App. G implémentées
   et testées (`src/analysis/metrics.py::average_precision/precision_at_k/
   mean_average_precision/mean_precision_at_k/reciprocal_rank_fusion/rank_biased_overlap`,
-  `tests/test_retrieval_metrics.py`, écarts documentés `docs/references.md`). Manque
-  encore l'intégration : le rerank LLM des latents (prompt App. G disponible,
-  `docs/PDF_APPENDICES_EXTRACT.md`), et le script d'évaluation qui les appelle sur de
-  vraies requêtes/documents — aucune évaluation retrieval chiffrée n'existe à ce jour,
-  seuls les blocs de calcul sont prêts.
-- **App. I (taille du modèle lecteur, 12B vs 27B)** : protocole F1 latent-vs-juge absent.
-  Tant qu'il n'est pas écrit, la comparaison 12B/27B ne peut être arbitrée que par le taux
-  odd-one-out, instable à 31% au niveau d'une feature (`CLAUDE.md`, §13.1).
+  `tests/test_retrieval_metrics.py`, écarts documentés `docs/references.md`). **Intégration
+  faite cette session** : `scripts/latent_retrieval_precision_eval.py` combine désormais
+  Latent Terms+TF-IDF par RRF, reranke le top 50 par juge LLM pointwise
+  (`src/analysis/retrieval_rerank.py` — écart documenté R6, le prompt de reranking exact
+  du papier n'est pas publié), et calcule le RBO (p=0,98) entre Latent Terms et TF-IDF sur
+  les 4 requêtes déjà validées, plus MAP/MP@10 agrégées (job 45745 lancé, résultat en
+  attente). Reste : toujours seulement 4 requêtes (une par intention), pas un benchmark
+  IR à grande échelle (BEIR).
+- **App. I (taille du modèle lecteur, 12B vs 27B)** : le calcul F1 latent-vs-juge est
+  désormais implémenté et testé (`src/analysis/reader_size_ablation.py::
+  f1_activation_vs_judge`/`compute_reader_size_ablation` — F1 entre activation réelle
+  binarisée et classification du juge via `hypothesis_verifier.verify_hypotheses` avec une
+  seule hypothèse, médiane sur l'échantillon de latents comme le papier, pas la moyenne).
+  **Non exécuté cette session** : nécessite l'activation par-document du latent sur un
+  domaine ENTIER (pas seulement les exemples déjà en cache) pour les paliers 12B et 27B —
+  leurs fragments token-level (`results_v27_.../results_v31_...`) ont été supprimés par le
+  nettoyage disque de la session précédente, donc une extraction fraîche serait nécessaire
+  pour au moins un des deux paliers avant de pouvoir lancer ce calcul. Coût non trivial
+  (extraction complète, plusieurs heures GPU par palier), pas engagé sans confirmation —
+  le cluster était déjà chargé (4-5 jobs en file) au moment où cet item a été atteint.
+  Jusqu'à ce rerun, la comparaison 12B/27B reste arbitrée par le taux odd-one-out, instable
+  à 31% au niveau d'une feature (`CLAUDE.md`, §13.1).
 - **SAE Boost — point de vigilance non résolu par le correctif d'encodage** : l'ancien
   encodeur (sur `e`) évitait par construction les activations massives de `x`
   (norme ~1e5) ; le nouveau (sur `x`) les expose, atténuées seulement par
@@ -82,11 +101,12 @@ cours au moment de la dernière mise à jour de ce document.
   le résultat de référence. `load_or_train_latent_terms_sae` n'a toujours aucun mécanisme
   de reprise (R1), sans conséquence tant que le run tient dans le budget `--time`.
 - **Latent Terms — évaluation limitée** : `latent_retrieval_precision_eval.py` calcule
-  Precision@10/@20 contre TF-IDF sur seulement 4 requêtes paraphrasées (une par intention,
-  pas de réplication), avec un label de pertinence toujours basé sur le même filtre regex
-  faible (`INTENT_KEYWORDS_FR`, cf. B6 ci-dessous) — à garder étiqueté comme évaluation
-  indicative, pas benchmark IR (pas de MAP/nDCG/BEIR — métriques désormais disponibles,
-  `src/analysis/metrics.py`, mais pas encore branchées sur ce protocole).
+  Precision@10/@20 (+ MAP/MP@10 désormais, cf. plus haut) contre TF-IDF/RRF/RRF+rerank sur
+  toujours seulement 4 requêtes paraphrasées (une par intention, pas de réplication), avec
+  un label de pertinence basé sur `INTENT_KEYWORDS_FR` — resserré cette session (N5,
+  AUDIT_SAE_2026-08.md §8, motif "remboursement" débarrassé de son bruit verbal
+  "d'avoir"/"l'avoir") mais toujours un label FAIBLE (lexical, pas une annotation humaine)
+  — à garder étiqueté comme évaluation indicative, pas benchmark IR (pas de nDCG/BEIR).
 - **Stockage de `e` en int8, à reformuler** : la correction de fidélité SAE Boost (encodeur
   lit `x`) rend caduque l'idée initiale de stocker `e` à la place de `x` — l'encodeur a
   maintenant besoin de `x`. Quantifier `x` en int8 par ligne est dangereux ici précisément
@@ -306,5 +326,479 @@ pertinent maintenant que le palier 27B existe réellement, §82).
 
 **Qwen3.8-27B-FP8** (`scripts/imdb_genre_diffing_test.py`, hors pipeline SAE) : téléchargé,
 vérifié structurellement complet (66 shards, `quantization_config` natif e4m3), ancien
-checkpoint bf16 complet (52 Go) supprimé — mais jamais exécuté en conditions réelles
-depuis le changement de checkpoint, à vérifier avant de citer un résultat produit avec.
+checkpoint bf16 complet (52 Go) supprimé — jamais exécuté en conditions réelles depuis
+le changement de checkpoint, job de vérification relancé (45443, h100, PENDING à la
+dernière vérification ; `results.json` de l'ancien juge bf16/int8 déplacé vers
+`results.json.bak_old_bf16int8_checkpoint` avant relance — sinon la logique de reprise du
+script aurait sauté les 6 genres déjà présents et n'aurait jamais rechargé le nouveau
+juge).
+
+**Juge LLM découplé de l'extracteur (`JUDGE_MODEL_ID`, `src/config.py`)** : jusqu'à ce
+correctif, `odd_one_out_judge`/`local_gemma_judge`/`generate_llm_diff_hypothesis`
+(les 3 usages de juge LLM de `saev5.py`, Pipeline 1 ET 2) rechargeaient `MODEL_ID` —
+le même checkpoint Gemma-3 que celui dont on extrait les activations, jugeant ses
+propres features. §43/§63/§65 (`RESULTS_TESTS.md`) avaient déjà mesuré que le taux
+d'interprétabilité n'est PAS robuste au choix du juge (45,3% avec gemma-3-12b-it vs
+24,7% avec gemma-3-4b-it, écart robuste à 2 graines) mais ne pouvaient pas isoler
+biais d'auto-préférence vs simple effet de capacité, faute d'un juge de famille
+différente et de capacité comparable en cache local — c'est exactement ce que
+Qwen3.8-27B-FP8 apporte maintenant. `JUDGE_MODEL_ID` (défaut : Qwen3.8-27B-FP8) est
+désormais indépendant de `MODEL_ID` dans tout le pipeline principal ;
+`src/sae/judge.py::load_judge_model` centralise le chargement (repli
+`AutoModelForImageTextToText`/`AutoModelForCausalLM`, cf. docstring) et est réutilisé
+par `scripts/imdb_genre_diffing_test.py` et `scripts/judge_model_separation_test.py`
+(qui gagne aussi un tag de juge dérivé mécaniquement dans son nom de fichier de
+sortie — l'ancien nommage ne gardait que la seed, collision silencieuse garantie
+entre deux juges alternatifs différents testés à la même seed).
+`pytest tests/ -q` reste vert (194/195, seul échec pré-existant et sans rapport :
+`test_check_docs_clean`).
+
+**Comparaison croisée Gemma/Qwen lancée** (job 45445, h100,
+`scripts/judge_model_separation_test.py` avec `ALT_JUDGE_MODEL_ID=Qwen3.8-27B-FP8`,
+rejuge les mêmes 150 features déjà en cache que §43/§63/§65) : **résultat encore à
+écrire dans `RESULTS_TESTS.md` (§83) dès que le job termine** — c'est la mesure qui
+tranche entre auto-préférence et effet de capacité. Premier essai (45444) OOM sur
+a100 (39,49 Go, `AutoModelForImageTextToText` échoue puis le repli
+`AutoModelForCausalLM` OOM aussi à l'allocation du cache mémoire) — les cartes a100
+de ce cluster n'ont pas la marge pour Qwen3.8-27B-FP8 (~31 Go de poids) une fois
+l'overhead de génération et le corpus d'activations ajoutés ; h100 obligatoire pour
+tout chargement de ce juge (déjà le choix de `run_imdb_genre_diffing_test.slurm`,
+`slurm/analysis/run_judge_model_separation_qwen.slurm` corrigé en cohérence).
+
+**Caches judge existants non invalidés** : `results_v10_emails_main/cache/p1_judge_labels_extended.json`
+et `p2_feature_labels.json` (référence du dashboard Streamlit, datés du 17/07, produits
+par l'ancien code auto-jugeant gemma-3-12b-it) n'ont PAS été déplacés/régénérés — un
+rerun complet du pipeline principal sur ce `SAVE_DIR` chargerait encore silencieusement
+ce cache Gemma via la logique `if os.path.exists(judge_cache)`. Décision volontaire de
+ne pas y toucher cette session (coût d'un rerun complet du pipeline non chiffré, actif
+« référence dashboard » à ne pas casser sans le vouloir) — à régénérer explicitement
+avant de citer un chiffre du dashboard comme jugé par Qwen.
+
+**HypothesisVerifier (App K.1) implémenté** (`src/analysis/hypothesis_verifier.py`,
+`tests/test_hypothesis_verifier.py`, 6 tests, CPU/mock uniquement) : adaptateur de
+`external/interp_embed/paper/diffing/hypothesis_verifier.py::HypothesisVerifier` vers
+le juge local du dépôt (leur code appelle une API OpenAI/OpenRouter, incompatible avec
+ce dépôt) — prompt repris verbatim du PDF (§K.1) plutôt que du léger écart présent dans
+le code des auteurs (détail dans le docstring du module). `verify_hypotheses` (matrice
+hypothèse × document) + `compute_verification_metrics` (`verification_rate` = fraction
+d'hypothèses dont la différence de fréquence vérifiée dépasse 1% ; `coverage` = fraction
+des documents cible couverts par au moins une hypothèse valide) implémentent les deux
+métriques définies Figures 11/12 du papier. C'était le plus gros gap "fidélité papier"
+identifié (§1) : rien dans le diffing n'était comparable au papier sans ça.
+
+**Première mesure réelle lancée** (job 45471, h100,
+`scripts/diffing_hypothesis_verification_test.py`) : reprend les 10 hypothèses les plus
+significatives (sens énergie>sports, triées par q) de `p1_diff_energy_sports.csv`
+(features SAE déjà labellisées), reconstruit un corpus energy/sports frais
+(`prepare_domain_dataset`, 40 documents/domaine, FineWeb2-fr) et les vérifie avec le
+juge Qwen. **Résultat encore à écrire dans `RESULTS_TESTS.md` (§84, après §83 pour la
+comparaison Gemma/Qwen) dès que le job termine.**
+
+**NPMI_verified + Clustering LLM implémentés** (`src/analysis/correlations_verified.py`,
+`src/analysis/clustering_llm.py`, `tests/test_correlations_verified.py` +
+`tests/test_clustering_llm.py`, 20 tests, CPU/mock/synthétique uniquement,
+`pytest tests/ -q` toujours vert). Formules retrouvées dans le CORPS PRINCIPAL du PDF
+(pas seulement les Appendices déjà extraites dans `docs/PDF_APPENDICES_EXTRACT.md`) via
+`pypdf` (`.venv` du dépôt, aucun outil système requis) — le z-score de conductance
+notamment était marqué "EXTRACTION INCERTAINE" dans `docs/PDF_APPENDICES_EXTRACT.md`
+ligne 545, retrouvé page 7 : *"the z-score of each cluster's conductance in dense
+embedding space relative to a random sample (lower = tighter)"*.
+
+- `correlations_verified.py` : `filter_syntactic_labels` (K.2, prompt verbatim),
+  `is_trivial_same_token_pair` (E.1, réutilise `fragment_store.feature_column`, pas de
+  nouvelle lecture de tenseur), `verify_pair_presence` + `compute_verified_npmi` (E.1/E.3,
+  même formule NPMI que `cooccurrence.compute_npmi`, pas de réinvention),
+  `conditional_occurrence` (CO=max(P(i|j),P(j|i)), E.1).
+- `clustering_llm.py` : `generate_keywords` + `select_latents_union` (App F.1, remplace
+  le `axis_query` unique de `targeted_clustering_by_axis`), `generate_cluster_labels`
+  (App F.1), `compute_cluster_accuracy` (§4.3 p.7 + prompt système K.3),
+  `conductance`/`conductance_zscore` (graphe k-NN networkx sur embeddings denses, null
+  par échantillons aléatoires de même taille — validé sur 2 blobs synthétiques bien
+  séparés : conductance quasi nulle, z très négatif, cohérent avec "lower=tighter").
+- **Bug corrigé au passage** (pas une divergence documentée, un vrai bug) :
+  `targeted_clustering_by_axis` utilisait `SpectralClustering(affinity="cosine")` sur
+  activations binarisées — le papier utilise l'affinité de **Jaccard**, pas cosine (deux
+  métriques différentes sur un vecteur binaire). Corrigé (matrice de similarité Jaccard
+  précalculée, `affinity="precomputed"`), plus un paramètre `keywords` optionnel qui
+  bascule vers `select_latents_union` (cap `max_docs_for_jaccard=5000` ajouté pour la
+  matrice O(n²), R4 — le corpus test actuel ~2200 docs reste très en dessous).
+- **Limitation architecturale découverte en cours de route** : `saev5.py` exécute tout
+  son pipeline au niveau MODULE (pas de garde `if __name__ == "__main__":`) — il ne peut
+  donc pas être importé comme bibliothèque (`import src.sae.saev5` déclenche le run
+  complet). `select_latents_by_similarity`/`_embed_bge_m3` ont dû être dupliqués (courts,
+  documentés comme tels) dans `scripts/clustering_llm_test.py` plutôt que réutilisés.
+  Non corrigé cette session (risque de déstabiliser le point d'entrée principal sans test
+  complet) — à corriger si `saev5.py` doit un jour être importé ailleurs que comme script.
+
+**Deux jobs de validation lancés** : 45473 (h100, `npmi_verified_test.py`, 8 paires
+candidates parmi les features d'extension déjà labellisées, filtre syntaxique+trivial,
+vérification sur 60 documents frais) et 45474 (h100, `clustering_llm_test.py`, requête
+"type de réclamation client", 4 clusters, 300 documents, chaîne complète mots-clés→
+union→Jaccard→labels→accuracy→z-conductance). **Résultats encore à écrire dans
+`RESULTS_TESTS.md` (§85 NPMI_verified, §86 clustering) dès qu'ils terminent.**
+
+**Incident de session (les 7 jobs ci-dessus ont TOUS échoué, deux causes distinctes,
+toutes deux corrigées) :**
+
+1. **`NameError: JUDGE_MODEL_ID` dans `saev5.py`** (45439 1B, 45440 layer12) : le
+   découplage juge/extracteur (plus haut dans ce document) ajoutait `JUDGE_MODEL_ID` dans
+   un f-string de log sans l'importer depuis `src.config` dans l'espace de noms de
+   `saev5.py` — les DEUX jobs ont fait l'extraction COMPLÈTE (2h37/2h55, cache d'extraction
+   partagé confirmé fonctionnel — "[P1] Cache d'extraction partagé" présent dans les deux
+   logs) puis planté juste avant le chargement du juge, sur cette seule ligne. Corrigé
+   (import ajouté, `src/sae/saev5.py:47`). Un smoke-test d'import fait plus tôt dans la
+   session (`python src/sae/saev5.py`, arrêt attendu sur l'accès réseau HF) ne couvrait
+   PAS ce point du flux — il s'arrêtait avant, à une étape antérieure du pipeline. Leçon :
+   un smoke-test d'import ne vaut que jusqu'au point où il s'arrête, pas au-delà.
+   `pyflakes` (installé cette session, `.venv`) aurait détecté ce `NameError` par analyse
+   statique sans dépenser de GPU — à faire systématiquement sur `saev5.py` après toute
+   édition touchant un chemin non exercé par `pytest tests/ -q` (qui ne couvre que des
+   fonctions isolées, jamais `saev5.py` de bout en bout, cf. limitation notée plus haut
+   sur l'absence de garde `if __name__ == "__main__"`). Deuxième signal `pyflakes` sur
+   `analyze_with_umap::sae_active` vérifié FAUX POSITIF (fermeture Python standard,
+   confirmé par exécution isolée de la fonction) — pas d'action nécessaire.
+2. **Qwen3.8-27B-FP8 ne peut pas générer sans le paquet PyPI `kernels`** (45443, 45445,
+   45471, 45473, 45474) : le chargement du checkpoint (`from_pretrained`) réussit, mais le
+   premier appel `generate()` échoue (`finegrained-fp8 kernel requires the kernels
+   package`) — jamais détecté avant car aucun job Qwen n'avait atteint un vrai appel de
+   génération jusqu'ici. `kernels` installé (`uv add`/`uv pip install`) dans les DEUX venvs
+   concernés, à des versions DIFFÉRENTES et incompatibles entre elles — piège trouvé en
+   corrigeant : `external/interp_embed/.venv` (transformers 5.15.0) exige
+   `kernels>=0.16.0,<0.17.0` (version demandée explicitement par son propre message
+   d'erreur), mais appliquer la MÊME contrainte au `.venv` principal (transformers 5.12.1)
+   a cassé l'import de `transformers` lui-même dans toute la suite `pytest`
+   (`ValueError: Either a revision or a version must be specified`,
+   `transformers/integrations/hub_kernels.py`) — chaque venv a sa propre contrainte
+   `kernels`, dérivée de `importlib.metadata.requires('transformers')`, jamais supposée
+   égale entre les deux. `.venv` : `kernels>=0.12.0,<0.13` (ajouté à `pyproject.toml`
+   via `uv add`, donc verrouillé dans `uv.lock`) ; `external/interp_embed/.venv` :
+   `kernels>=0.16.0,<0.17.0` (installé directement dans le venv, PAS dans son
+   `pyproject.toml` — dépôt vendorisé externe, pas le nôtre). `pytest tests/ -q` revérifié
+   vert après coup (217/218, seul échec pré-existant sans rapport). **Le juge Qwen n'a
+   encore JAMAIS produit une génération réussie de bout en bout à ce stade** — les 7 jobs
+   ci-dessus viennent d'être relancés avec les deux correctifs ; premier vrai test de
+   `load_judge_model` en conditions réelles.
+
+**Nettoyage suite tests/ (demande explicite)** : `test_bfloat16.py` et `test_checkpoint.py`
+supprimés (les deux testaient explicitement AUCUN code du dépôt, déjà signalés comme tels
+par un audit antérieur sans jamais être retirés — `test_checkpoint.py` entrait de plus en
+collision de nom avec `test_checkpoint_resume.py`, le vrai test du module checkpoint) ;
+`test_interp_embed_diff.py::test_corpus_diff_stats_vs_interp_embed` supprimé (code mort
+confirmé empiriquement — `interp_embed` n'est importable dans AUCUN venv qui exécute
+`tests/`, le test ne faisait jamais que son `return` précoce). Revue complète des 194 tests
+pré-existants faite fichier par fichier ; le reste jugé solide (régressions documentées,
+assertions non tautologiques, plusieurs tests ayant eux-mêmes déjà attrapé un bug réel en
+étant écrits, ex. `test_retrieval.py` sur un piège d'indexation CSR/CSC).
+
+**Qwen3.8-27B-FP8 abandonné, remplacé par Qwen3.8-27B bf16** : diagnostic complet fait
+(cf. item 2 ci-dessus) — `deep-gemm` (chemin rapide) n'a de binaire précompilé qu'à partir
+de torch>=2.9 (repo HF vérifié : aucune variante en dessous de torch29, ce dépôt est en
+torch==2.6.0) ; son repli Triton (`kernels-community/finegrained-fp8`) télécharge et
+s'importe, mais référence `torch.float8_e8m0fnu`, absent de torch==2.6.0. Décision
+utilisateur : re-télécharger le bf16 (`Qwen/Qwen3.8-27B`, 55,6 Go, non gated) plutôt que de
+monter torch (risque sur sae_lens/transformer_lens, non exploré) ou changer de modèle.
+Téléchargé vers `models/Qwen3.8-27B` (`snapshot_download`, depuis le nœud frontal comme
+`download_sae.py` — pas un calcul, un transfert réseau). `JUDGE_MODEL_ID` (défaut,
+`src/config.py`), `load_judge_model` (`src/sae/judge.py` — `torch_dtype="auto"` ajouté,
+absent avant, aurait chargé en fp32 par défaut et doublé la VRAM/le temps de chargement
+pour un checkpoint bf16 non pré-quantifié), `scripts/imdb_genre_diffing_test.py`
+(`JUDGE_MODEL_PATH`), `slurm/analysis/run_judge_model_separation_qwen.slurm`
+(`ALT_JUDGE_MODEL_ID`) mis à jour vers le nouveau chemin ; `--mem` remonté à 96G sur les 4
+scripts slurm juge Qwen (poids bf16 plus gros que FP8). L'ancien checkpoint FP8
+(`models/Qwen3.8-27B-FP8`, ~31 Go) laissé sur disque (pas supprimé — 6,4 To libres,
+aucune urgence) plutôt que de le nettoyer sans le vouloir.
+
+**Bf16 téléchargé, jobs relancés (45614/45615/45618), DEUX terminés sans planter —
+mais résultats invalidés à l'inspection** : `interp_rate_alternative: 0,0/150` (45615,
+comparaison juge) et `acc=0,000` sur les 4 clusters (45618, clustering) sont tous les deux
+des artefacts, pas des résultats — un tirage aléatoire sur l'odd-one-out (10 items)
+donnerait déjà ~10%, 0 exact sur 150 est le signal. Cause : Qwen3.8-27B active par défaut
+un préambule `<think>...</think>` (mode raisonnement Qwen3, template Jinja du checkpoint,
+jamais désactivé dans aucun appel `apply_chat_template` du dépôt) qui consomme à lui seul
+`max_new_tokens=8` (étape odd-one-out d'`odd_one_out_judge`) sans jamais atteindre la
+réponse — confirmé en clair dans le log 45618 : la "génération de mots-clés" a produit
+comme premier "mot-clé" le préambule de raisonnement lui-même, tronqué en plein mot à la
+limite de tokens. `enable_thinking=False` ajouté à `_batched_generate`
+(`src/sae/judge.py`, seul point d'appel `apply_chat_template` utilisé par
+`odd_one_out_judge`/`local_gemma_judge`/les 3 nouveaux modules `*_verified`/
+`hypothesis_verifier`/`clustering_llm`) et à `imdb_genre_diffing_test.py`. Argument
+silencieusement ignoré par les templates qui ne le déclarent pas (Gemma, vérifié
+empiriquement avant déploiement) — sans risque de régression sur le juge Gemma existant.
+`_FakeTokenizer` de `test_batched_generate_length_sort.py` avait une signature
+`apply_chat_template` trop stricte pour tolérer ce nouveau kwarg (échec immédiat en test,
+pas en job) — élargie en `**kwargs`, comme le vrai tokenizer. `pytest tests/ -q` revérifié
+vert (217/218). Les DEUX résultats corrompus déplacés (pas supprimés) en
+`*.bak_thinking_mode_bug` ; jobs 45616/45617 (encore en cours au moment du diagnostic)
+annulés plutôt que laissés produire le même artefact. Tous les jobs juge Qwen relancés
+(45619-45622 + 45614 imdb).
+
+**45619 (comparaison Gemma/Qwen) terminé, résultat vérifié bon cette fois** (labels
+lisibles inspectés à la main, pas seulement le taux agrégé) : **RESULTS_TESTS.md §83**.
+Qwen3.8-27B juge 78,7% (118/150) interprétable contre 45,3% (68/150) pour
+gemma-3-12b-it auto-jugé — écart massif (McNemar apparié, p=1,9e-8) mais dans le sens
+OPPOSÉ à l'hypothèse d'auto-préférence testée (un biais d'auto-préférence prédirait
+gemma-3-12b-it plus généreux avec lui-même, pas 74% plus sévère). Ne tranche pas "Qwen
+meilleur juge" vs "Qwen plus complaisant" — détail et limites dans §83.
+
+**45620 (App K.1, hypothesis verification) terminé, résultat sain (mix valide/invalide,
+taux non dégénérés — pas d'artefact de type "thinking mode")** : **RESULTS_TESTS.md §84**.
+verification_rate=40% (4/10 hypothèses), coverage=92,5% des documents énergie — 6 des 10
+hypothèses SAE les mieux classées par NPMI/q-value (run archivé) ne se répliquent pas sur
+un corpus frais à seuil 1%. Détail et limites (n=10 petit, IC large) dans §84.
+
+**45621 (NPMI_verified) terminé mais résultat écarté après inspection** : les 6 paires
+vérifiées avaient toutes NPMI_verified=CO=1,000 exactement — suspect (0 bugs de
+génération cette fois, mais un vrai gap méthodologique dans `npmi_verified_test.py` : le
+script sélectionnait les paires au NPMI brut le plus fort SANS le filtre de dissimilarité
+sémantique des labels que l'Appendix E.1 du papier impose explicitement (son propre
+exemple motivant : "dog" et "pet") — vérifié : les 6 paires étaient toutes des
+quasi-synonymes ("Réclamation Client"/"Réclamations Clients", "Numéro Téléphone"/
+"Coordonnées"...), corrélation triviale et attendue, pas un résultat "intéressant" au sens
+du papier. Filtre ajouté (embedding bge-m3 des labels, seuil sim<0,2, même convention que
+`cooccurrence.find_interesting_pairs`) ; matrice de présence brute désormais sauvegardée
+dans le JSON de sortie (pas seulement les stats agrégées) pour diagnostiquer un résultat
+suspect sans tout relancer. Ancien résultat déplacé (pas supprimé) en
+`npmi_verified.json.bak_no_dissimilarity_filter`. Relancé (job 45623).
+
+**45623 (NPMI_verified, avec filtre dissimilarité) terminé mais 0 paires candidates** :
+0 paire (NPMI>0.3, sim label<0.2) parmi les 68 features interprétables — le filtre est
+peut-être trop strict pour ce petit ensemble (68 features d'un domaine narrow, emails de
+réclamation client, où les concepts co-occurrents sont probablement aussi souvent
+sémantiquement proches). Pas encore tranché : diagnostic lancé (job 45630, a100, léger —
+bge-m3 seul, pas de rechargement du juge — `scripts/npmi_similarity_diagnostic.py`,
+affiche la distribution complète (npmi, sim) pour calibrer un seuil justifié plutôt que
+d'en choisir un au hasard). **§85 pas encore écrit, en attente de ce diagnostic.**
+
+**45622 (clustering LLM, 2e tentative avec le correctif thinking) terminé, résultat sain**
+(mots-clés cohérents, labels de cluster cohérents, accuracy et z-conductance non
+dégénérés, variance inter-cluster qualitativement cohérente avec l'observation du papier
+"SAE clusters ... generally higher variance across clusters") : **RESULTS_TESTS.md §86**.
+
+**45614 (imdb, vérification checkpoint) terminé, résultat sain** (scores variés 0,0-1,0,
+labels par genre cohérents, SAE avg=0,603/LLM baseline=0,867 vs publié 0,75/0,90) —
+confirme que le juge Qwen bf16 fonctionne aussi sur une tâche de génération réelle (pas
+seulement odd-one-out), tâche originelle #4 du handoff de session close. Pas de nouvelle
+section RESULTS_TESTS.md (script de démonstration/smoke-test, `slurm/validation/`, pas un
+§N).
+
+**Diagnostic 45630 terminé, seuil recalibré** : parmi les 165 paires NPMI>0,3, similarité
+label observée entre 0,369 et 1,000 (médiane 0,514) — le seuil absolu du papier (sim<0,2,
+App E.1, calibré sur CivilComments/Pile, des milliers de features multi-domaines) ne
+sélectionne jamais rien sur ce dépôt (150 features d'UN SEUL domaine narrow, emails de
+réclamation client) : pas une absence réelle de paires "moins reliées que la moyenne",
+mais une échelle de dissimilarité différente d'un dictionnaire à l'autre. `npmi_verified_test.py`
+corrigé : `LABEL_SIM_PERCENTILE` (percentile 25 de la distribution observée à CHAQUE run,
+pas un seuil absolu codé en dur) remplace `LABEL_SIM_THRESHOLD` — reproduit l'intention du
+filtre (écarter les quasi-synonymes évidents) sans halluciner un chiffre transférable
+entre domaines de largeur sémantique différente. Ancien résultat (0 paires) déplacé en
+`npmi_verified.json.bak_zero_pairs_strict_threshold`. Relancé (job 45631, terminé).
+
+**45631 terminé, résultat écrit : RESULTS_TESTS.md §85.** 5 paires survivent tous les
+filtres, NPMI_verified 0,80-1,00 mais 4/5 avec seulement 1-2 documents positifs sur 60 --
+signal réel mais peu robuste statistiquement (perfection quasi automatique à si peu
+d'effectif). `N_VERIFY_DOCS=60` à augmenter avant de citer un chiffre individuel comme
+fiable — noté explicitement en limite plutôt que présenté comme un résultat solide.
+
+**§83-§86 tous écrits.** Reste seulement : ligne 1B pour §82 (job 45579 PENDING), section
+layer 12/41 (job 45580 RUNNING, ~40 min).
+
+## 8. Audit externe (13 items, reçus en fin de session — priorité pour la suite)
+
+Passe indépendante (pas de la session qui a introduit le cache partagé, §7) sur ce
+cache et sur des items jamais couverts par les audits précédents. N1/N2/N3 traités
+cette session (ci-dessous) ; N4 lancé, résultat en attente (job GPU en file) ; N5-N13
+toujours enregistrés tels que reçus, pas contre-vérifiés.
+
+**N1 🟢 CORRIGÉ — le cache d'extraction partagé pouvait charger un fragment de la
+mauvaise largeur, et pire : le ré-encodage écrivait ET purgeait `raw_acts` DANS le
+cache partagé lui-même.** Diagnostic initial (padding D_EXTRA-dépendant à
+l'extraction) confirmé mais incomplet : la vraie gravité venait du ré-encodage
+(`saev5.py`, boucle `merge_extra`/`save_fragment`) qui écrivait ses fragments fusionnés
+(core+extension) et purgeait `raw_acts` **directement dans `token_fragments_dir`**
+(partagé, symlinké), puis supprimait les shards d'extraction une fois "terminé" —
+un second run de D_EXTRA/K_EXTRA différent partageant la même clé d'extraction
+héritait soit de colonnes extension d'un AUTRE SAE (largeur/D_EXTRA différents), soit
+plantait avec `KeyError: 'raw_acts'` (raw_acts déjà purgé par le premier run).
+**Confirmé en conditions réelles** : les deux jobs de §7 (1B et layer12, relancés en
+45579/45580 sous l'ancien code) ont TOUS LES DEUX planté avec exactement ce
+`KeyError: 'raw_acts'`. Correctif (`saev5.py`, `sae_shared.py`) : le ré-encodage écrit
+désormais dans `ext_fragments_dir` (`SAVE_DIR/cache/p1_token_fragments_ext`, privé par
+run, jamais symlinké) ; `token_fragments_dir` (partagé) reste intégralement en lecture
+seule après l'extraction — plus aucune écriture, plus de suppression de shards. La
+largeur des fragments RAW à l'extraction est désormais toujours `d_core` (jamais
+`d_core+D_EXTRA`) : D_EXTRA n'a plus aucune influence sur le contenu du cache partagé.
+8 scripts d'analyse consommateurs de features extension (`judge_model_separation_test.py`,
+`b2_stratified_selection_rejudge.py`, `npmi_verified_test.py`, etc.) repointés via
+`resolve_extension_fragments_dir` (`src/storage/fragment_store.py`) — bascule
+automatiquement vers `p1_token_fragments_ext` si présent (runs post-correctif), sinon
+repli sur `p1_token_fragments` (runs "legacy" comme `results_v10_emails_main/`, qui
+n'ont jamais connu le cache partagé et gardent leurs fragments fusionnés directement à
+la racine). Les deux caches partagés déjà corrompus par les tentatives 45579/45580
+(44253 fichiers individuels périmés chacun) nettoyés ; jobs relancés sous le code
+corrigé (45724, 45725). 9 tests ajoutés (`tests/test_shared_cache_lock.py` couvre
+aussi N2), `pytest tests/ -q` vert (226/227, seul échec pré-existant sans rapport).
+
+**N2 🟢 CORRIGÉ — aucun verrou sur le cache partagé.** `acquire_shared_cache_lock`
+(`src/sae/sae_shared.py`) : verrou de création exclusive sur
+`<cache_dir>/.extraction.lock`, tient de la création des liens symboliques jusqu'à la
+fin de l'extraction RAW (relâché avant le ré-encodage, qui n'a plus besoin du verrou
+depuis N1). Un second prétendant de même clé ATTEND (poll) plutôt que d'échouer ou de
+dupliquer le travail — cohérent avec le pattern de course entre partitions déjà en
+usage (mémoire `feedback_sae_gpu_scheduling_race_partitions`). Heartbeat +
+expiration (`stale_after_s`, défaut 300s) pour l'auto-guérison si le détenteur meurt
+sans libérer. **Bug trouvé en écrivant les tests** (pas dans le premier jet livré à
+l'audit externe) : la première implémentation rafraîchissait le heartbeat par
+`open(path, "w")` — tronque avant d'écrire, fenêtre réelle où un lecteur concurrent
+voit un fichier vide/tronqué et vole le verrou d'un détenteur pourtant actif
+(reproduit empiriquement, ~20% des runs du test de course sous charge). Corrigé avec
+`atomic_create_exclusive`/`write_checkpoint` (tmp + `os.link`/`os.replace`, jamais de
+troncature en place) ajoutés à `src/storage/checkpoint.py`, réutilisés par le verrou
+— 5 exécutions répétées du test de course, 0 échec après correctif.
+
+**N3 🟡 INVESTIGUÉ, chiffre repondéré non obtenu — critique confirmée par le code,
+mais non reconstructible a posteriori sur les données actuelles.** Détail complet :
+`RESULTS_TESTS.md` §87. La sur-pondération des bins rares par
+`feature_selection_stratified_by_frequency` (`per_bin = n_features // n_bins_eff`,
+indépendant de l'effectif du bin) est un fait structurel du code, confirmé sans
+ambiguïté. En revanche, rejouer la sélection avec le même SEED sur les mêmes
+fragments (`results_v10_emails_main/`, job 45742, CPU-only) ne reproduit QUE 68/150
+des features de `b2_stratified_selection_rejudge.json` (§79) — cause dominante non
+identifiée (un bug mineur trouvé et corrigé au passage, troncature de 4 colonnes sur
+1024 dans le calcul de `d_total` du script original, n'explique pas l'essentiel de
+l'écart). `feature_selection_stratified_by_frequency` étendue
+(`return_bin_info=True`) et `horvitz_thompson_mean` ajouté à `src/analysis/stats.py`
+— `b2_stratified_selection_rejudge.py` capture désormais `bin_info` DIRECTEMENT au
+moment de la sélection, pour qu'un futur rerun produise un taux par bin fiable sans
+dépendre d'une reproduction ultérieure fragile. Aucun rerun de juge lancé (coût GPU
+non trivial, hors du "zéro rerun" de la demande N3 initiale).
+
+**N4 🟡 EN COURS — job GPU lancé, résultat pas encore disponible.** L'arme "mixte
+stratifiée" de B.1 (§79, 134/150, déjà en cache dans `results_v10_emails_main/`)
+rejugée avec Qwen3.8-27B (job 45735, `scripts/b1_stratified_mixte_qwen_rejudge.py`,
+même patron que `judge_model_separation_test.py`). **L'arme "originaux+filler" de
+§81 NE PEUT PAS être rejugée de la même façon** : ses fragments token-level
+(`results_v26_validation_layer24_v12_originals_filler_matched_n150_h100/`) ont été
+supprimés par le nettoyage disque de la session précédente (`docs/
+archived_runs_manifest.md`, seul `results_v10_emails_main/` gardé complet) — la
+rejuger demanderait une extraction complète fraîche, pas "quelques minutes de GPU"
+comme prévu par la demande N4 initiale. Le test complet de l'interaction juge×corpus
+(les deux bras, mêmes deux juges) reste donc hors de portée sans ce rerun ; seul un
+signal partiel (Qwen est-il systématiquement plus/moins généreux que Gemma sur l'arme
+mixte ?) sera disponible une fois 45735 terminé.
+
+**N5 🟢 CORRIGÉ — B6 corrigé complètement.** Confirmé exact puis corrigé :
+vérification empirique directe sur `local_data/emails/Mails.tsv` (grep + inspection
+manuelle des occurrences, pas une lecture de tenseur — autorisée sur le nœud frontal) —
+31/31 occurrences de "d'avoir" et 4/4 de "l'avoir" y sont l'usage VERBAL ("je ne suis
+pas certain d'avoir compris", "je vous remercie de me l'avoir envoyée"), **0 nominal**,
+contre seulement 2 occurrences de "un avoir" (nominal, correct) et 0 de "mon"/"notre
+avoir". `INTENT_KEYWORDS_FR["remboursement"]` (`src/data/dataset.py`) ne matche plus que
+`un\s+avoir|mon\s+avoir|notre\s+avoir` — "l'avoir"/"d'avoir" retirés, trop ambigus pour
+être désambiguïsés par regex et 100% bruit sur ce corpus. `tests/test_intent_keywords_fr.py`
+mis à jour (5 tests). §80 (Latent Terms, remboursement P@10 0,90 vs 0,30 TF-IDF)
+re-mesuré sous le label resserré : job 45745 lancé (ancien résultat sauvegardé en
+`.bak_pre_n5_regex_fix`), résultat en attente.
+
+**N6 🟢 CORRIGÉ — nombre d'items de l'odd-one-out désormais loggé + taux corrigé du
+hasard disponible.** Confirmé exact (`judge.py`, `len(pos_examples)` varie de 3 à
+`n_pos`=9 selon la fréquence de la feature, jamais fixé). `odd_one_out_judge` et
+`local_gemma_judge` ajoutent désormais `n_items` au dict de résultat par feature
+(= `len(pos_examples) + (1 si neg_example)`). `chance_corrected_rate` ajouté à
+`src/analysis/stats.py` (formule Cohen-kappa agrégée, `(obs-c)/(1-c)` avec
+`c = moyenne(1/n_items)` sur le même ensemble de features que `obs`) — permet de
+publier un taux agrégé corrigé du hasard variable en une ligne, sans réinventer le
+calcul par script. Les résultats DÉJÀ produits (avant ce correctif) n'ont pas `n_items`
+dans leur cache — reconstructible depuis `len(pos_examples)+1` si besoin de les corriger
+rétroactivement. 3 tests ajoutés (`test_judge_batching_orchestration.py`) + 3
+(`test_stats.py`).
+
+**N7 🟢 CORRIGÉ — `max_length` paramétré** (`MAX_LENGTH`, `src/config.py`, défaut 512 =
+comportement inchangé). Remplace le `max_length=512` en dur dans la boucle d'extraction
+(`saev5.py`). Aucune mesure d'impact chiffrée faite cette session (nécessiterait de
+tokenizer le corpus réel, coût CPU non trivial mesuré empiriquement — un essai direct
+sur le nœud frontal a dépassé 15s, donc hors du "config check borné" toléré, devrait
+passer par `sbatch`) — le paramètre existe désormais pour qu'une ablation future le
+mesure sans changer le code.
+
+**N8 🟢 CORRIGÉ — les 3 paramètres ajoutés au payload de la clé de cache.**
+`compute_activation_cache_key` (`sae_shared.py`) prend désormais `max_length`,
+`sigma_clip`, `skip_first_content_token` en paramètres obligatoires (plus de valeurs en
+dur non trackées) ; `SIGMA_CLIP`/`SKIP_FIRST_CONTENT_TOKEN` ajoutés à `src/config.py`
+(mêmes défauts que le comportement précédent : 4.0/`True`). Docstring corrigée (ne dit
+plus hacher "le corpus réellement vu" sans préciser que `max_length` couvre la
+troncature). **Conséquence attendue et voulue** : ce changement invalide TOUTES les clés
+de cache calculées avant ce correctif (le payload a changé) — les caches partagés
+existants (dont les deux nettoyés pour 45724/45725 plus haut) ne seront plus jamais
+retrouvés par leur ancienne clé, un prochain accès en calcule une nouvelle et réextrait.
+6 tests ajoutés (`test_activation_cache_key.py`).
+
+**N9 🟢 CORRIGÉ — sémantique changée de l'ablation de seed documentée** dans
+`CLAUDE.md` (section Seeds + point 5 de la checklist diagnostics) : `SEED` n'entre pas
+dans la clé de cache partagé (volontaire, R5 — la clé ne couvre que ce qui affecte
+l'extraction), donc une ablation de seed sous le cache partagé ne fait plus varier que
+l'init/le shuffle du SAE (le réservoir de tokens est partagé) — plus étroit que l'effet
+mesuré par tout chiffre "seed dans le bruit" cité d'avant l'introduction du cache
+partagé. Documentation uniquement, aucun changement de comportement.
+
+**N10 🟢 CORRIGÉ — les lignes filler ne sont plus stockées sur le cache partagé.**
+`save_doc_acts_sparse_filler`/`load_doc_acts_sparse_filler`/`load_all_doc_acts`
+(`sae_shared.py`) : la plage filler `[n_train, n_train+n_filler)` (jamais lue en aval,
+confirmé par grep) est exclue du tenseur sauvegardé sur `local_data/activation_cache/`,
+reconstruite à zéro au chargement — la connaissance de la plage vient de l'INDEX
+(n_train/n_filler), pas d'une détection de valeur, donc correcte même si une ligne
+filler n'était pas exactement nulle en mémoire (cas `torch.empty` du ré-encodage, hors
+scope ici puisque ce fichier-là reste privé par run). Risque de rupture identifié et
+traité : **12 scripts d'analyse** lisaient `p1_all_doc_acts.pt` en repli direct par
+`torch.load` — tous repointés vers `load_all_doc_acts` (dispatch sur le CONTENU du
+fichier, dict compact vs tenseur dense classique, donc rétro-compatible avec
+`p1_all_doc_acts_ext_d*.pt`, jamais compacté). 5 tests ajoutés
+(`test_doc_acts_sparse_filler.py`).
+
+**N11 🟢 STRUCTUREL — frein documenté + `slurm/archive/` créé** (mêmes sous-dossiers que
+`slurm/`). Règle publiée dans `docs/ops.md` : archiver un `.slurm` dès que son `§N` est
+écrit, réutiliser un `.slurm` existant (via export d'env) avant d'en créer un nouveau.
+**Pas d'archivage rétroactif fait cette session** (94 fichiers actuels, auditer lequel
+correspond à un `§N` déjà clos ligne par ligne est un travail à part, risqué à bâcler
+sous contrainte de temps — mieux vaut le faire au fil de l'eau, en archivant chaque
+script dès que sa section est écrite, ce que cette session a commencé à faire pour les
+scripts qu'elle a elle-même utilisés).
+
+**N12 🟢 CORRIGÉ — `check_docs.py` vert** (`python scripts/check_docs.py` →
+"Aucune violation trouvée"). Décision tranchée : `docs/INTERP_EMBED_COVERAGE.md` et
+`docs/PDF_APPENDICES_EXTRACT.md` **exclus explicitement** du contrôle "première
+personne" (`FIRST_PERSON_EXCLUDED_FILES`, justification en commentaire dans
+`check_docs.py`) — ce sont des analyses comparatives à la première personne par nature
+("mon pipeline" vs. un dépôt tiers), pas des sections citées par le rapport où la règle
+"présent, sans récit" (`RESULTS_TESTS.md`) s'applique. Les autres contrôles (version
+interne, TODO, placeholder, lien mort) restent actifs sur ces deux fichiers. La violation
+RESULTS_TESTS.md restante ("v2" dans un en-tête de tableau, §57 correctif
+`INTENT_KEYWORDS_FR`) corrigée par reformulation ("motif réel" au lieu de "v2, réel").
+`tests/test_docs.py` vert.
+
+**N13 🟢 PARTIELLEMENT TRAITÉ — citation par ligne remplacée par ancre de section.**
+La seule citation par NUMÉRO DE LIGNE de `INTERP_EMBED_COVERAGE.md` vers
+`PDF_APPENDICES_EXTRACT.md` (K.3/K.4, lignes 846–888) remplacée par une citation par
+ancre (`§K.3`/`§K.4`, en-têtes markdown confirmés présents) — rend une future réduction
+de `PDF_APPENDICES_EXTRACT.md` sûre du point de vue des références internes. **La
+décision de fond (réduire/reformuler le contenu verbatim de `PDF_APPENDICES_EXTRACT.md`
+pour limiter l'exposition copyright) reste ouverte** — décision éditoriale/légale, pas
+tranchée unilatéralement cette session : le contenu verbatim existant n'a pas été
+touché, seule la référence à son numéro de ligne l'a été.
+
+**Priorité reçue** : N1+N2 avant le prochain lot de jobs parallèles — **fait** ; N4
+ensuite — **lancé, résultat en attente** (arme mixte seulement, cf. N4 ci-dessus) ; N3
+en même temps que la reprise des chiffres du rapport — **investigué, chiffre repondéré
+fiable non obtenu cette session, cf. RESULTS_TESTS.md §87**. N5-N13 : **tous traités**
+cette session (détail par item ci-dessus) — N5/N6/N7/N8/N9/N10/N12/N13 corrigés en
+code/doc, N11 structurel (frein posé, pas de purge rétroactive), N13 partiel (décision
+de fond sur le contenu verbatim laissée ouverte).
+
+**Reste après cette session** : un rerun complet de `results_v26_validation_layer24_
+v12_originals_filler_matched_n150_h100/` (extraction fraîche) serait nécessaire pour
+compléter N4 (arme originaux+filler) — pas lancé, coût non trivial hors du cadre
+"quelques minutes de GPU" de la demande initiale. Un rerun de
+`b2_stratified_selection_rejudge.py` (corrigé, capture désormais `bin_info`
+nativement) donnerait un chiffre repondéré fiable pour N3 — pas lancé non plus, même
+raison. Mesurer l'impact réel de N7 (`MAX_LENGTH`) demande un job CPU/tokenisation dédié,
+pas fait. Décision de fond N13 (réduction du contenu verbatim de
+`PDF_APPENDICES_EXTRACT.md`) non tranchée. Archivage rétroactif N11 non fait.

@@ -3085,7 +3085,7 @@ pas un radical qui capterait du bruit).
 
 **Résultat — impact corpus (documents concernés)** :
 
-| Intention | n_pos original (buggé) | n_pos corrigé (v2, réel) | Facteur |
+| Intention | n_pos original (buggé) | n_pos corrigé (motif réel) | Facteur |
 |---|---|---|---|
 | Réclamation | 1905 | 1906 | ×1,00 |
 | **Résiliation** | **1** | **864** | **×864** |
@@ -4274,3 +4274,316 @@ paliers (confondu avec la taille du modèle, pas isolé) — mais chaque layer
 est déjà la meilleure estimation "~2/3 profondeur" disponible pour son
 palier, pas un choix arbitraire qui introduirait un biais différent par
 palier.
+
+## 83. Séparation juge/extraction, famille différente : Qwen3.8-27B juge 74% de plus de features interprétables que gemma-3-12b-it (extracteur=juge)
+
+**Question** : jusqu'à l'introduction de `JUDGE_MODEL_ID` (§7,
+`AUDIT_SAE_2026-08.md`), le juge d'auto-interprétation était systématiquement
+le même checkpoint que celui dont on extrait les activations. §43/§63/§65
+avaient déjà mesuré une forte dépendance au choix du juge (gemma-3-12b-it
+45,3% vs gemma-3-4b-it 24,7%, écart robuste à 2 graines) mais ne pouvaient
+pas isoler biais d'auto-préférence et simple effet de capacité, faute d'un
+juge de famille différente et de capacité comparable en cache local
+(`scripts/judge_model_separation_test.py`, docstring : "un juge de famille
+différente serait nécessaire pour isoler (b) -- non fait ici"). Qwen3.8-27B
+(bf16, famille différente, capacité comparable au palier 27b de Gemma-3)
+comble ce manque.
+
+**Écart à la configuration de référence** : uniquement le juge —
+`scripts/judge_model_separation_test.py`, `ALT_JUDGE_MODEL_ID=Qwen3.8-27B`,
+rejuge les 150 features déjà en cache (`p1_judge_labels_extended.json`,
+jugées à l'origine par gemma-3-12b-it = extracteur), mêmes exemples, même
+protocole odd-one-out. La variante FP8 de Qwen3.8-27B a été essayée en
+premier (empreinte VRAM réduite) mais ne peut générer avec aucun de ses deux
+chemins d'inférence sous torch==2.6.0 (pin du dépôt) — abandonnée, bf16
+utilisé (52 Go). Un biais de génération distinct a aussi été trouvé et
+corrigé avant ce résultat : Qwen3 active par défaut un préambule
+`<think>...</think>` qui épuisait `max_new_tokens=8` (étape odd-one-out) sans
+jamais atteindre la réponse (`interp_rate` mesuré à 0,0/150 avant correctif —
+écarté, pas un résultat) ; `enable_thinking=False` ajouté à
+`_batched_generate` (`src/sae/judge.py`) a résolu le problème.
+
+**Méthode statistique** : `paired_mcnemar_test` (`src/analysis/stats.py`) sur
+les 150 paires (même feature, deux juges) — le test apparié adapté ici,
+contrairement à `two_proportion_test` (§82) qui suppose deux échantillons
+indépendants alors que ce sont littéralement les mêmes 150 features rejugées.
+
+**n** : 150 features.
+
+**Résultat** (job 45619, h100,
+`p1_judge_model_separation_Qwen3.8-27B_seed42.json`) :
+
+| Juge | Taux interp. | IC95% (Wilson) |
+|---|---|---|
+| gemma-3-12b-it (= extracteur) | 45,3% (68/150) | [37,6% ; 53,3%] |
+| Qwen3.8-27B (famille différente) | 78,7% (118/150) | [71,4% ; 84,5%] |
+
+Accord 49,3% (74/150) ; 63 features basculent non-interprétable→interprétable
+avec Qwen contre seulement 13 dans l'autre sens — asymétrie nette, McNemar
+apparié sur les 76 paires discordantes : χ²=31,59, **p=1,90e-8**.
+
+**Conclusion** : écart massif et hautement significatif, mais dans le sens
+**opposé** à ce qu'un biais d'auto-préférence simple prédirait — si
+gemma-3-12b-it gonflait son propre taux en se jugeant lui-même, on
+s'attendrait à ce qu'un juge externe soit PLUS sévère, pas 74% plus généreux
+(45,3%→78,7%). Ce résultat ne confirme donc pas l'hypothèse d'auto-préférence
+testée ; il indique plutôt que gemma-3-12b-it est, sur ce protocole odd-one-out
+précis, un juge nettement plus sévère (ou moins capable sur cette tâche
+spécifique) que Qwen3.8-27B — cohérent avec §43 (où gemma-3-4b-it, plus
+petit, jugeait aussi MOINS de features interprétables que gemma-3-12b-it :
+la capacité du juge semble corréler positivement avec le taux mesuré, dans
+les deux comparaisons). Les labels produits par Qwen ont été vérifiés
+manuellement (lisibles, cohérents avec le domaine emails EDF) — l'écart n'est
+pas un artefact de format.
+
+**Limite connue** : une seule graine ; ne teste qu'UN juge de famille
+différente (pas de deuxième famille pour vérifier que l'effet n'est pas
+spécifique à Qwen) ; ne distingue pas "Qwen est un meilleur juge sur cette
+tâche" de "Qwen est plus complaisant/moins strict sur le critère odd-one-out"
+— seul un audit qualitatif plus poussé des faux positifs/négatifs de chaque
+juge trancherait.
+
+## 84. App K.1 (Diffing) — première mesure verification_rate/coverage du dépôt : 40% des hypothèses SAE valides, 92,5% de couverture
+
+**Question** : sans `HypothesisVerifier` (App K.1), aucun chiffre de diffing du
+dépôt n'était comparable au papier (§1, `AUDIT_SAE_2026-08.md`) — la
+"vérification" des hypothèses SAE se limitait à la génération d'une phrase
+libre (`generate_llm_diff_hypothesis`), jamais quantifiée. `verification_rate`
+(fraction des hypothèses dont la différence de fréquence vérifiée dépasse 1%,
+Figure 11 du papier) et `coverage` (fraction des documents cible couverts par
+au moins une hypothèse valide, Figure 12) implémentés dans
+`src/analysis/hypothesis_verifier.py` et exercés ici pour la première fois.
+
+**Écart à la configuration de référence** : prompt K.1 repris verbatim du PDF
+(pas du code des auteurs, qui en diverge légèrement — cf. docstring du
+module) ; hypothèses = labels des 10 features SAE les plus significatives
+(triées par q, sens énergie>sports) de `p1_diff_energy_sports.csv` (déjà en
+cache, `corpus_diff_stats`) plutôt qu'une génération LLM structurée (App D.2,
+toujours "à faire", §1) ; corpus de vérification reconstruit frais
+(`prepare_domain_dataset`, 40 documents energy + 40 sports, FineWeb2-fr) --
+pas nécessairement les mêmes documents que ceux ayant produit les labels,
+seulement le même domaine.
+
+**Méthode statistique** : `proportion_with_ci` (`src/analysis/stats.py`,
+Wilson) sur `verification_rate` (n=10 hypothèses) et `coverage` (n=40
+documents énergie).
+
+**n** : 10 hypothèses × 80 documents (40 énergie + 40 sports).
+
+**Résultat** (job 45620, h100, `diffing_hypothesis_verification.json`) :
+
+| Métrique | Valeur | IC95% (Wilson) |
+|---|---|---|
+| `verification_rate` (seuil 1%) | 40,0% (4/10) | [16,8% ; 68,7%] |
+| `coverage` (documents énergie) | 92,5% (37/40) | [80,1% ; 97,4%] |
+
+Détail des 10 hypothèses (`rate_in_group`=énergie, `rate_out_group`=sports) :
+4 valides dans le sens énergie>sports ("conjunctions and introductory
+phrases" 85,0% vs 72,5%, "rivers and geographies" 2,5% vs 0,0%, "spatial
+prepositions" 65,0% vs 62,5%, "punctuation followed by conjunctions" 15,0%
+vs 12,5%), 6 invalides (rate=0,0% dans les deux groupes -- features mortes ou
+non pertinentes à ce corpus, features syntaxiques génériques comme "pulsing
+with"/"shadows lengthen, fled, or deepen" incluses car App K.1 ne filtre pas
+les labels syntaxiques, contrairement à l'App E.1 des corrélations, §85).
+
+**Conclusion** : verification_rate=40% signifie que 6 des 10 hypothèses
+SAE les mieux classées par NPMI/q-value du run archivé ne se répliquent PAS
+sur un corpus energy/sports frais à seuil 1% -- cohérent avec un chiffre de
+référence (le dépôt n'a pas encore de baseline LLM-only à comparer, App D.2,
+pour situer ce taux relativement à l'alternative). Le coverage élevé (92,5%)
+vient presque entièrement de 2 hypothèses à fort taux marginal
+("conjunctions and introductory phrases" 85%, "spatial prepositions" 65%) --
+pas d'une couverture homogène sur les 4 hypothèses valides.
+
+**Limite connue** : n=10 hypothèses est petit (IC large, 16,8-68,7%) ; les
+hypothèses proviennent d'un run archivé (juillet), pas régénérées sous le
+code actuel ; pas de baseline LLM-only pour comparer verification_rate
+(App D.2, LLM baseline de la Figure 11, toujours à construire) ; un seul
+seed/tirage de corpus.
+
+## 86. Clustering ciblé complet (App. F.1/§4.3) : mots-clés LLM + union top-k + Jaccard + accuracy + z-conductance, chaîne bout en bout pour la première fois
+
+**Question** : `targeted_clustering_by_axis` (`saev5.py`) ne faisait que la
+sélection de latents par UN SEUL `axis_query` fixe, sans étiquetage de
+cluster, accuracy ni z-score de conductance (§1/§7,
+`AUDIT_SAE_2026-08.md`) — rien n'était comparable au papier pour le
+clustering. `src/analysis/clustering_llm.py` (génération de mots-clés LLM +
+union top-k, étiquetage de cluster, accuracy par réassignation LLM K.3,
+z-conductance en espace dense) exercé ici en chaîne complète pour la
+première fois, sur la requête "type de réclamation client".
+
+**Écart à la configuration de référence** : latents = 68 features
+d'extension déjà interprétables (`p1_top_extended_features.json`) plutôt que
+le dictionnaire complet core+extension ; affinité de clustering = Jaccard
+précalculée (corrigée au passage : le code par défaut utilisait
+`SpectralClustering(affinity="cosine")` sur binaire, PAS Jaccard comme le
+papier — deux métriques différentes sur un vecteur binaire, bug réel corrigé
+dans `targeted_clustering_by_axis`, pas une divergence documentée) ;
+embeddings denses = bge-m3 (pas les baselines dense/instruction-tuned du
+papier, non reproduites ici) ; n_clusters=4 fixé (pas de sélection par
+silhouette/gap statistic).
+
+**Méthode statistique** : descriptive (accuracy et z-score par cluster,
+`src/analysis/clustering_llm.py::compute_cluster_accuracy`/
+`conductance_zscore`, null par 100 échantillons aléatoires de même taille).
+
+**n** : 300 documents (train, échantillon aléatoire), 4 clusters (175/25/46/54
+documents), 6 mots-clés générés, 61 latents sélectionnés (union).
+
+**Résultat** (job 45622, h100, `clustering_llm_verification.json`) :
+
+| Cluster | Taille | Description LLM | Accuracy | Z-conductance |
+|---|---|---|---|---|
+| 0 | 175 | Formal contract termination and billing dispute letters | 61,7% | -3,12 |
+| 1 | 25 | New service activation requests and mixed service complaints | 40,0% | -2,91 |
+| 2 | 46 | Urgent complaints regarding unexpected power outages | 56,5% | -4,32 |
+| 3 | 54 | Mixed administrative requests for service activation and cancellation | 5,6% | -10,06 |
+
+Mots-clés générés : "complaint about product defect", "billing dispute",
+"service quality dissatisfaction", "delivery delay", "return and refund
+request", "customer support responsiveness".
+
+**Conclusion** : les 4 z-scores sont négatifs (clusters SAE plus "compacts"
+en espace dense que des échantillons aléatoires de même taille, `conductance`
+plus basse) — structure réelle, pas un artefact de hasard. L'accuracy varie
+fortement entre clusters (5,6% à 61,7%) : cohérent qualitativement avec
+l'observation du papier ("SAE clusters have comparable per-cluster
+accuracies with embeddings, with generally higher variance across clusters",
+§4.3/F.4) — le cluster 3 (accuracy la plus basse, z le plus négatif en
+valeur absolue) porte lui-même le label "Mixed administrative requests",
+cohérent avec une accuracy basse (cluster moins homogène malgré une
+conductance dense très faible -- les deux métriques ne mesurent pas la même
+chose : compacité géométrique dense vs cohérence sémantique jugée par LLM).
+
+**Limite connue** : pas de baseline dense/instruction-tuned pour comparer
+l'accuracy (le papier compare aux deux, §4.3) ; une seule requête testée, un
+seul seed ; 68 features seulement (le papier opère sur des dictionnaires de
+dizaines de milliers de latents) ; n_clusters fixé à 4 sans justification
+empirique (silhouette/gap statistic).
+
+## 85. NPMI_verified (App. E.1/E.3) : 5 paires vérifiées, seuil de dissimilarité de labels recalibré empiriquement
+
+**Question** : sans NPMI_verified, `p1_interesting_correlations.json` reste
+une liste de candidats (NPMI brut sur activations SAE + dissimilarité de
+labels), pas un résultat comparable au papier (§1/§7,
+`AUDIT_SAE_2026-08.md`). `src/analysis/correlations_verified.py` exercé ici
+pour la première fois via `scripts/npmi_verified_test.py`.
+
+**Écart à la configuration de référence** : hypothèses = 150 features
+d'extension interprétables déjà labellisées (`p1_top_extended_features.json`)
+plutôt que le dictionnaire complet ; **seuil de dissimilarité de labels
+recalibré** — le seuil absolu du papier (sim<0,2, App E.1) ne sélectionnait
+JAMAIS aucune paire ici (diagnostic dédié, job 45630,
+`scripts/npmi_similarity_diagnostic.py`) : sur les 165 paires à NPMI>0,3, la
+similarité de label observée va de 0,369 à 1,000 (médiane 0,514) — le papier
+calibre ce seuil sur des dictionnaires de milliers de features multi-domaines
+(CivilComments/Pile), ce dépôt n'en a que 150 sur UN SEUL domaine (emails de
+réclamation client EDF), donc même les paires les "moins reliées" y restent
+sémantiquement proches en valeur absolue. Remplacé par un seuil RELATIF
+(percentile 25 de la distribution observée à chaque run, `LABEL_SIM_PERCENTILE`)
+plutôt qu'un nouveau chiffre absolu choisi à la main.
+
+**Méthode statistique** : descriptive (NPMI_verified, CO, effectifs de
+présence bruts rapportés explicitement — nécessaire ici, cf. Conclusion).
+
+**n** : 5 paires (après filtres dissimilarité+syntaxique+trivial) × 60
+documents train frais.
+
+**Résultat** (job 45631, h100, `npmi_verified.json`) :
+
+| Paire | NPMI (SAE) | NPMI_verified | CO | Présence i / j (sur 60) |
+|---|---|---|---|---|
+| Réclamation Client ↔ Problèmes énergie | 0,956 | 1,000 | 1,000 | 2 / 2 |
+| Réclamation Client ↔ Coordonnées | 0,917 | 1,000 | 1,000 | 1 / 1 |
+| Coordonnées ↔ Facture contestée | 0,885 | 1,000 | 1,000 | 1 / 1 |
+| Réclamations Clients ↔ Facture élevée | 0,852 | 0,796 | 1,000 | 4 / 2 |
+| Numéro Téléphone ↔ Facture contestée | 0,846 | 1,000 | 1,000 | 1 / 1 |
+
+**Conclusion** : les 5 paires survivent la relabellisation indépendante par
+juge (NPMI_verified élevé, 0,80-1,00, CO=1,000 partout) — le signal NPMI brut
+n'est pas un artefact SAE pur sur ces paires précises. **Mais 4 des 5 ont une
+présence de seulement 1-2 documents sur 60** : NPMI_verified=1,000 y reflète
+un accord parfait sur un échantillon minuscule (perfection quasi automatique
+dès que 1-2 documents co-occurrent et rien d'autre ne contredit), pas une
+corrélation statistiquement robuste au sens où le papier l'entend sur des
+échantillons de 1k-5k documents. Seule la paire "Réclamations Clients ↔
+Facture élevée" (4/2 documents) offre un signal légèrement plus consistant
+(NPMI_verified=0,796, en dessous du plafond).
+
+**Limite connue** : `N_VERIFY_DOCS=60` est nettement plus petit que
+l'échantillon du papier (1k sur 5k, ~20%) — beaucoup trop petit pour des
+concepts rares (1-2 documents positifs), à augmenter avant de citer un
+NPMI_verified individuel comme fiable ; le seuil de dissimilarité recalibré
+(percentile 25) est spécifique à CE dictionnaire de 150 features, à
+revérifier si le dictionnaire de features change (ex. passage au
+dictionnaire complet core+extension) ; un seul seed/tirage de corpus.
+
+## 87. N3 : le 89,3% stratifié (§79) n'est pas reconstructible a posteriori — sur-pondération des bins rares confirmée par le code, taux par bin non fiable sur cette tentative
+
+**Question** : N3 (audit externe, AUDIT_SAE_2026-08.md §8) soutient que 89,3%
+(sélection stratifiée, §79) n'est pas plus comparable à un chiffre publié que
+45,3% (magnitude), dans l'autre sens — le stratifié tire un nombre à peu près
+fixe de features par bin de fréquence quel que soit l'effectif du bin,
+sur-représentant les bins rares (nombreuses features spécifiques) par rapport
+à toute distribution réellement utilisée dans le dépôt. Correctif proposé
+sans rerun : publier le taux par bin + un scalaire repondéré
+(Horvitz-Thompson) à partir des 150 features déjà sélectionnées et jugées
+(`results_v10_emails_main/cache/b2_stratified_selection_rejudge.json`).
+
+**Écart à la configuration de référence** : recalcul rétroactif visé (zéro
+rerun de juge), sur les fragments déjà en cache de `results_v10_emails_main/`.
+
+**Méthode statistique** : `feature_selection_stratified_by_frequency` étendue
+d'un paramètre `return_bin_info=True` (`src/sae/judge.py`) pour exposer la
+strate, la fréquence et la taille de bin de chaque feature sélectionnée ;
+`horvitz_thompson_mean` ajouté à `src/analysis/stats.py` (poids = 1/π_i,
+π_i ≈ bin_n_sampled/bin_population, constant par strate).
+
+**n** : 150 features attendues (§79) ; 68 effectivement exploitables (cf.
+Résultat).
+
+**Résultat** : la ré-exécution de `feature_selection_stratified_by_frequency`
+avec le même SEED (42) et les mêmes fragments que le run original **ne
+reproduit PAS les 150 features de `b2_stratified_selection_rejudge.json`** —
+seules 68/150 coïncident (job 45742, `scripts/n3_stratified_bin_rates.py`,
+CPU-only, 39s). Une cause réelle mais mineure a été identifiée et corrigée en
+cours de route : `b2_stratified_selection_rejudge.py` dérivait `d_total` de
+`max(indices de la référence magnitude)+1` au lieu de la largeur réelle du
+checkpoint frozen-core (`core_sae.W_dec.shape[0] + d_extra`) — 17404 au lieu
+de 17408, 4 colonnes d'extension jamais vues par la sélection stratifiée
+originale. Cet écart (4/1024 colonnes) est trop petit pour expliquer à lui
+seul un désaccord sur 82/150 features ; la cause dominante reste
+non identifiée (candidats non vérifiés : dérive du corpus reconstruit depuis
+`Mails.tsv`/`augmented_mails.jsonl`, qui ont pu grossir depuis juillet, sans
+qu'aucun fingerprint de corpus n'ait été enregistré pour ce `SAVE_DIR`
+"legacy", antérieur au cache d'extraction partagé et à sa clé mécanique R5).
+Sur les 68 features communes uniquement (population non représentative,
+biaisée vers les bins déterministes de petit effectif — cf. Limite) :
+taux brut 88,2% (60/68 — proche mais PAS égal au 89,3%/134/150 publié, deux
+échantillons différents), taux repondéré Horvitz-Thompson **92,0%**.
+
+**Conclusion** : la critique méthodologique de N3 (le stratifié sur-pondère
+les bins rares) est confirmée par lecture directe du code —
+`per_bin = n_features // n_bins_eff` alloue le même nombre de features par
+strate indépendamment de son effectif réel (`src/sae/judge.py::feature_
+selection_stratified_by_frequency`), un fait structurel, pas une hypothèse à
+mesurer. En revanche, **produire un taux par bin ou repondéré FIABLE pour le
+89,3% déjà publié n'est pas possible sans le rejouer** : la sélection
+stratifiée n'est pas reconstructible a posteriori sur ce dépôt dans son état
+actuel. `b2_stratified_selection_rejudge.py` est corrigé pour capturer
+`bin_info` DIRECTEMENT au moment de la sélection (`return_bin_info=True`,
+sauvé dans `OUT_PATH["bin_info"]`) — un futur rerun produira un taux par bin
+fiable sans dépendre d'une reproduction ultérieure. Aucun rerun lancé cette
+session (coût GPU non trivial, hors du "zéro rerun" visé par N3 tel que
+reçu).
+
+**Limite connue** : le taux 88,2%/92,0% ci-dessus porte sur un sous-ensemble
+de 68 features dont la composition par bin est elle-même biaisée — les bins
+à faible effectif (population ≤ per_bin, sélection déterministe
+indépendante du seed) sont systématiquement présents dans l'intersection,
+les bins à fort effectif (sélection aléatoire, sensible à toute divergence
+de seed/état RNG/fragments) largement absents — donc pas un résultat à citer
+comme le "vrai" taux repondéré de §79, seulement une démonstration que
+`horvitz_thompson_mean`/le pipeline de bin_info fonctionnent. `n3_stratified_
+bin_rates.json` (`results_v10_emails_main/cache/`) contient le détail complet
+si une inspection supplémentaire est utile avant de rejouer b2.
