@@ -356,27 +356,75 @@ def feature_selection_stratified_by_frequency(
         doc_vec = doc_maxpool(frag).numpy()
         freq += (doc_vec[lo:hi] > 1e-6).astype(np.float64)
         n_docs_seen += 1
-    def _degenerate(idxs) -> list[int] | tuple[list[int], dict]:
-        # Repli dégénéré (pas assez de documents/features vivantes pour
-        # stratifier) : une seule strate fictive "0" couvrant tout -- garde
-        # le contrat de retour cohérent avec return_bin_info plutôt que de
-        # renvoyer un type différent selon le chemin emprunté.
-        result_ = list(idxs)
-        if not return_bin_info:
-            return result_
-        n_ = len(result_)
-        return result_, {f: {"bin": 0, "freq": float(freq[f - lo]) if 0 <= f - lo < len(freq) else 0.0,
-                              "bin_population": n_, "bin_n_sampled": n_} for f in result_}
 
     if n_docs_seen == 0:
-        return _degenerate(range(lo, min(lo + n_features, hi)))
+        return _degenerate_stratified_selection(range(lo, min(lo + n_features, hi)), freq, lo, return_bin_info)
     freq /= n_docs_seen
+    return _stratified_select_from_freq(freq, lo, hi, n_features, n_bins, seed, return_bin_info)
 
+
+def feature_selection_stratified_by_frequency_dense(
+    doc_acts: "torch.Tensor",
+    n_features: int,
+    sample_docs: int = 500,
+    lo: int = 0,
+    hi: int = None,
+    n_bins: int = 10,
+    seed: int = 0,
+    return_bin_info: bool = False,
+    threshold: float = 1e-6,
+):
+    """
+    Même sélection stratifiée par bins de fréquence log-espacés que
+    `feature_selection_stratified_by_frequency` (App. J, B.2,
+    AUDIT_SAE_2026-08.md), mais pour un pipeline dont les activations
+    documentaires sont déjà un tenseur DENSE en mémoire (`doc_acts`,
+    `[n_docs, d_sae]`, Pipeline 2 -- `PhraseLevelSAE`/F2LLM) plutôt que des
+    fragments token-level sur disque (Pipeline 1). Aucune lecture de
+    fragments, aucun `token_fragments_dir` -- la sélection par magnitude
+    pure (`doc_acts.mean(dim=0).topk(...)`, historiquement utilisée pour
+    juger les features Pipeline 2, `saev5.py`) sous-estime l'interprétabilité
+    exactement pour la même raison que côté Pipeline 1 (B.2, §79) : jamais
+    corrigée avant l'introduction de cette fonction.
+
+    Fréquence = fraction des documents échantillonnés où la feature est
+    active (max-pool documentaire > `threshold`), même convention que la
+    version fragments.
+    """
+    hi = doc_acts.shape[1] if hi is None else hi
+    n_docs = doc_acts.shape[0]
+    sample_docs = min(sample_docs, n_docs)
+    sampled = random.sample(range(n_docs), sample_docs)
+    sample = doc_acts[sampled, lo:hi]
+    freq = (sample > threshold).float().mean(dim=0).double().numpy()
+    return _stratified_select_from_freq(freq, lo, hi, n_features, n_bins, seed, return_bin_info)
+
+
+def _degenerate_stratified_selection(idxs, freq: np.ndarray, lo: int, return_bin_info: bool):
+    # Repli dégénéré (pas assez de documents/features vivantes pour
+    # stratifier) : une seule strate fictive "0" couvrant tout -- garde
+    # le contrat de retour cohérent avec return_bin_info plutôt que de
+    # renvoyer un type différent selon le chemin emprunté.
+    result_ = list(idxs)
+    if not return_bin_info:
+        return result_
+    n_ = len(result_)
+    return result_, {f: {"bin": 0, "freq": float(freq[f - lo]) if 0 <= f - lo < len(freq) else 0.0,
+                          "bin_population": n_, "bin_n_sampled": n_} for f in result_}
+
+
+def _stratified_select_from_freq(freq: np.ndarray, lo: int, hi: int, n_features: int,
+                                  n_bins: int, seed: int, return_bin_info: bool):
+    """Cœur partagé de la sélection stratifiée (B.2) : binning log-espacé de
+    `freq` (déjà normalisée, une entrée par feature dans [lo, hi)) + tirage
+    aléatoire par strate. Appelé par les deux sources de `freq` possibles
+    (fragments token-level P1, tenseur dense P2) -- garde le binning/tirage
+    identique entre les deux pipelines plutôt que de le dupliquer."""
     alive_idx = np.nonzero(freq > 0)[0]
     if len(alive_idx) == 0:
-        return _degenerate(range(lo, min(lo + n_features, hi)))
+        return _degenerate_stratified_selection(range(lo, min(lo + n_features, hi)), freq, lo, return_bin_info)
     if len(alive_idx) <= n_features:
-        return _degenerate((alive_idx + lo).tolist())
+        return _degenerate_stratified_selection((alive_idx + lo).tolist(), freq, lo, return_bin_info)
 
     log_freq = np.log10(freq[alive_idx])
     lo_edge, hi_edge = log_freq.min(), log_freq.max()

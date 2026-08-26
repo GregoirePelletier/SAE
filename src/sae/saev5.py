@@ -213,6 +213,7 @@ from sae_shared import (
 from src.sae.judge import (
     extract_causal_context, build_feature_examples_with_control,
     feature_selection_by_magnitude, feature_selection_stratified_by_frequency,
+    feature_selection_stratified_by_frequency_dense,
     odd_one_out_judge, _apply_chat_and_extract,
     local_gemma_judge, load_judge_model,
 )
@@ -2069,7 +2070,19 @@ def run_f2llm_pipeline(
         )
 
     # ─── LLM Judge P2 ────────────────────────────────────────────────────────
-    top_feat_indices = doc_acts.float().mean(dim=0).topk(N_FEATURES_TO_LABEL).indices.tolist()
+    # Même toggle FEATURE_SELECTION_METHOD que Pipeline 1 (B.2, §79) : la
+    # sélection par magnitude moyenne favorise systématiquement les features
+    # les plus denses, sous-estimant l'interprétabilité mesurée pour la même
+    # raison que côté Pipeline 1 -- jamais corrigée avant ce branchement
+    # (`feature_selection_stratified_by_frequency_dense`, judge.py, variante
+    # sur tenseur dense en mémoire, pas de fragments token-level pour P2).
+    if FEATURE_SELECTION_METHOD == "stratified":
+        top_feat_indices = feature_selection_stratified_by_frequency_dense(
+            doc_acts, N_FEATURES_TO_LABEL, sample_docs=len(test_texts),
+        )
+    else:
+        top_feat_indices = doc_acts.float().mean(dim=0).topk(N_FEATURES_TO_LABEL).indices.tolist()
+    print(f"  [P2 Labels] Sélection par {FEATURE_SELECTION_METHOD}.")
     judge_cache = os.path.join(CACHE_DIR, "p2_feature_labels.json")
     if os.path.exists(judge_cache):
         with open(judge_cache, "r", encoding="utf-8") as f:

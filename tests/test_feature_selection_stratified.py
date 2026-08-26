@@ -8,7 +8,10 @@ import os
 import numpy as np
 import torch
 
-from src.sae.judge import feature_selection_by_magnitude, feature_selection_stratified_by_frequency
+from src.sae.judge import (
+    feature_selection_by_magnitude, feature_selection_stratified_by_frequency,
+    feature_selection_stratified_by_frequency_dense,
+)
 from src.storage.fragment_store import save_fragment
 
 
@@ -190,3 +193,101 @@ def test_horvitz_thompson_mean_equal_probs_is_plain_mean():
     values = [1.0, 0.0, 1.0, 1.0]
     probs = [0.5, 0.5, 0.5, 0.5]
     assert horvitz_thompson_mean(values, probs) == np.mean(values)
+
+
+# ── Pipeline 2 (activations denses en mémoire, pas de fragments sur disque) ──
+
+
+def _build_dense_doc_acts(n_docs, d_sae, active_features_per_doc):
+    acts = torch.zeros(n_docs, d_sae)
+    for doc_id in range(n_docs):
+        for f_idx, mag in active_features_per_doc(doc_id):
+            acts[doc_id, f_idx] = mag
+    return acts
+
+
+def test_dense_stratified_matches_fragment_version_on_same_pattern(tmp_path):
+    """Même motif d'activation (dense 90% vs rare 5%), deux sources de
+    `freq` différentes (fragments vs tenseur dense) -- doit sélectionner
+    exactement les deux mêmes features vivantes, comme la version fragments
+    (test_stratified_includes_rare_features_magnitude_excludes_them)."""
+    n_docs, d_sae = 200, 100
+
+    def active(doc_id):
+        out = []
+        if doc_id < 180:
+            out.append((0, 2.0))
+        if doc_id < 10:
+            out.append((50, 2.0))
+        return out
+
+    doc_acts = _build_dense_doc_acts(n_docs, d_sae, active)
+    selected = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=2, sample_docs=n_docs, n_bins=2, seed=0,
+    )
+    assert set(selected) == {0, 50}
+
+
+def test_dense_stratified_falls_back_when_all_dead():
+    n_docs, d_sae = 20, 10
+    doc_acts = _build_dense_doc_acts(n_docs, d_sae, lambda doc_id: [])
+    selected = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=3, sample_docs=n_docs,
+    )
+    assert selected == list(range(3))
+
+
+def test_dense_stratified_reproducible_with_seed():
+    n_docs, d_sae = 100, 50
+    rng_pattern = np.random.default_rng(1)
+
+    def active(doc_id):
+        return [(f, 1.0) for f in range(d_sae) if rng_pattern.random() < 0.3]
+
+    patterns = [active(d) for d in range(n_docs)]
+    doc_acts = _build_dense_doc_acts(n_docs, d_sae, lambda d: patterns[d])
+
+    sel1 = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=10, sample_docs=n_docs, seed=42,
+    )
+    sel2 = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=10, sample_docs=n_docs, seed=42,
+    )
+    assert sel1 == sel2
+
+
+def test_dense_stratified_respects_lo_hi_range():
+    n_docs, d_sae = 50, 20
+
+    def active(doc_id):
+        return [(f, 1.0) for f in range(d_sae) if doc_id % (f + 1) == 0]
+
+    doc_acts = _build_dense_doc_acts(n_docs, d_sae, active)
+    selected = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=5, sample_docs=n_docs, lo=10, hi=20,
+    )
+    assert all(10 <= f < 20 for f in selected)
+
+
+def test_dense_stratified_bin_info_matches_selected():
+    n_docs, d_sae = 200, 100
+    dense_features = list(range(10))
+    rare_features = list(range(50, 60))
+
+    def active(doc_id):
+        out = []
+        if doc_id < 180:
+            out.extend((f, 2.0) for f in dense_features)
+        if doc_id < 10:
+            out.extend((f, 2.0) for f in rare_features)
+        return out
+
+    doc_acts = _build_dense_doc_acts(n_docs, d_sae, active)
+    selected, bin_info = feature_selection_stratified_by_frequency_dense(
+        doc_acts, n_features=4, sample_docs=n_docs, n_bins=2, seed=0, return_bin_info=True,
+    )
+    assert set(selected) == set(bin_info.keys())
+    for f in selected:
+        info = bin_info[f]
+        assert 0 < info["bin_n_sampled"] <= info["bin_population"]
+        assert info["freq"] > 0
