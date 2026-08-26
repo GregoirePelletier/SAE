@@ -802,3 +802,177 @@ nativement) donnerait un chiffre repondéré fiable pour N3 — pas lancé non p
 raison. Mesurer l'impact réel de N7 (`MAX_LENGTH`) demande un job CPU/tokenisation dédié,
 pas fait. Décision de fond N13 (réduction du contenu verbatim de
 `PDF_APPENDICES_EXTRACT.md`) non tranchée. Archivage rétroactif N11 non fait.
+
+## 9. Audit de branchement (J-14 avant remise du rapport) — décision de juge Qwen partout, verdict de lancement
+
+**Décision utilisateur qui change la priorisation de cette section : juger
+TOUT avec Qwen3.8-27B, plus jamais laisser un modèle extracteur juger ses
+propres features (biais d'auto-préférence), même pour les sweeps taille/
+layer où l'auto-jugement était jusqu'ici la méthodologie établie (§82).**
+Conséquence directe : les 5 entrées déjà publiées du sweep §82/§88 (4B, 12B/
+layer 31, 27B, layer 41, et la référence layer 24 de `results_v10_emails_main`)
+sont TOUTES jugées par leur propre modèle extracteur (gemma-3-Nb-it
+auto-jugeant) — aucune n'est encore comparable aux futurs chiffres Qwen. Ce
+n'est pas un défaut de méthode découvert tardivement mais un changement de
+politique explicite ; ces chiffres restent valides comme repères internes
+(comparaisons relatives entre paliers, toutes sous le même biais) mais aucun
+n'est la valeur finale à citer dans le rapport tant qu'il n'a pas été rejugé.
+Le rejugement est bon marché : `scripts/judge_model_separation_test.py` est
+déjà générique (`SAVE_DIR`/`ALT_JUDGE_MODEL_ID` en env), il relit
+`p1_judge_labels_extended.json` déjà en cache et ne relance aucune
+extraction — confirmé que 4 des 5 caches nécessaires existent déjà sur disque
+malgré le nettoyage (`results_v27_.../layer31`, `results_v30_.../4b`,
+`results_v31_.../27b`, `results_v33_.../layer41`, tous avec
+`p1_judge_labels_extended.json` intact) ; seuls `results_v29_.../1b` et
+`results_v32_.../layer12` manquent ce cache (ont planté sur le bug N1,
+raison pour laquelle 45724/45725 sont en file — ceux-là seront directement
+jugés Qwen dès leur premier passage, pas besoin de rejugement séparé une fois
+terminés).
+
+**Bug attrapé avant qu'il ne coûte du GPU** : ni
+`run_ablation_classic_setup_k5_25m_model_scale_1b.slurm` (job 45724) ni
+`run_ablation_classic_setup_k5_25m_layer12.slurm` (job 45725) ne fixent
+`JUDGE_MODEL_ID` — les deux allaient déjà utiliser Qwen par défaut (cohérent
+avec la décision ci-dessus, donc laissés tels quels après vérification, pas
+de correctif nécessaire) ; un correctif inverse (les forcer en auto-jugement
+pour matcher les anciennes lignes du tableau) a été écrit puis annulé une
+fois la décision utilisateur connue — les deux scripts sont dans leur état
+d'origine, aucune modification livrée.
+
+### 1. État "branché et fonctionnel", par module
+
+- **HypothesisVerifier (App K.1, §84)** : run réel sain (40%/4 sur 10,
+  IC95% [16,8% ; 68,7%]), mais n=10 est trop petit pour un chiffre de rapport
+  isolé — citable uniquement comme illustration qualitative du protocole
+  (verification_rate existe, fonctionne, donne un ordre de grandeur), pas
+  comme une mesure de précision. Un run à n≥30-40 hypothèses (regénérer plus
+  de diffs energy/sports depuis le CSV déjà en cache, coût marginal : juste
+  plus de lignes du même CSV, pas de nouvelle extraction) resserrerait l'IC
+  à moindre coût si le rapport a besoin d'un chiffre plus serré — sinon,
+  citer avec l'IC affiché, honnête tel quel.
+- **NPMI_verified (App E.1/E.3, §85)** : signal réel (les 5 paires
+  survivent au relabellement indépendant) mais 4/5 reposent sur 1-2
+  documents positifs sur 60 — `N_VERIFY_DOCS=60` est le goulot, pas le code.
+  Doubler/tripler `N_VERIFY_DOCS` est un coût modéré (relit le même corpus
+  déjà préparé, ajoute seulement des passes de juge) mais avec seulement 150
+  features sur un domaine étroit, peu de nouvelles paires candidates
+  apparaîtront probablement — rendement décroissant. **Citable tel quel avec
+  la limite déjà écrite** (petit effectif, pas un défaut caché) plutôt que
+  prioritaire pour un rerun, sauf si le rapport a besoin d'un chiffre NPMI
+  individuel comme preuve forte (auquel cas augmenter `N_VERIFY_DOCS` d'abord).
+- **Clustering LLM (App F.1, §86)** : confirmé sain, aucun doute résiduel —
+  z-scores tous négatifs et non dégénérés, accuracy variable mais cohérente
+  qualitativement avec le papier. Rien à refaire.
+- **Diffing structuré (App D.2, job 45750)** et **Retrieval RRF/rerank/RBO
+  (job 45745)** : toujours en file (PENDING) au moment de cet audit —
+  **non vérifiables tant qu'ils n'ont pas tourné**, priorité de vérification
+  dès qu'ils terminent (voir liste de jobs ci-dessous, ce sont des
+  vérifications, pas des lancements).
+- **App I (F1 lecteur 12B/27B)** : calcul prêt, aucune orchestration écrite,
+  aucun run — nécessite une extraction fraîche par-document sur un domaine
+  entier pour 12B ET 27B (les fragments légers gardés par le nettoyage
+  disque, `results.json`+labels, ne suffisent pas : il faut l'activation de
+  CHAQUE document du domaine, pas seulement les 150 déjà jugés). Coût estimé
+  ~3h GPU/palier (calibré sur le temps réel du job layer 41, §88) soit ~6h
+  GPU total pour les deux paliers — non trivial mais pas déraisonnable.
+  **Priorité basse** : confirmatoire d'un effet déjà démontré par une autre
+  métrique (odd-one-out, §82/§88), pas un front nouveau du rapport.
+- **Juge découplé (`JUDGE_MODEL_ID`)** : vérifié dans le code — `saev5.py`
+  appelle `load_judge_model(device=DEVICE)` sans `judge_model_id` explicite
+  (`src/sae/saev5.py:1763,1824,2078`), donc hérite du défaut
+  `src/config.py::JUDGE_MODEL_ID` = Qwen3.8-27B pour tout run frais du
+  pipeline principal. Les scripts qui rechargent `MODEL_ID` comme juge
+  (`b2_stratified_selection_rejudge.py`, `c2_original_only_rejudge.py`,
+  `contrastive_labeling_test.py`, `explanation_plausibility_test.py`,
+  `multilingual_judge_bias_test.py`, `judge_robustness_check.py`,
+  `judge_sampling_ensemble_test.py`) le font tous intentionnellement, pour
+  reproduire ou isoler une configuration historique précise — aucun oubli
+  trouvé.
+- **Cache verrouillé (N1/N2)** : toujours seulement testé unitairement
+  (`tests/test_shared_cache_lock.py`), jamais par un vrai run concurrent sur
+  la MÊME clé d'extraction. Les 5 jobs actuellement en file n'en fournissent
+  pas un test naturel (paramètres d'extraction tous différents entre eux —
+  aucune paire ne partage MODEL_ID+LAYER). Pas besoin d'un test synthétique
+  dédié : la PROCHAINE course de partitions (a100+h100 pour un job
+  identique, cf. mémoire session) est structurellement le test réel visé —
+  à surveiller (logs `.extraction.lock`) la prochaine fois que ce pattern
+  est utilisé, plutôt que de dépenser du GPU pour un test artificiel isolé.
+- **N3 (Horvitz-Thompson)** : le calcul existe et fonctionne
+  (`horvitz_thompson_mean`), mais n'a produit qu'une démonstration sur une
+  population biaisée (68/150 reconstruits, §87) — pas un chiffre repondéré
+  fiable pour le 89,3% publié. Sans objet une fois le rejugement Qwen fait
+  (ci-dessous) : le futur rerun `b2_stratified_selection_rejudge.py` sous
+  Qwen capturera `bin_info` nativement dès le départ, donnant directement un
+  chiffre repondéré fiable ET jugé sous la politique actuelle — inutile de
+  traiter N3 séparément avant.
+
+### 2. Chiffres périmés
+
+- **§80 (remboursement P@10 0,90 vs 0,30)** : label resserré (N5), job 45745
+  en file — chiffre à mettre à jour dans `report/03_experiences_et_resultats.md`
+  §5.5 dès que le job termine (la section actuelle dit encore "aucun résultat
+  produit à ce jour", alors que `RESULTS_TESTS.md` §80 a déjà un tableau
+  complet sous l'ANCIEN label — la note "[En cours]" du rapport est donc elle
+  aussi déjà périmée dans l'autre sens : à corriger pour pointer vers §80,
+  et remplacer par le résultat § label resserré une fois 45745 fini).
+- **§79 (89,3%)** : reste le chiffre stratifié de référence dans le rapport,
+  mais désormais **doublement daté** : jugé Gemma auto-référent (voir
+  décision ci-dessus), ET non reconstructible a posteriori par bin (§87). Le
+  job 45735 en file (rejugement Qwen de l'arme mixte stratifiée) produit
+  directement le remplaçant — c'est la mesure la plus importante de toute
+  cette campagne, à vérifier en priorité dès qu'elle termine.
+- **§81 (B.1, −7,3 pts non significatif)** : déjà correctement cité dans
+  `report/04_limites_et_perspectives.md:246-247` (82,0% vs 89,3%, p=0,070,
+  sens inversé) — RAS sur la formulation. Job 45735 ne change pas cette
+  conclusion (rejuge l'arme mixte, pas l'arme originaux+filler — l'arme
+  originaux+filler reste non rejugeable sans extraction fraîche, fragments
+  supprimés) mais **une fois 45735 fini, le bras "mixte" de cette comparaison
+  aura changé de juge (Qwen) sans que le bras "originaux+filler" ait pu
+  suivre** — la comparaison B.1 elle-même deviendra caduque (deux bras jugés
+  par deux juges différents) jusqu'à ce qu'une extraction fraîche de l'arme
+  originaux+filler soit faite. À noter explicitement en limite si le rapport
+  cite encore B.1 après le rejugement Qwen de l'arme mixte.
+- **§82 (sweep taille de modèle) et §88 (layer 41, nouvellement écrit)** :
+  toute la table est actuellement Gemma auto-jugé (voir décision ci-dessus)
+  — À REJUGER (4 jobs bon marché listés ci-dessous) avant citation finale
+  dans le rapport. La ligne 1B et la section layer 12 (jobs 45724/45725,
+  toujours en file) seront elles nativement Qwen dès leur premier passage —
+  pas de rejugement à prévoir pour ces deux-là.
+- **`results_v10_emails_main` jugé "par défaut"** : le `SAVE_DIR` contient
+  maintenant DEUX caches judge coexistants — `p1_judge_labels_extended.json`
+  (Gemma, magnitude, historique) et les fichiers
+  `p1_judge_model_separation_*`/`b1_stratified_mixte_qwen_rejudge` (Qwen).
+  Tout chiffre du rapport citant ce `SAVE_DIR` sans préciser lequel des deux
+  est ambigu depuis l'introduction du juge Qwen — à vérifier ligne par ligne
+  dans `report/03_experiences_et_resultats.md`/`04_limites_et_perspectives.md`
+  avant la remise finale (pas fait dans cette passe, volume trop grand pour
+  cette session — grep `results_v10_emails_main` dans `report/` et trancher
+  Gemma/Qwen pour chaque occurrence est la prochaine étape mécanique).
+
+### 3. Verdict et liste de jobs
+
+**Pas encore prêt à lancer la campagne finale d'ablations pour le rapport —
+mais proche : le principal front ouvert n'est plus "implémenter" (fait la
+session précédente), c'est "rejuger sous la politique Qwen".** Priorité
+stricte, du moins cher/plus urgent au plus cher/moins urgent, compte tenu de
+J-14 :
+
+| # | Job | Coût GPU | Nourrit | Priorité |
+|---|---|---|---|---|
+| 1 | Vérifier 45735/45745/45750 dès qu'ils terminent (§79 Qwen, §80 label resserré, App D.2) | 0 (déjà en file) | §79/§80/App D.2 | **Critique** — bloque le chiffre de référence du rapport |
+| 2a | Rejuger Qwen `results_v33.../` (layer41) — `p1_all_doc_acts*.pt`/`p1_token_fragments` encore intacts sur disque (seul des 4 dans ce cas), script dédié déjà écrit (`slurm/analysis/run_judge_model_separation_qwen_layer41.slurm`), vrai rejugement seul, aucune extraction/entraînement | ~20-40 min GPU | §88 | **Haute** — vraiment bon marché |
+| 2b | **Correction d'estimation** : `results_v27.../` (layer31/12B), `results_v30.../` (4B), `results_v31.../` (27B) ont eu leurs `p1_all_doc_acts*.pt`/`p1_extended_sae.pt`/`p1_token_fragments` supprimés par le nettoyage disque (ne restent que `results.json`+labels+plots) — **pas un simple rejugement possible**, il faut réentraîner l'extension SAE (le script standalone `judge_model_separation_test.py` échouerait, fichiers manquants). Resoumettre directement les `.slurm` ORIGINAUX (`run_ablation_classic_setup_k5_25m_layer31/model_scale_4b/model_scale_27b.slurm`, aucun ne pin `JUDGE_MODEL_ID` donc Qwen par défaut sans modification) — le cache RAW partagé (`local_data/activation_cache/`, 423 Go, 4 clés déjà présentes) devrait éviter de refaire l'extraction LLM, mais l'entraînement de l'extension (10 époques) et le merge/judge complet sont à refaire : coût proche d'un rerun complet moins l'extraction, pas quelques minutes | ~1-2h GPU/palier estimé (à vérifier au premier relancé — pas mesuré précisément), 3 soumissions | §82 (table sweep complète, cohérente Qwen) | **Moyenne** — plus cher que prévu initialement, à lancer après 2a/3 si le temps le permet |
+| 3 | Vérifier 45724 (1B)/45725 (layer12) dès qu'ils terminent, écrire la ligne 1B et la section layer 12 sous Qwen nativement | 0 (déjà en file) | §82/§88 | **Haute** |
+| 4 | Rejuger Qwen le magnitude/référence historique si le rapport cite encore 45,3% comme un chiffre à part (déjà fait en fait, §83 — vérifier juste que le rapport pointe vers §83 et pas vers l'ancien 45,3% Gemma sans le dire) | 0 (déjà fait) | passages "45,3%" du rapport | **Moyenne** — vérification de rédaction, pas un rerun |
+| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen explicitement pour chaque occurrence | 0 (lecture) | tout le rapport | **Moyenne** |
+| 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (`bin_info` natif) pour remplacer N3/§87 par un chiffre repondéré fiable ET jugé Qwen | faible (rejugement seul, réutilise cache) | §79 remplaçant définitif, N3 | **Moyenne** — utile mais #1 (job 45735) donne déjà un chiffre Qwen exploitable sans repondération |
+| 7 | App I (F1 lecteur 12B/27B) — extraction fraîche + calcul | ~6h GPU | App I (jamais commencé) | **Basse** — confirmatoire, pas un front nouveau, à ne lancer que si le temps le permet après 1-6 |
+| 8 | Extraction fraîche de l'arme originaux+filler (`results_v26_.../`) pour compléter N4/B.1 sous Qwen | plusieurs heures GPU (extraction complète) | §81/N4 | **Basse** — B.1 est déjà tranché négativement (§81), un rejugement Qwen ne changerait probablement pas la conclusion "pas d'effet démontrable" |
+
+**Recommandation concrète pour la suite immédiate** : lancer 2a (rejugement
+layer41, vraiment bon marché) maintenant. Décider 2b (relance complète
+layer31/4B/27B, ~1-2h GPU chacun d'après une première estimation à vérifier)
+une fois 1/3 confirmés, pour ne pas saturer la file inutilement en même temps
+que les 5 jobs déjà en cours. Ne pas lancer #7/#8 avant d'avoir confirmé que
+le rapport en a réellement besoin (aucune mention d'App I dans `report/*.md`
+à ce jour).

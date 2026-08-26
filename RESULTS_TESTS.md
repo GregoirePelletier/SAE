@@ -4587,3 +4587,51 @@ comme le "vrai" taux repondéré de §79, seulement une démonstration que
 `horvitz_thompson_mean`/le pipeline de bin_info fonctionnent. `n3_stratified_
 bin_rates.json` (`results_v10_emails_main/cache/`) contient le détail complet
 si une inspection supplémentaire est utile avant de rejouer b2.
+
+## 88. Réplication du balayage layer (§51) sous le setup classique (K_EXTRA=5, sélection stratifiée) : layer 41 — cohérent avec le plateau déjà observé sur le sweep taille de modèle
+
+**Question** : §82 sweep la taille du modèle extracteur (4B/12B/27B) sous le
+setup classique. Ce sweep ne varie que `LAYER` à taille de modèle fixe (12B,
+`gemma-3-12b-it`) pour situer layer 41 (~2/3 profondeur du palier 27B,
+`_PRESETS`) par rapport à layer 31 (référence de facto du sweep taille
+ci-dessus, déjà stratifié) et layer 24 (défaut historique du dépôt, mesuré
+sous magnitude uniquement). Résultat déjà produit par le job 45367 (antérieur à l'introduction de
+`JUDGE_MODEL_ID`/la décision de juger tout avec Qwen, cf. Limite) mais jamais
+écrit dans ce journal.
+
+**Écart à la configuration de référence** : uniquement `LAYER=41`
+(`SAE_ID="layer_41_width_16k_l0_medium"`), reste identique au sweep §82
+(`MODEL_ID=gemma-3-12b-it`, `K_EXTRA=5`, `D_EXTRA=1024`, 25M tokens, corpus
+mixte, sélection stratifiée — défaut inchangé depuis §79).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 150 features.
+
+**Résultat** (job 45367, h100,
+`results_v33_ablation_classic_setup_k5_25m_layer41/cache/p1_judge_labels_extended.json`) :
+82,7% (124/150, IC95% Wilson [75,8% ; 87,9%]) — comparé à la valeur déjà
+publiée en référence du sweep taille de modèle (12B/layer 31, stratifié,
+82,0%, 123/150, §82) : z=-0,15, **p=0,88, non significatif**.
+
+**Conclusion** : confirme le plateau déjà observé entre 12B et 27B (§82,
+p=0,76) — passer de layer 31 à layer 41 (toujours à taille de modèle fixe,
+12B) ne déplace pas non plus le taux mesurable à n=150. La couche `resid_post`
+choisie pour le core (24, historique) n'est donc pas identifiée comme
+sous-optimale par ce balayage étendu ; le seul écart individuel qui reste
+significatif contre elle est layer 31 (§51, non répliqué sous stratifié à ce
+jour), mais layer 31 lui-même ne se distingue plus de layer 41 une fois la
+sélection stratifiée appliquée aux deux. `layer 12` (job 45725, en file au
+moment de l'écriture) complètera ce balayage à l'autre extrémité.
+
+**Limite connue** : un seul seed ; **jugé par `gemma-3-12b-it` auto-jugeant
+ses propres features** (job antérieur au découplage `JUDGE_MODEL_ID`), pas par
+Qwen3.8-27B — sous la décision explicite de standardiser le juge à Qwen pour
+tout le dépôt (pour éliminer le biais d'auto-préférence plutôt que de le
+tolérer par confort), **ce chiffre est un point de repère provisoire, pas la
+valeur finale à citer dans le rapport** : à rejuger avec Qwen avant citation
+définitive (rejudge peu coûteux, réutilise `p1_top_extended_features.json`
+déjà en cache, même patron que `judge_model_separation_test.py`) — comme le
+reste du sweep taille de modèle (§82) et la référence layer 24
+(`results_v10_emails_main`), tous mesurés sous le même juge auto-référent
+avant cette décision.
