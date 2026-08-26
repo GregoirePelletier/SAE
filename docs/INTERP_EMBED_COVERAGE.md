@@ -62,9 +62,12 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
    comme absentes, mais le classement du harnais lui-même comme "aucun équivalent" est
    à corriger : c'est un adaptateur, pas une construction neuve.
 4. **App. K contient bien K.1–K.4** (contrairement au doute initial de la recherche par
-   regex) : K.3 CLUSTERING et K.4 RETRIEVAL existent, courts (4-6 lignes chacun),
-   `docs/PDF_APPENDICES_EXTRACT.md` lignes 846–888. Les prompts de jugement clustering
-   et retrieval de l'étape "À CONSTRUIRE" ont donc une spécification texte complète.
+   regex) : K.3 CLUSTERING et K.4 RETRIEVAL existent, courts (4-6 lignes chacun) —
+   cf. `docs/PDF_APPENDICES_EXTRACT.md` §K.3/§K.4 (citation par ancre de section, pas
+   par ligne, N13 AUDIT_SAE_2026-08.md §8 — la ligne exacte peut bouger si ce fichier
+   est un jour réduit/reformulé, l'ancre de section non). Les prompts de jugement
+   clustering et retrieval de l'étape "À CONSTRUIRE" ont donc une spécification texte
+   complète.
 5. **Deux implémentations divergentes du prompt de labellisation coexistent dans
    interp_embed lui-même** : `interp_embed/llm/prompts.py::build_labeling_prompt`
    (non-paired, "a clear, easily-understandable property") vs

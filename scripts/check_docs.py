@@ -50,6 +50,22 @@ LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 
 FIRST_PERSON_SCOPE = {"README.md"}  # + tout fichier sous docs/
 
+# N12 (AUDIT_SAE_2026-08.md §8) : ces deux fichiers sous docs/ sont exclus du
+# contrôle "première personne" -- décision tranchée, pas un oubli. Les deux
+# sont des analyses comparatives explicitement à la première personne par
+# nature ("mon pipeline" vs. le code d'un dépôt tiers, ou la méthodologie de
+# transcription de CE document même) : réécrire mécaniquement ~16 occurrences
+# en voix impersonnelle risquait de dénaturer des jugements techniques nuancés
+# sous la contrainte de temps, pour un gain de cohérence marginal sur des
+# documents de travail (pas des sections citées par le rapport comme
+# `RESULTS_TESTS.md`, où la règle "présent, sans récit" reste pleinement
+# appliquée). Les AUTRES contrôles (version interne, TODO, placeholder, lien
+# mort) continuent de s'appliquer à ces deux fichiers.
+FIRST_PERSON_EXCLUDED_FILES = {
+    os.path.join("docs", "INTERP_EMBED_COVERAGE.md"),
+    os.path.join("docs", "PDF_APPENDICES_EXTRACT.md"),
+}
+
 
 def iter_target_files():
     for name in TARGET_FILES:
@@ -82,7 +98,10 @@ def check_file(rel_path: str) -> list[str]:
     violations = []
     abs_path = os.path.join(REPO_ROOT, rel_path)
     raw_lines = open(abs_path, encoding="utf-8").read().split("\n")
-    in_scope_first_person = rel_path == "README.md" or rel_path.startswith("docs" + os.sep)
+    in_scope_first_person = (
+        (rel_path == "README.md" or rel_path.startswith("docs" + os.sep))
+        and rel_path not in FIRST_PERSON_EXCLUDED_FILES
+    )
 
     for i, raw_line in enumerate(raw_lines, start=1):
         if (rel_path, raw_line.strip()) in LINE_EXCEPTIONS:

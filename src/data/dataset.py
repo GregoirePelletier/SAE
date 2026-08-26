@@ -37,9 +37,17 @@ INTENT_KEYWORDS_FR = {
     # l'un des mots les plus fréquents du français ("je souhaite avoir des
     # informations" -> étiqueté remboursement à tort) -- invalidait un résultat
     # déjà publié (sonde "remboursement" à peine sous la majorité, écart
-    # attribuable au label bruité, pas à la feature). "un avoir"/"l'avoir"
-    # (le nom, note de crédit EDF) reste couvert par un motif dédié avec article.
-    "remboursement": r"\b(rembours\w*|trop[- ]perçu|(un\s+avoir|l'avoir|d'avoir|mon\s+avoir|notre\s+avoir)\b)",
+    # attribuable au label bruité, pas à la feature). "un avoir"/"mon avoir"/
+    # "notre avoir" (le nom, note de crédit EDF) reste couvert par un motif
+    # dédié avec déterminant. "l'avoir"/"d'avoir" RETIRÉS (N5,
+    # AUDIT_SAE_2026-08.md §8) : vérifié sur le corpus réel
+    # (`local_data/emails/Mails.tsv`) -- 31/31 occurrences de "d'avoir" et
+    # 4/4 de "l'avoir" sont l'usage VERBAL ("je ne suis pas certain d'avoir
+    # compris", "je vous remercie de me l'avoir envoyée"), 0 nominal ; contre
+    # seulement 2 occurrences de "un avoir" (nominal, correct) et 0 de
+    # "mon"/"notre avoir". Ces deux formes étaient donc du bruit pur, pas un
+    # signal partiel.
+    "remboursement": r"\b(rembours\w*|trop[- ]perçu|(un\s+avoir|mon\s+avoir|notre\s+avoir)\b)",
     "information": r"\b(renseign\w*|information\w*|pourriez[- ]vous m'indiquer|comment (faire|proc[ée]der))\b",
     "urgence": r"\b(urgent\w*|imm[ée]diat\w*|sans d[ée]lai|coupure\w*)\b",
 }

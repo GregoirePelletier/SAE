@@ -36,6 +36,24 @@ tail -f logs/pipeline_runs/<nom>_<jobid>.log
 suivi des résultats de chaque run vit dans `RESULTS_TESTS.md`, pas dans les
 logs bruts.
 
+### Dette de configuration (N11, AUDIT_SAE_2026-08.md §8)
+
+Le nombre de `.slurm` croît plus vite qu'il n'est nettoyé (63 → 87 constaté,
+malgré une passe de suppression explicite) — deux règles pour freiner ça :
+
+1. **Archiver, pas laisser traîner.** Dès que le `§N` de `RESULTS_TESTS.md`
+   correspondant à un `.slurm` est écrit (le run est terminé, cité, conclu),
+   déplacer le script vers `slurm/archive/<catégorie>/` (même sous-arborescence
+   que l'original). Le script reste lisible/versionné pour reproduire le run
+   plus tard, mais sort de l'arborescence "active" que l'on parcourt pour
+   lancer de nouveaux jobs.
+2. **Réutiliser avant de créer.** Un nouveau `.slurm` ne se crée que si aucun
+   `.slurm` existant (actif OU archivé) ne couvre déjà la même config à un
+   export d'environnement près — dans ce cas, réutiliser le script existant
+   avec `export VAR=... sbatch script.slurm` (ou un variant `_h100`/`_a100`
+   de partition, déjà la convention pour la course entre partitions) plutôt
+   que dupliquer un fichier quasi identique.
+
 ### Disque
 
 Le disque partagé (`/home`) est souvent proche de la capacité — vérifier
