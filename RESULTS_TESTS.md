@@ -5024,3 +5024,33 @@ encore remesurés sous méthodologie pleinement corrigée (seulement sous
 stratifié+Gemma, §82 : 72,0%/83,3%) — la courbe complète 1B→4B→12B→27B sous
 méthodologie corrigée reste à tracer avant de conclure sur la forme exacte
 du plateau ; un seul seed.
+
+## 96. Sweep layer, layer 12 sous méthodologie pleinement corrigée : pas d'écart significatif avec layer 31
+
+**Question** : complète §90 (layer 41) pour le layer sweep sous méthodologie
+complète — layer 12, jamais mesuré sous stratifié+Qwen+déduplication avant
+ce run (crashé deux fois auparavant : N1 puis clé de cache orpheline,
+`AUDIT_SAE_2026-08.md` §9).
+
+**Écart à la configuration de référence** : identique à §82/§88 sauf
+`LAYER=12`.
+
+**Méthode statistique** : `two_proportion_test`.
+
+**n** : 150 features.
+
+**Résultat** (job 45803, h100, `results_v32_.../cache/p1_judge_labels_extended.json`,
+sidecar confirmant `judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **88,7% (133/150), 0 dead**, IC95% [82,6% ; 92,8%].
+Comparé à layer 31 sous la même méthodologie complète (§94, 94,0%) :
+$z=-1{,}64$, $p=0{,}101$, non significatif.
+
+**Conclusion** : cohérent avec §90 (layer 41) — sous méthodologie
+pleinement corrigée, aucun layer testé (12, 41) ne se distingue
+significativement de layer 31 à $n=150$. Le seul écart individuel
+significatif du dépôt (layer 31 vs layer 24, §51, $z=2,20$) n'a toujours
+pas été répliqué sous cette méthodologie ; layer 24 lui-même reste à
+remesurer sous stratifié+Qwen+déduplication pour clore le sweep layer.
+
+**Limite connue** : un seul seed ; comparaison non appariée (features
+différentes entre layers).
