@@ -141,15 +141,34 @@ du SAE, capacité et parcimonie de l'extension, volume de tokens, graine
 d'entraînement, taille du modèle extracteur/juge, dimension d'embedding,
 backbone de Pipeline 2) montre qu'\textbf{aucun hyperparamètre du SAE ne modifie
 significativement le taux d'interprétabilité} une fois le domaine du corpus
-corrigé --- à l'exception d'un unique levier : \textbf{l'échelle du modèle
-extracteur/juge}, qui produit un effet dose-réponse net et hautement
+corrigé --- à l'exception de deux leviers réels. \textbf{L'échelle du modèle
+extracteur/juge} produit un effet dose-réponse net et hautement
 significatif (12,0\% à 1B paramètres, 28,0\% à 4B, 45,3\% à 12B ; test de
-tendance de Cochran-Armitage, $p \approx 1{,}6\times10^{-10}$). Des tests
-complémentaires (fidélité et plausibilité de l'explication document-level,
-sanity check contre un décodeur figé aléatoire, robustesse du protocole de
-jugement, biais multilingue, fidélité du steering, évaluation quantitative du
-retrieval) complètent la validation du système, avec un audit rétroactif de
-la méthodologie statistique employée (tests appariés, correction multi-tests).
+tendance de Cochran-Armitage, $p \approx 1{,}6\times10^{-10}$) qui
+\textbf{plafonne} ensuite : un palier à 27B, testé ultérieurement sous la
+méthode corrigée ci-dessous, n'apporte plus de gain significatif par rapport
+à 12B (83,3\% contre 82,0\%, $p=0{,}76$). \textbf{La méthode de sélection des
+features à juger} s'est révélée être le second levier, plus important encore :
+la sélection par magnitude d'activation (utilisée pour tous les chiffres
+ci-dessus) favorise systématiquement les features les plus denses, un
+échantillon non représentatif du dictionnaire --- remplacée par une sélection
+stratifiée par bins de fréquence, le taux mesuré sur le même SAE passe de
+45,3\% à 89,3\% ($z=-8{,}12$, $p=4{,}5\times10^{-16}$). Un troisième correctif,
+portant sur le juge lui-même (gemma-3-12b-it jugeait jusqu'ici ses propres
+features), donne 94,7\% en rejugeant les mêmes features stratifiées avec un
+modèle de famille différente (Qwen3.8-27B), écart non significatif à cette
+échelle ($p=0{,}057$) mais dans le sens attendu d'un biais d'auto-préférence.
+\textbf{94,7\% (sélection stratifiée, juge Qwen) est la valeur de référence
+retenue pour ce rapport} ; les chiffres en 45,x\%/2x,x\% cités dans les
+sections d'ablation datent tous de la méthode de sélection par magnitude et du
+juge auto-référent, et se lisent comme un plancher, pas comme le taux réel du
+dictionnaire. Des tests complémentaires (fidélité et plausibilité de
+l'explication document-level, sanity check contre un décodeur figé aléatoire,
+robustesse du protocole de jugement, biais multilingue, fidélité du steering,
+évaluation quantitative du retrieval --- fusion RRF et reranking LLM, qui
+dominent uniformément TF-IDF et le retrieval sémantique seul) complètent la
+validation du système, avec un audit rétroactif de la méthodologie statistique
+employée (tests appariés, correction multi-tests).
 
 \textbf{Mots-clés} : Sparse Autoencoders, interprétabilité mécaniste,
 GemmaScope, grands modèles de langage, explicabilité, traitement automatique
@@ -174,15 +193,31 @@ An exhaustive ablation campaign (20+ configurations: SAE width, extension
 capacity and sparsity, token volume, training seed, extractor/judge model
 scale, embedding dimension, Pipeline-2 backbone) shows that \textbf{no SAE
 hyperparameter significantly changes the interpretability rate} once the
-corpus domain is fixed --- except for a single lever: \textbf{the scale of the
-extractor/judge model}, which produces a clean, highly significant
-dose-response effect (12.0\% at 1B parameters, 28.0\% at 4B, 45.3\% at 12B;
-Cochran-Armitage trend test, $p \approx 1.6\times10^{-10}$). Complementary
+corpus domain is fixed --- except for two real levers. \textbf{The scale of the
+extractor/judge model} produces a clean, highly significant dose-response
+effect (12.0\% at 1B parameters, 28.0\% at 4B, 45.3\% at 12B; Cochran-Armitage
+trend test, $p \approx 1.6\times10^{-10}$) that then \textbf{plateaus}: a 27B
+tier, tested later under the corrected method below, brings no further
+significant gain over 12B (83.3\% vs 82.0\%, $p=0.76$). \textbf{The
+feature-selection method used for judging} turned out to be the second, even
+larger lever: selection by activation magnitude (used for every figure above)
+systematically favors the densest features, an unrepresentative sample of the
+dictionary --- replaced by frequency-stratified sampling, the rate measured on
+the same SAE rises from 45.3\% to 89.3\% ($z=-8.12$, $p=4.5\times10^{-16}$). A
+third correction, targeting the judge itself (gemma-3-12b-it had until then
+judged its own features), gives 94.7\% when the same stratified features are
+rejudged by a different model family (Qwen3.8-27B), a gap not significant at
+this scale ($p=0.057$) but pointing in the direction expected from a
+self-preference bias. \textbf{94.7\% (stratified selection, Qwen judge) is
+this report's reference value}; the 45.x\%/2x.x\% figures cited in the
+ablation sections all predate the selection-method and judge corrections and
+should be read as a floor, not the dictionary's true rate. Complementary
 tests (document-level explanation fidelity and plausibility, a random-decoder
 sanity check, judge robustness, multilingual bias, steering fidelity,
-quantitative retrieval evaluation) complete the system's validation, together
-with a retroactive audit of the statistical methodology used (paired tests,
-multiple-comparison correction).
+quantitative retrieval evaluation --- RRF fusion plus LLM reranking, which
+uniformly beat TF-IDF and semantic retrieval alone) complete the system's
+validation, together with a retroactive audit of the statistical methodology
+used (paired tests, multiple-comparison correction).
 
 \textbf{Keywords}: Sparse Autoencoders, mechanistic interpretability,
 GemmaScope, large language models, explainability, customer email analysis,
@@ -819,7 +854,11 @@ mieux adaptée qu'une série de comparaisons par paires à ce plan à niveaux
 ordonnés --- confirme un effet extrêmement robuste :
 $z \approx 6{,}40$, $p \approx 1{,}6\times10^{-10}$ (quasiment identique avec
 un barème linéaire ou log-paramètres). C'est, de très loin, le plus fort
-effet mesuré dans tout ce stage.
+effet mesuré dans tout ce stage. Un palier supplémentaire à 27B, testé
+ultérieurement sous la sélection stratifiée (\S\ref{subsec:correction-methode}),
+confirme un \textbf{plateau} : 82,0\% à 12B, 83,3\% à 27B ($p=0{,}76$, non
+significatif) --- doubler encore la taille du modèle au-delà de 12B n'apporte
+plus de gain mesurable à cette échelle.
 \end{resultbox}
 
 La séparabilité linéaire (classification, indépendante du juge LLM) suit une
@@ -832,6 +871,47 @@ inversion logique cause/conséquence observée), suggère que c'est la
 \textbf{capacité de raisonnement du juge} --- formuler et vérifier un concept
 partagé entre 9 exemples --- qui limite le score à petite échelle, plus que
 la qualité intrinsèque des features extraites.
+
+\subsection{Second et troisième correctifs : sélection des features et choix du juge}
+\label{subsec:correction-methode}
+
+Les résultats ci-dessus, comme la table~\ref{tab:synthese}, sélectionnent les
+features à juger par \textbf{magnitude d'activation moyenne} --- un choix qui
+s'est révélé biaisé \emph{a posteriori} : cette méthode favorise
+systématiquement les features les plus denses (proches de directions
+génériques), un échantillon non représentatif du dictionnaire complet.
+Remplacée par une \textbf{sélection stratifiée} par bins de fréquence
+(échantillonnage équilibré sur des strates de fréquence log-espacées plutôt
+que les features les plus actives), le taux mesuré sur le même SAE et le même
+corpus passe de \textbf{45,3\% (68/150) à 89,3\% (134/150)} --- écart
+hautement significatif ($z=-8{,}12$, $p=4{,}5\times10^{-16}$), et de loin le
+second effet le plus large de tout ce stage.
+
+Un second doute a ensuite porté sur le \textbf{juge lui-même} :
+gemma-3-12b-it jugeait jusqu'ici ses propres features, le même checkpoint que
+celui dont les activations sont extraites --- un risque de biais
+d'auto-préférence jamais isolé jusqu'ici, faute d'un juge de famille
+différente et de capacité comparable disponible localement. Rejugeant les
+mêmes 150 features stratifiées avec Qwen3.8-27B (famille différente), le taux
+mesuré monte à \textbf{94,7\% (142/150)}, écart non significatif à cette
+échelle (test de McNemar exact, $p=0{,}057$) mais dans le sens attendu si un
+biais d'auto-préférence existait (gemma-3-12b-it plus sévère avec lui-même).
+Sur un échantillon de features sélectionnées par \emph{magnitude} en revanche,
+le même changement de juge produit un écart massif et hautement significatif
+(45,3\% $\to$ 78,7\%, McNemar apparié $\chi^2=31{,}59$, $p=1{,}9\times10^{-8}$)
+--- l'effet du choix de juge semble donc concentré sur les features denses que
+la sélection par magnitude sur-échantillonne, pas une propriété générale du
+dictionnaire.
+
+\begin{resultbox}[Valeur de référence retenue]
+\textbf{94,7\% (sélection stratifiée, juge Qwen3.8-27B) est le taux
+d'interprétabilité de référence de ce rapport.} Les chiffres en
+45,x\%/2x,x\% cités dans les autres sections de ce chapitre datent de la
+méthode de sélection par magnitude et du juge auto-référent : ils restent des
+comparaisons \emph{internes} valides (les deux bras d'une même ablation,
+mesurés sous la même méthode) mais leurs valeurs absolues se lisent comme un
+plancher, pas comme le taux réel du dictionnaire.
+\end{resultbox}
 
 \subsection{Robustesse du protocole de jugement}
 \label{subsec:robustesse}
@@ -912,7 +992,7 @@ partir du seul test d'ablation en espace de code : une intervention qui paraît
 efficace dans l'espace latent peut s'avérer, selon l'intention visée, sans
 effet une fois le résultat effectivement produit.
 
-\subsection{Retrieval quantitatif (Latent Terms)}
+\subsection{Retrieval quantitatif (Latent Terms, fusion et reranking)}
 
 \textbf{Latent Terms} \cite{clavie2026latentterms} détourne BM25 --- une
 fonction de pertinence classique en recherche d'information, conçue pour
@@ -922,28 +1002,52 @@ l'ensemble de ses features actives (son \og{}vocabulaire latent\fg{}), une
 requête en langage naturel est elle-même encodée puis réduite à ses features
 actives, et BM25 classe les documents par recouvrement de features avec la
 requête --- exactement comme il classerait des documents par recouvrement de
-mots avec une requête textuelle. Une évaluation quantitative de ce protocole
-montre une
-\textbf{précision parfaite (1,00)} sur 3 intentions testées sur 4, nettement
-supérieure à une baseline TF-IDF classique sur des requêtes reformulées (pas
-de reprise littérale des mots-clés) --- généralisation sémantique réelle. Un
-échec complet sur la quatrième intention (0,00) a été diagnostiqué
-précisément : un seul document du corpus partage une intersection non nulle
-avec les features latentes activées par la requête --- une limite
-structurelle du BM25 sur vocabulaire très parcimonieux, pas un défaut de
-compréhension sémantique.
+mots avec une requête textuelle. Fidèle au protocole du papier, ce SAE est
+entraîné par pure reconstruction sur des activations \textbf{token} d'un
+corpus générique hors domaine (jamais sur les mails eux-mêmes), puis appliqué
+aux mails entiers.
+
+Une évaluation quantitative (Precision@10, 4 intentions en paraphrase, contre
+une baseline TF-IDF) ne montre \textbf{pas de victoire uniforme} d'une
+méthode : Latent Terms domine largement sur l'intention au taux de base le
+plus faible (\emph{remboursement}, 10,3\% : P@10 0,90 contre 0,30 pour
+TF-IDF), à égalité sur deux intentions, et dominé par TF-IDF sur l'intention
+au taux de base le plus élevé (\emph{réclamation}, 54,8\% : P@10 0,50 contre
+1,00 --- TF-IDF profite d'un vocabulaire homogène sur cette intention
+précise). Fusionner les deux classements par \textbf{RRF} (\emph{Reciprocal
+Rank Fusion}) puis reranker le top-50 avec un juge LLM \textbf{domine
+uniformément les 4 intentions} (P@10~$\geq$~0,90 partout, MAP 0,922 contre
+0,761 pour RRF seul et 0,678 pour TF-IDF seul) --- premier résultat sans
+compromis de cette section. Le \emph{Rank-Biased Overlap} entre les
+classements TF-IDF et Latent Terms reste très bas (0,05 en moyenne) même
+quand leur précision est proche : les deux méthodes retrouvent des documents
+largement différents en tête de liste, ce que le reranking exploite plutôt
+que d'arbitrer entre deux versions du même classement.
 
 \subsection{Choix du backbone d'embedding (Pipeline 2)}
 
 Quatre backbones ont été comparés pour le Pipeline~2 : F2LLM-v2 (80M, 160M,
 330M) et bge-m3. \textbf{bge-m3 domine nettement} sur la plupart des
-métriques (NMSE $-18,8\%$ par rapport au meilleur F2LLM, taux de features
-mortes 4 à 5 fois plus faible, meilleure séparabilité du corpus de diffing)
---- un candidat par défaut recommandé pour une suite du projet. Ce résultat a
+métriques de reconstruction (NMSE $-18,8\%$ par rapport au meilleur F2LLM,
+taux de features mortes 4 à 5 fois plus faible, meilleure séparabilité du
+corpus de diffing) --- un candidat sérieux pour une suite du projet, non
+adopté comme défaut de production dans ce rapport (F2LLM-v2-80M reste utilisé
+partout ailleurs) faute d'une comparaison chiffrée équivalente sur le taux
+d'interprétabilité lui-même, pas seulement la reconstruction. Ce résultat a
 nécessité un correctif de code : le pooling documentaire était câblé en dur
 sur le dernier token (adapté à un backbone décodeur causal comme F2LLM),
 incorrect pour un encodeur bidirectionnel comme bge-m3 (pooling \texttt{[CLS]}
 attendu).
+
+Sur l'\textbf{interprétabilité} (pas seulement la reconstruction), le seul
+chiffre disponible avant ce rapport datait d'une méthode de sélection et de
+juge depuis corrigées côté Pipeline~1 mais jamais portées sur Pipeline~2.
+Sous protocole comparable (sélection stratifiée, juge Qwen3.8-27B), le taux
+mesuré est de \textbf{58,7\% (88/150)} --- sensiblement plus bas que la
+référence Pipeline~1 (94,7\%), alors que la reconstruction Pipeline~2 est
+elle-même bonne et non dégradée. Pipeline~2 fonctionne de bout en bout et
+reconstruit bien, mais son niveau d'interprétabilité individuelle des
+features reste, à ce stade, inférieur à celui de Pipeline~1.
 
 \subsection{Balayage de la dimension d'embedding (MRL)}
 
@@ -1021,10 +1125,16 @@ cœur gelé a été validée à l'échelle, avec une reconnaissance explicite de
 particulièrement large a permis d'établir, avec une rigueur statistique
 correcte (McNemar, correction de multiplicité identifiée, test de tendance),
 qu'aucun hyperparamètre du SAE ne module significativement le résultat une
-fois le domaine corrigé --- et qu'un unique levier, l'échelle du modèle,
-domine tous les autres effets mesurés. Les protocoles de fidélité,
-plausibilité et robustesse de l'explication ont tous été mis en œuvre et
-donnent des résultats positifs ou, à défaut, honnêtement nuancés (steering).
+fois le domaine corrigé --- et que deux leviers de \emph{protocole de mesure},
+plutôt que d'architecture, dominent tous les autres effets mesurés :
+l'échelle du modèle extracteur/juge, et la méthode de sélection des features
+à juger. Isoler le choix du juge lui-même de celui de l'extracteur a permis de
+montrer que l'effet d'échelle massif observé n'est pas un biais
+d'auto-préférence généralisé, mais concentré sur les features que la
+sélection par magnitude sur-échantillonne (\S\ref{subsec:correction-methode}).
+Les protocoles de fidélité, plausibilité et robustesse de l'explication ont
+tous été mis en œuvre et donnent des résultats positifs ou, à défaut,
+honnêtement nuancés (steering).
 
 \subsection{Points non résolus et perspectives}
 
@@ -1035,10 +1145,21 @@ donnent des résultats positifs ou, à défaut, honnêtement nuancés (steering)
     testée n'a qu'un seul niveau d'extension. Au vu du résultat central de ce
     stage (l'échelle du modèle domine tout effet architectural du SAE), une
     architecture Matryoshka multi-niveaux ne semble pas prioritaire pour la
-    suite : l'effort gagnerait probablement davantage à séparer les rôles
-    d'extracteur et de juge (utiliser un modèle léger pour l'extraction mais
-    un juge plus capable) pour isoler laquelle des deux capacités domine
-    réellement l'effet d'échelle observé.
+    suite.
+  \item Séparer les rôles d'extracteur et de juge (utiliser un modèle léger
+    pour l'extraction mais un juge plus capable) a depuis été fait
+    (\S\ref{subsec:correction-methode}) : rejuger les mêmes features avec un
+    juge de famille différente (Qwen3.8-27B au lieu de gemma-3-12b-it, le
+    modèle extracteur) isole un effet de \textbf{choix du juge} massif sous
+    sélection par magnitude (45,3\%~$\to$~78,7\%) mais non significatif sous
+    sélection stratifiée (89,3\%~$\to$~94,7\%, $p=0{,}057$) --- l'effet
+    d'échelle mesuré \S\ref{subsec:model-scale} reste donc, pour l'essentiel,
+    un effet de capacité de raisonnement du juge plutôt qu'un biais
+    d'auto-préférence, mais concentré sur les features que la sélection par
+    magnitude sur-échantillonne. Reste ouvert : isoler explicitement la
+    capacité d'\emph{extraction} de celle du \emph{jugement} demanderait un
+    plan croisé (extracteur léger $\times$ juge capable, et l'inverse), non
+    fait ici.
   \item CamemBERTav2 et Qwen3-Embedding, identifiés en phase bibliographique
     comme candidats sérieux, n'ont pas été intégrés faute d'écosystème SAE
     préentraîné équivalent à GemmaScope --- une comparaison chiffrée directe
