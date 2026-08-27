@@ -10,12 +10,24 @@ ce chapitre) favorise systématiquement les features les plus denses,
 non représentative du dictionnaire. Remplacée par une sélection stratifiée par
 bins de fréquence (App. J, *Interpretable Embeddings with Sparse Autoencoders*,
 `RESULTS_TESTS.md` §79), le taux mesuré sur le même SAE et le même corpus passe
-de 45,3% (68/150) à **89,3% (134/150)** — c'est le taux de référence actuel du
-projet, le résidu non interprété tombe à ~11% plutôt que ~55%. Les analyses
-ci-dessous, menées sous l'ancienne méthode, restent valides comme diagnostic
-des SOURCES de bruit du protocole (elles ne dépendent pas de quelles features
-précisément sont jugées) mais leurs pourcentages absolus datent d'avant cette
-correction.
+de 45,3% (68/150) à 89,3% (134/150). Second correctif, plus tardif : gemma-3-12b-it
+jugeait jusqu'ici ses propres features (même checkpoint que l'extracteur) — un
+juge de famille différente (Qwen3.8-27B) rejugeant les mêmes 150 features
+stratifiées donne **94,7% (142/150)**, écart non significatif à cette échelle
+(McNemar exact, p=0,057, `RESULTS_TESTS.md` §89). **94,7% (stratifié, Qwen) est
+le taux de référence retenu pour ce rapport** — le résidu non interprété tombe à
+~5% plutôt que ~55%. Contrairement à la sélection par magnitude (où le choix du
+juge produisait un écart massif — 45,3% gemma-3-12b-it contre 78,7% Qwen sur les
+mêmes 150 features, McNemar apparié p=1,9×10⁻⁸, `RESULTS_TESTS.md` §83),
+l'écart de juge sous sélection stratifiée reste dans le bruit à n=150 (confirmé
+une seconde fois sur un balayage layer indépendant, `RESULTS_TESTS.md` §90) : la
+sélection par magnitude semble avoir concentré l'effet de juge sur les features
+denses/génériques qu'elle sur-échantillonne, pas une propriété générale du
+dictionnaire.
+Les analyses ci-dessous, menées sous l'ancienne méthode (magnitude, gemma-3-12b-it),
+restent valides comme diagnostic des SOURCES de bruit du protocole (elles ne
+dépendent pas de quelles features précisément sont jugées, ni du juge précis) mais
+leurs pourcentages absolus datent d'avant ces deux corrections.
 
 Ce résidu n'est pas dû au volume de tokens du corpus (`03_experiences_et_resultats.md`).
 Il est en revanche en bonne partie attribuable au bruit du protocole de jugement :
@@ -247,7 +259,13 @@ correctement puis répliquée à pleine puissance (n=150, sélection stratifiée
 89,3% corpus mixte, non significatif, p=0,070, sens même légèrement inversé)
 — le signal à n=20 était du bruit d'échantillonnage. **Comme pour la boucle
 côté juge, la contamination du corpus d'entraînement par le style du modèle
-générateur n'explique pas le taux d'interprétabilité mesuré.**
+générateur n'explique pas le taux d'interprétabilité mesuré.** Comparaison
+faite sous gemma-3-12b-it (Gemma) sur les deux bras — le bras "corpus mixte"
+a depuis été rejugé Qwen (94,7%, ci-dessus) mais pas le bras "originaux
+seuls" (fragments token-level supprimés par un nettoyage disque, extraction
+fraîche nécessaire pour le rejuger) : la comparaison B.1 complète sous un
+même juge Qwen reste hors de portée sans ce rerun, limite à garder explicite
+si ce résultat est cité en l'état.
 
 En contrepoint, un aspect qui est contrôlé : `src/data/augmentation.py::validate`
 rejette une variante générée si elle est trop courte (<30 caractères), si son

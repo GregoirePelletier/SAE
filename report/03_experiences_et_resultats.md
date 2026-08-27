@@ -207,19 +207,27 @@ unique, également exposé dans le dashboard Streamlit.
 
 **Note méthodologique valable pour tout le reste de ce chapitre** : les sections
 2 à 12 ci-dessous, sauf mention contraire explicite, mesurent l'interprétabilité
-sur un échantillon de features sélectionnées par magnitude d'activation moyenne
-— une méthode depuis identifiée comme biaisée vers les features les plus
-denses du dictionnaire, donc non représentative (`RESULTS_TESTS.md` §79).
-Remplacée par une sélection stratifiée par bins de fréquence (App. J,
-*Interpretable Embeddings with Sparse Autoencoders*), le taux mesuré sur le
-même SAE de référence passe de 45,3% (68/150) à **89,3% (134/150)**, écart
-hautement significatif (z=-8,12, p=4,5×10⁻¹⁶) — `FEATURE_SELECTION_METHOD
-=stratified` est le défaut du dépôt depuis. Les comparaisons *au sein* d'une
-même section (les deux bras d'une ablation, mesurés sous la même méthode)
-restent des conclusions valides ; les pourcentages absolus cités
-(45,x%/2x,x%) ne sont plus comparables au taux de référence actuel du projet
-et se lisent comme un plancher. Le sweep taille de modèle (§4) est complété plus bas par un point remesuré
-sous la méthode actuelle (27 milliards de paramètres, sélection stratifiée).
+sur un échantillon de features sélectionnées par magnitude d'activation moyenne,
+jugées par gemma-3-12b-it (même checkpoint que l'extracteur) — deux choix
+depuis identifiés comme biaisés. La sélection par magnitude favorise
+systématiquement les features les plus denses du dictionnaire, donc non
+représentative (`RESULTS_TESTS.md` §79) : remplacée par une sélection
+stratifiée par bins de fréquence (App. J, *Interpretable Embeddings with
+Sparse Autoencoders*), le taux mesuré sur le même SAE de référence passe de
+45,3% (68/150) à 89,3% (134/150), écart hautement significatif (z=-8,12,
+p=4,5×10⁻¹⁶) — `FEATURE_SELECTION_METHOD=stratified` est le défaut du dépôt
+depuis. Le juge auto-référent a ensuite été mis en cause (biais
+d'auto-préférence potentiel) : rejugé par Qwen3.8-27B (famille différente) sur
+les mêmes 150 features stratifiées, le taux monte à **94,7% (142/150)**, écart
+non significatif à cette échelle (p=0,057, `RESULTS_TESTS.md` §89) — **94,7%
+(stratifié, Qwen) est le taux de référence actuel du projet.** Les
+comparaisons *au sein* d'une même section (les deux bras d'une ablation,
+mesurés sous la même méthode et le même juge) restent des conclusions
+valides ; les pourcentages absolus cités (45,x%/2x,x%) ne sont plus
+comparables au taux de référence actuel du projet et se lisent comme un
+plancher. Le sweep taille de modèle (§4) est complété plus bas par un point
+remesuré sous la méthode actuelle (27 milliards de paramètres, sélection
+stratifiée).
 
 ## 2. Validité du protocole d'évaluation
 
@@ -550,6 +558,28 @@ proche des objectifs métier. Aucun écart n'est de l'ordre d'un problème
 majeur ; pas de justification claire pour préférer l'un à l'autre sur ce
 projet.
 
+### 3.6. Interprétabilité Pipeline 2
+
+Jusqu'ici, ce chapitre ne cite l'interprétabilité que côté Pipeline 1 — les
+métriques Pipeline 2 rapportées (NMSE, `clf_acc_email_axes`) sont toutes des
+métriques de reconstruction/classification, pas d'interprétabilité
+individuelle des features. Le seul chiffre d'interprétabilité qui existait
+pour Pipeline 2 (74,7%) datait d'avant les correctifs de méthode appliqués à
+Pipeline 1 (sélection par magnitude, jamais corrigée pour ce pipeline ; juge
+auto-référent ; pas de déduplication des exemples positifs par mail d'origine
+— cf. limites, `04_limites_et_perspectives.md`) et n'a jamais été cité dans ce
+rapport. Premier chiffre sous protocole comparable à la référence P1 actuelle
+(sélection stratifiée, juge Qwen3.8-27B) : **58,7% (88/150, IC95%
+[50,7% ; 66,3%])** — sensiblement plus bas que la référence Pipeline 1
+(94,7%), alors que la reconstruction Pipeline 2 elle-même est bonne (NMSE
+0,0671, ρ_SAE 0,9614) et non dégradée. Les trois changements de protocole ne
+sont pas isolés dans ce run, donc la baisse par rapport au 74,7% historique
+ne peut pas être attribuée à un facteur précis (`RESULTS_TESTS.md` §93).
+**Pipeline 2 fonctionne de bout en bout et reconstruit bien, mais son niveau
+d'interprétabilité individuelle des features est en l'état inférieur à celui
+de Pipeline 1** — à nuancer dans toute affirmation de parité entre les deux
+pipelines.
+
 ### Consolidé — ablations d'hyperparamètres (taux d'interprétabilité odd-one-out)
 
 Référentiel : run principal, 16k, `EPOCHS_EXTRA=10`, `D_EXTRA=1024`/`K_EXTRA=32`,
@@ -859,13 +889,21 @@ quantitatif (`scripts/latent_retrieval_precision_eval.py`) : Precision@10/@20 co
 les labels faibles d'intention (5.1), sur 4 requêtes en paraphrase, comparé à une
 baseline TF-IDF, sur les 3480 mails originaux.
 
-*[En cours : l'OOM de `build_token_training_pool` est corrigé (le pool se
-construit), entraînement en cours avec un budget `--time` élargi, aucun
-résultat produit à ce jour avec cette version. Les chiffres ci-dessous
-(§26/§68/§69) mesuraient une première version phrase-level, entraînée en
-domaine sur Mails.tsv — écart méthodologique corrigé depuis, supersédés,
-conservés en trace historique uniquement, pas citables comme résultat de
-référence.]*
+**Résultat** (`RESULTS_TESTS.md` §80/§92) : pas de victoire uniforme d'une
+seule méthode — Latent Terms domine largement sur `remboursement` (taux de
+base 10,3%, le plus faible des quatre intentions : P@10 0,90 contre 0,30 pour
+TF-IDF), à égalité sur `information`/`urgence`, dominé par TF-IDF sur
+`réclamation` (taux de base 54,8%, le plus élevé : P@10 0,50 contre 1,00 —
+TF-IDF profite d'un vocabulaire homogène sur cette intention précise). Fusionner
+les deux classements par RRF (*Reciprocal Rank Fusion*) puis reranker le top-50
+avec un juge LLM (Qwen3.8-27B) **domine uniformément les 4 intentions** (P@10
+≥ 0,90 partout, MAP 0,922 contre 0,761 pour RRF seul, 0,775 pour Latent Terms
+seul, 0,678 pour TF-IDF seul) — premier résultat sans compromis de cette
+section. Le RBO (*Rank-Biased Overlap*) entre les classements TF-IDF et Latent
+Terms reste très bas (0,051 en moyenne, 0,012 à 0,122 selon la requête) même
+quand leur précision est proche : les deux méthodes retrouvent des documents
+largement différents en tête de liste, ce que le reranking exploite plutôt que
+de se contenter d'arbitrer entre deux versions du même classement.
 
 **Réserve méthodologique sur la comparaison à TF-IDF (§5.1 et §5.5)** : la vérité
 terrain utilisée dans les deux cas (`INTENT_KEYWORDS_FR`) est elle-même construite par

@@ -63,23 +63,29 @@ systématiquement les features les plus denses, un échantillon non représentat
 du dictionnaire — remplacée par une sélection stratifiée par bins de fréquence
 (App. J, *Interpretable Embeddings with Sparse Autoencoders*), le taux
 d'interprétabilité mesuré sur le même SAE et le même corpus passe de 45,3%
-(68/150) à **89,3% (134/150)**, écart hautement significatif (z=−8,12,
-p=4,5×10⁻¹⁶). C'est la valeur de référence actuelle du projet ; les chiffres
-en 45,x%/2x,x% cités dans les chapitres d'ablation de ce rapport datent tous de
-la méthode de sélection par magnitude et se lisent comme un plancher, pas
-comme le taux réel du dictionnaire. Un sanity check contre un décodeur figé
-aléatoire (Korznikov et al., 2026) confirme que l'entraînement de l'extension
-apprend une structure réelle (45,3% contre 29,3% sous sélection par magnitude,
-écart significatif) tout en révélant qu'une classification en aval résiste
-beaucoup mieux à cette dégradation que l'interprétation qualitative. Une
-contamination possible du corpus d'entraînement par le style du modèle juge
-(93% du corpus généré par Gemma-3-12B-it) a également été testée directement
-et écartée à pleine puissance statistique (n=150) comme explication du taux
-mesuré. Des tests complémentaires (fidélité et plausibilité de l'explication
-document-level, robustesse du protocole de jugement, biais multilingue,
-fidélité du steering, évaluation quantitative du retrieval) complètent la
-validation du système, avec un audit rétroactif de la méthodologie
-statistique employée.
+(68/150) à 89,3% (134/150), écart hautement significatif (z=−8,12,
+p=4,5×10⁻¹⁶). **Troisième correctif** : gemma-3-12b-it jugeait jusqu'ici ses
+propres features (même checkpoint que l'extracteur) — un juge de famille
+différente (Qwen3.8-27B) donne 94,7% (142/150) sur les mêmes 150 features
+stratifiées, écart non significatif à cette échelle (p=0,057) mais dans le
+sens attendu si un biais d'auto-préférence existait (Gemma plus sévère avec
+lui-même). **94,7% (stratifié, Qwen) est la valeur de référence actuelle du
+projet** ; les chiffres en 45,x%/2x,x% cités dans les chapitres d'ablation de
+ce rapport datent tous de la méthode de sélection par magnitude et du juge
+auto-référent, et se lisent comme un plancher, pas comme le taux réel du
+dictionnaire. Un sanity check contre un décodeur figé aléatoire (Korznikov et
+al., 2026) confirme que l'entraînement de l'extension apprend une structure
+réelle (45,3% contre 29,3% sous sélection par magnitude, écart significatif)
+tout en révélant qu'une classification en aval résiste beaucoup mieux à cette
+dégradation que l'interprétation qualitative. Une contamination possible du
+corpus d'entraînement par le style du modèle juge (93% du corpus généré par
+Gemma-3-12B-it) a également été testée directement et écartée à pleine
+puissance statistique (n=150) comme explication du taux mesuré. Des tests
+complémentaires (fidélité et plausibilité de l'explication document-level,
+robustesse du protocole de jugement, biais multilingue, fidélité du steering,
+évaluation quantitative du retrieval — RRF + reranking LLM, qui domine
+uniformément TF-IDF et Latent Terms seuls) complètent la validation du
+système, avec un audit rétroactif de la méthodologie statistique employée.
 
 **Mots-clés** : Sparse Autoencoders, interprétabilité mécaniste, GemmaScope,
 grands modèles de langage, explicabilité, traitement automatique des mails clients,
@@ -104,16 +110,34 @@ rose to 45.3%.
 An exhaustive ablation campaign (20+ configurations: SAE width, extension capacity
 and sparsity, token volume, training seed, embedding dimension, Pipeline-2
 backbone) shows that **no SAE hyperparameter significantly changes this rate**
-once the corpus domain is fixed — except for a single lever: **the scale of the
-extractor/judge model**, which produces a clean, highly significant dose-response
+once the corpus domain is fixed — except for two real levers. **The scale of the
+extractor/judge model** produces a clean, highly significant dose-response
 effect (12.0% at 1B parameters, 28.0% at 4B, 45.3% at 12B; Cochran-Armitage trend
-test, p≈1.6×10⁻¹⁰). A sanity check against a randomly frozen decoder (Korznikov et al., 2026) confirms that the
-extension's training learns genuine structure (45.3% vs 29.3%, significant gap)
-while also revealing that downstream classification survives this degradation far
-better than qualitative interpretation does. Complementary tests (document-level
-explanation fidelity and plausibility, judge-protocol robustness, multilingual
-bias, steering fidelity, quantitative retrieval evaluation) complete the system's
-validation, together with a retroactive audit of the statistical methodology used.
+test, p≈1.6×10⁻¹⁰) that then **plateaus**: a 27B tier, tested later under the
+corrected selection method below, brings no further significant gain over 12B
+(83.3% vs 82.0%, p=0.76). **The feature-selection method used for judging** turned
+out to be the second, even larger lever: selection by activation magnitude
+(used for every figure above) systematically favors the densest features, an
+unrepresentative sample of the dictionary — replaced by frequency-stratified
+sampling (App. J, *Interpretable Embeddings with Sparse Autoencoders*), the rate
+measured on the same SAE and corpus rises from 45.3% (68/150) to 89.3%
+(134/150), a highly significant gap (z=−8.12, p=4.5×10⁻¹⁶). **Third correction**:
+gemma-3-12b-it had until then judged its own features (same checkpoint as the
+extractor) — a judge from a different model family (Qwen3.8-27B) gives 94.7%
+(142/150) on the same 150 stratified features, a gap that is not significant at
+this scale (p=0.057) but points in the direction expected if a self-preference
+bias existed. **94.7% (stratified, Qwen) is this project's current reference
+value**; the 45.x%/2x.x% figures cited in the ablation chapters all predate the
+selection-method and judge corrections and should be read as a floor, not the
+dictionary's true rate. A sanity check against a randomly frozen decoder
+(Korznikov et al., 2026) confirms that the extension's training learns genuine
+structure (45.3% vs 29.3%, significant gap) while also revealing that downstream
+classification survives this degradation far better than qualitative
+interpretation does. Complementary tests (document-level explanation fidelity
+and plausibility, judge-protocol robustness, multilingual bias, steering
+fidelity, quantitative retrieval evaluation — RRF plus LLM reranking, which
+uniformly beats TF-IDF and Latent Terms alone) complete the system's validation,
+together with a retroactive audit of the statistical methodology used.
 
 **Keywords**: Sparse Autoencoders, mechanistic interpretability, GemmaScope, large
 language models, explainability, customer email analysis, LLM auto-interpretation,

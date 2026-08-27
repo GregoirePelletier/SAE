@@ -13,6 +13,23 @@ rien) : le nœud lui-même est down. Vérifier avec `sinfo -p <partition> -N -l`
 avant de basculer vers une autre partition — un `STATE` à `down*`/raison
 `Not responding` confirme la panne.
 
+**`a100` n'a plus la marge pour charger le juge par défaut du pipeline
+principal.** Depuis que `JUDGE_MODEL_ID` défaut à Qwen3.8-27B bf16 (~52 Go de
+poids), tout run P1/P2 qui atteint l'étape de labellisation LLM sur `a100`
+(39,49 Go de capacité sur ce cluster) OOM à ce moment précis —
+`torch.OutOfMemoryError` sur `caching_allocator_warmup`, *après* que
+l'extraction/entraînement aient tourné jusqu'au bout (job 45724, `a100`,
+1B/layer13 : 2h23 d'extraction complètes puis crash sur le chargement du
+juge, seule l'extraction — coûteuse mais réutilisable via le cache partagé —
+a été sauvée). `h100` obligatoire pour tout `.slurm` de `slurm/pipeline_runs/`
+qui ne pin pas explicitement `JUDGE_MODEL_ID`/`ALT_JUDGE_MODEL_ID` sur un
+juge plus petit — vérifier la partition AVANT de soumettre, pas après
+observation d'un crash tardif. Conséquence sur la course de doublons
+a100/h100 (juste en dessous) : une course n'a plus de sens pour un job qui
+atteint la labellisation — la copie `a100` est condamnée à échouer au
+dernier pas, quel que soit le résultat de la course elle-même ; ne soumettre
+que sur `h100`/`h100-bis` pour ce type de job.
+
 ### Arborescence des scripts de soumission
 
 `slurm/<catégorie>/*.slurm`, sortie (`--output`) configurée vers
