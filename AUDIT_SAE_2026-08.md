@@ -655,22 +655,16 @@ voit un fichier vide/tronqué et vole le verrou d'un détenteur pourtant actif
 troncature en place) ajoutés à `src/storage/checkpoint.py`, réutilisés par le verrou
 — 5 exécutions répétées du test de course, 0 échec après correctif.
 
-**N3 🟡 INVESTIGUÉ, chiffre repondéré non obtenu — critique confirmée par le code,
-mais non reconstructible a posteriori sur les données actuelles.** Détail complet :
-`RESULTS_TESTS.md` §87. La sur-pondération des bins rares par
-`feature_selection_stratified_by_frequency` (`per_bin = n_features // n_bins_eff`,
-indépendant de l'effectif du bin) est un fait structurel du code, confirmé sans
-ambiguïté. En revanche, rejouer la sélection avec le même SEED sur les mêmes
-fragments (`results_v10_emails_main/`, job 45742, CPU-only) ne reproduit QUE 68/150
-des features de `b2_stratified_selection_rejudge.json` (§79) — cause dominante non
-identifiée (un bug mineur trouvé et corrigé au passage, troncature de 4 colonnes sur
-1024 dans le calcul de `d_total` du script original, n'explique pas l'essentiel de
-l'écart). `feature_selection_stratified_by_frequency` étendue
-(`return_bin_info=True`) et `horvitz_thompson_mean` ajouté à `src/analysis/stats.py`
-— `b2_stratified_selection_rejudge.py` capture désormais `bin_info` DIRECTEMENT au
-moment de la sélection, pour qu'un futur rerun produise un taux par bin fiable sans
-dépendre d'une reproduction ultérieure fragile. Aucun rerun de juge lancé (coût GPU
-non trivial, hors du "zéro rerun" de la demande N3 initiale).
+**N3 🟢 RÉSOLU** (`RESULTS_TESTS.md` §94, job 45887). La sur-pondération des
+bins rares par `feature_selection_stratified_by_frequency` est un fait
+structurel du code, confirmé sans ambiguïté — mais un rerun natif (bin_info
+capturé au moment de la sélection, plus juge Qwen et déduplication par mail
+parent) montre que son **impact empirique est minime** : 94,0% brut contre
+93,85% repondéré Horvitz-Thompson, 0,15 point d'écart. Les strates rares
+sur-échantillonnées sont toutes à 100% d'interprétabilité, donc les
+repondérer à la baisse ne change presque rien. Le biais est réel en
+principe, négligeable en pratique sur ce dictionnaire — 94,0% (brut) reste
+citable sans nuance de repondération.
 
 **N4 🟡 EN COURS — job GPU lancé, résultat pas encore disponible.** L'arme "mixte
 stratifiée" de B.1 (§79, 134/150, déjà en cache dans `results_v10_emails_main/`)
@@ -989,10 +983,10 @@ tourne toujours au moment de cette mise à jour.
 | 1 | 45735 (b1 mixte Qwen)/45745 (retrieval)/45750 (diffing D.2) | ✅ **fait** | §89 (94,7% vs 89,3%, p=0,057) / §92 (RRF+rerank domine, RBO=0,051) / §91 (verification_rate=80%) |
 | 2a | Rejugement Qwen layer41 | ✅ **fait** | §90 (78,7% vs 82,7%, p=0,429, non significatif) |
 | 2b | Relance complète layer31/4B/27B sous Qwen | **pas fait** | coût réévalué ~1-2h GPU/palier, pas prioritaire tant que §89/§90 suffisent à établir le pattern (écart Qwen/Gemma non significatif sous stratifié) |
-| 3 | 45724 (1B)/45725→45803 (layer12) | ⚠️ **1B replanté (a100→OOM), resoumis 45874** ; **layer12 en cours** | ligne 1B et section layer 12 à écrire dès que 45874/45803 terminent |
-| 4 | Vérification rédactionnelle 45,3%/§83 | **pas fait** | reporté avec #5 |
-| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen | **pas fait** | à faire avant remise finale — le rapport cite encore 89,3%/45,3% sans dire lequel des deux juges les a produits |
-| 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (bin_info natif) | **pas fait** | moins urgent maintenant que §89 donne déjà un chiffre Qwen exploitable (94,7%) sans repondération |
+| 3 | 45874 (1B, resoumis h100)/45803 (layer12) | ✅ **1B fait** ; ⏳ **layer12 en cours** (~5h, surveillé) | §95 (1B=80,0% sous méthodologie pleinement corrigée, contre 12,0% historique — effet d'échelle réel mais deux fois plus modeste que rapporté) ; layer12 à écrire dès la fin |
+| 4 | Vérification rédactionnelle 45,3%/§83 | ✅ **fait (partiel)** | `report/FRONT_MATTER.md`, `01_etat_de_lart.md`, `03_experiences_et_resultats.md`, `04_limites_et_perspectives.md`, `06_conclusion.md`, `RAPPORT_STAGE_UNIVERSITE.tex` mis à jour avec 94,7%/94,0% comme référence — **§95 (effet d'échelle atténué) pas encore propagé**, à faire |
+| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen | ✅ **fait pour les .md et le .tex université** | reste `RAPPORT_STAGE_ENTREPRISE.tex` (explicitement reporté à après l'université, décision utilisateur) |
+| 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (bin_info natif) | ✅ **fait** | §94 (N3 résolu : 94,0% brut, 93,85% repondéré, écart négligeable) |
 | 7 | App I | **pas fait** | toujours aucune mention dans `report/*.md` — confirmé non prioritaire |
 | 8 | Extraction fraîche arme originaux+filler | **pas fait** | toujours basse priorité, B.1 déjà tranché négativement |
 
@@ -1010,8 +1004,18 @@ Dashboard mis à jour pour afficher explicitement quelle source/juge produit
 chaque taux affiché (avant : toujours le cache Gemma historique, sans le
 dire).
 
-**Reste avant remise finale** : #4/#5 (vérification rédactionnelle du
-rapport — le report cite encore les anciens chiffres Gemma sans préciser le
-juge, malgré §83/§89/§90/§93 qui donnent maintenant des alternatives Qwen) ;
-écrire les lignes 1B/layer12 dès que 45874/45803 terminent ; décider #2b/#6
-si le temps le permet après la vérification rédactionnelle.
+**Reste avant remise finale, priorité haute — §95 pas encore propagé au
+rapport** : le sweep 1B sous méthodologie pleinement corrigée (stratifié +
+Qwen + déduplication, tout en un seul passage) donne 80,0% contre 12,0%
+historique — l'écart 1B/12B (le "résultat central du stage" dans les deux
+rapports) passe de 33,3 points ($h=-0{,}77$, effet large) à 14,0 points
+($h=-0{,}43$, effet moyen) une fois la méthode corrigée. L'effet reste réel
+et significatif ($p=0{,}0003$), mais **le chiffre qui l'illustre dans
+`FRONT_MATTER.md`/`03_experiences_et_resultats.md`/`RAPPORT_STAGE_
+UNIVERSITE.tex` (12,0\%/28,0\%/45,3\%, "effet dose-réponse... p≈1,6×10⁻¹⁰")
+n'est plus la version la plus défendable du résultat central** — à
+requalifier avant remise, pas seulement documenter dans `RESULTS_TESTS.md`.
+4B et 27B restent à remesurer sous méthodologie complète (#2b) pour tracer
+la courbe corrigée en entier ; en l'absence de ce rerun, la nuance
+"significatif mais deux fois plus modeste" peut déjà être ajoutée sans
+attendre. Écrire la section layer 12 dès que 45803 termine (surveillé).
