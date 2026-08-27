@@ -35,7 +35,19 @@ SEED = int(os.environ.get("SEED", "42"))
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 REF_JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
 TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
-OUT_PATH = os.path.join(CACHE_DIR, "b2_stratified_selection_rejudge.json")
+# Nom de fichier dérivé mécaniquement du juge (R5) -- MODEL_ID contrôlait déjà
+# QUEL juge charger (cf. plus bas) mais pas le nom du fichier de sortie avant
+# ce correctif : lancer ce script avec MODEL_ID=Qwen aurait sinon écrasé
+# silencieusement le fichier de référence (b2_stratified_selection_rejudge.json,
+# produit sous gemma-3-12b-it, cité par RESULTS_TESTS.md §79/§87). Nom
+# inchangé quand MODEL_ID est le défaut historique (rétrocompatible avec
+# toutes les citations existantes de ce chemin) ; tagué sinon.
+_JUDGE_TAG = os.path.basename(MODEL_ID.rstrip("/"))
+OUT_PATH = (
+    os.path.join(CACHE_DIR, "b2_stratified_selection_rejudge.json")
+    if _JUDGE_TAG == "gemma-3-12b-it"
+    else os.path.join(CACHE_DIR, f"b2_stratified_selection_rejudge_{_JUDGE_TAG}.json")
+)
 
 
 def main() -> None:
@@ -90,7 +102,8 @@ def main() -> None:
     all_doc_sae_acts = load_all_doc_acts(all_doc_acts_path)
     train_acts = all_doc_sae_acts[:n_train]
 
-    print(f"[b2-rejudge] Chargement du juge {MODEL_ID} (même modèle que la référence)...")
+    print(f"[b2-rejudge] Chargement du juge {MODEL_ID}"
+          f"{' (même modèle que la référence)' if _JUDGE_TAG == 'gemma-3-12b-it' else ' (juge différent de la référence -- OUT_PATH taggé)'}...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN, trust_remote_code=True, local_files_only=True)
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID, torch_dtype=TORCH_DTYPE, device_map=DEVICE,
