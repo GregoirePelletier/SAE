@@ -5054,3 +5054,21 @@ remesurer sous stratifié+Qwen+déduplication pour clore le sweep layer.
 
 **Limite connue** : un seul seed ; comparaison non appariée (features
 différentes entre layers).
+
+**Correction post-hoc (§95/§96)** : les deux sections ci-dessus comparent
+1B et layer 12 (famille "classic setup" K_EXTRA=5/25M tokens, `results_v29`/
+`results_v32`) contre le "12B" de §94 — mais §94 porte sur
+`results_v10_emails_main` (K_EXTRA=32, 500 000 tokens, **layer 24**), pas sur
+`results_v27_.../layer31` (K_EXTRA=5, 25M tokens, layer 31), le véritable
+comparateur à variable unique isolée pour cette famille de sweep (c'est lui
+qui donne 82,0%/123 sous stratifié+Gemma dans la table §82, pas 89,3%). Les
+tests statistiques de §95/§96 comparent donc deux configurations qui
+diffèrent par K_EXTRA, volume ET layer, pas seulement par la taille du
+modèle/le layer visé — confond plusieurs variables à la fois. `results_v27`
+a également eu son cache purgé (comme les répertoires 4B/27B de la même
+famille) et n'a jamais été remesuré sous méthodologie pleinement corrigée :
+un rerun natif est nécessaire pour obtenir le bon point de comparaison. Les
+taux bruts (80,0% pour 1B, 88,7% pour layer 12) restent valides tels quels ;
+seuls les tests de significativité contre "12B" sont à refaire une fois
+`results_v27` remesuré (job lancé,
+cf. priorisation de la campagne dans `AUDIT_SAE_2026-08.md` §9).

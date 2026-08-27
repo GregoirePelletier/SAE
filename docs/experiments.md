@@ -34,7 +34,7 @@ tokens (100-200M, cf. `docs/evaluation_protocol.md`) — pas de table de temps �
 
 | Run | Corpus | `N_TOKENS_EXTRA_TRAIN` | Taux interp. | IC95% approx. |
 |---|---|---|---|---|
-| `results_v9_full` (avant fix) | generic (energy/sports/support) | 500k | 20,0% (2/10) | très large (n=10) |
+| `results_v9_full` (avant fix) | generic (energy/sports/support) | 500k | n=10, non exploitable | très large (n=10) |
 | `results_v10_ablation_tok100k` | emails+augmentés | 100k | 40,7% (61/150) | ±7,9 pts |
 | `results_v10_emails_main` | emails+augmentés | 500k | 45,3% (68/150) | ±8,0 pts |
 | `results_v10_ablation_tok2M` | emails+augmentés | 2M | 44,7% (67/150) | ±8,0 pts |
