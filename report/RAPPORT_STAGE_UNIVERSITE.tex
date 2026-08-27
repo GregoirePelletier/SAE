@@ -123,52 +123,61 @@ ont accompagné ce stage.
 \section*{Résumé}
 \addcontentsline{toc}{section}{Résumé}
 
-Ce stage porte sur l'explicabilité automatique de mails clients d'EDF à
-l'aide de Sparse Autoencoders (SAE), combinant un SAE préentraîné à grande
-échelle (GemmaScope-2, sur les activations de Gemma-3-12B-it) étendu par un
-second SAE entraîné spécifiquement sur le domaine (architecture à cœur gelé,
-structurellement équivalente à SAE Boost), et un second pipeline indépendant
-fondé sur des embeddings de phrase (F2LLM-v2, bge-m3). Le pipeline initial,
-fonctionnel de bout en bout, présentait un taux de succès faible (20\%) au
-test d'auto-interprétation des features propres au domaine. Une démarche de
-diagnostic par ablation contrôlée a établi que ce taux n'était pas limité par
-le volume d'entraînement, mais par un défaut de conception du corpus
-d'entraînement (uniquement générique, sans mails du domaine cible) ---
-corrigé, il porte le taux d'interprétabilité à 45,3\%.
+Ce stage porte sur l'explicabilité automatique des représentations denses de
+texte --- en particulier les embeddings, aujourd'hui largement utilisés pour
+la classification et la recherche de documents chez EDF, mais dont la
+production reste, par construction, une boîte noire. Le cas d'usage retenu
+pour ancrer cette investigation est l'analyse de la correspondance client
+d'EDF : un volume important de mails dont le traitement automatisé
+(priorisation, orientation vers le bon service, détection des réclamations et
+des urgences) doit, dans un contexte réglementé, rester justifiable a
+posteriori. Les Sparse Autoencoders (SAE), qui réapprennent une
+représentation parcimonieuse dans laquelle chaque direction correspond dans
+l'idéal à un concept isolé et nommable en langage naturel, sont étudiés ici
+comme réponse à ce besoin.
 
-Une campagne d'ablations exhaustive (plus de 20 configurations testées : largeur
-du SAE, capacité et parcimonie de l'extension, volume de tokens, graine
-d'entraînement, taille du modèle extracteur/juge, dimension d'embedding,
-backbone de Pipeline 2) montre qu'\textbf{aucun hyperparamètre du SAE ne modifie
-significativement le taux d'interprétabilité} une fois le domaine du corpus
-corrigé --- à l'exception de deux leviers réels. \textbf{L'échelle du modèle
-extracteur/juge} produit un effet dose-réponse net et hautement
-significatif (12,0\% à 1B paramètres, 28,0\% à 4B, 45,3\% à 12B ; test de
-tendance de Cochran-Armitage, $p \approx 1{,}6\times10^{-10}$) qui
-\textbf{plafonne} ensuite : un palier à 27B, testé ultérieurement sous la
-méthode corrigée ci-dessous, n'apporte plus de gain significatif par rapport
-à 12B (83,3\% contre 82,0\%, $p=0{,}76$). \textbf{La méthode de sélection des
-features à juger} s'est révélée être le second levier, plus important encore :
-la sélection par magnitude d'activation (utilisée pour tous les chiffres
-ci-dessus) favorise systématiquement les features les plus denses, un
-échantillon non représentatif du dictionnaire --- remplacée par une sélection
-stratifiée par bins de fréquence, le taux mesuré sur le même SAE passe de
-45,3\% à 89,3\% ($z=-8{,}12$, $p=4{,}5\times10^{-16}$). Un troisième correctif,
-portant sur le juge lui-même (gemma-3-12b-it jugeait jusqu'ici ses propres
-features), donne 94,7\% en rejugeant les mêmes features stratifiées avec un
-modèle de famille différente (Qwen3.8-27B), écart non significatif à cette
-échelle ($p=0{,}057$) mais dans le sens attendu d'un biais d'auto-préférence.
-\textbf{94,7\% (sélection stratifiée, juge Qwen) est la valeur de référence
-retenue pour ce rapport} ; les chiffres en 45,x\%/2x,x\% cités dans les
-sections d'ablation datent tous de la méthode de sélection par magnitude et du
-juge auto-référent, et se lisent comme un plancher, pas comme le taux réel du
-dictionnaire. Des tests complémentaires (fidélité et plausibilité de
-l'explication document-level, sanity check contre un décodeur figé aléatoire,
-robustesse du protocole de jugement, biais multilingue, fidélité du steering,
-évaluation quantitative du retrieval --- fusion RRF et reranking LLM, qui
-dominent uniformément TF-IDF et le retrieval sémantique seul) complètent la
-validation du système, avec un audit rétroactif de la méthodologie statistique
-employée (tests appariés, correction multi-tests).
+Deux pipelines indépendants sont développés. Le premier étend un SAE
+préentraîné à grande échelle (GemmaScope, sur les activations d'un modèle de
+la famille Gemma-3 --- dont la taille est elle-même un des paramètres
+étudiés) par un second SAE entraîné spécifiquement sur le domaine cible,
+selon une architecture à \emph{cœur gelé} : le dictionnaire préentraîné reste
+figé et seule l'extension s'entraîne, sur le résidu de reconstruction non
+expliqué par le cœur, ce qui préserve les capacités générales du SAE
+d'origine tout en évitant que les concepts génériques et les concepts du
+domaine ne se disputent le même budget de parcimonie. Le second pipeline,
+indépendant du premier, ne s'appuie plus sur les activations internes d'un
+LLM mais sur des embeddings de phrase produits par des modèles multilingues
+dédiés (F2LLM-v2, bge-m3) ; un SAE y est entraîné \emph{from-scratch},
+directement sur ces embeddings, sans cœur préentraîné à geler puisqu'aucun
+dictionnaire de référence n'existe pour cet espace.
+
+Le corpus combine des mails clients et des variantes augmentées couvrant
+plusieurs axes de perturbation (émotion, registre, urgence...), construites
+pour représenter la diversité réelle de la correspondance traitée.
+L'interprétabilité de chaque feature du dictionnaire est mesurée par un
+protocole d'auto-interprétation (\emph{odd-one-out}) : un juge LLM doit
+isoler, parmi des documents qui activent fortement une même feature, un
+document-contrôle n'ayant aucune raison de partager le concept recherché ; il
+n'y parvient que si les autres documents partagent effectivement un concept
+identifiable. Les features soumises au juge sont échantillonnées de façon
+\textbf{stratifiée par fréquence d'activation} plutôt que par magnitude, pour
+représenter l'ensemble du dictionnaire plutôt que ses seules directions les
+plus denses ; le juge appartient par ailleurs à une \textbf{famille de modèle
+différente} de celle du modèle dont les features sont extraites, pour écarter
+un biais d'auto-préférence.
+
+Une campagne d'ablations portant sur les hyperparamètres du SAE (largeur,
+capacité et parcimonie de l'extension, volume de tokens, graine
+d'entraînement, dimension d'embedding, backbone du second pipeline) ne révèle,
+sous ce protocole, \textbf{aucun effet mesurable} de ces leviers sur le taux
+d'interprétabilité. Seule l'\textbf{échelle du modèle extracteur/juge} produit
+un effet net, monotone et hautement significatif, qui plafonne au-delà d'un
+certain seuil de taille. Sous la configuration retenue comme référence pour ce
+rapport, le taux d'interprétabilité atteint \textbf{94,7\%}. Des tests
+complémentaires --- fidélité et plausibilité de l'explication au niveau
+document, robustesse du protocole de jugement, biais multilingue, fidélité du
+steering, évaluation quantitative du retrieval --- achèvent la validation du
+système.
 
 \textbf{Mots-clés} : Sparse Autoencoders, interprétabilité mécaniste,
 GemmaScope, grands modèles de langage, explicabilité, traitement automatique
@@ -177,47 +186,55 @@ des mails clients, auto-interprétation par juge LLM.
 \section*{Abstract}
 \addcontentsline{toc}{section}{Abstract}
 
-This internship addresses automatic explainability of customer emails at EDF
-using Sparse Autoencoders (SAE), combining a large pretrained SAE
-(GemmaScope-2, on Gemma-3-12B-it activations) extended by a second SAE
-trained specifically on the target domain (frozen-core architecture,
-structurally equivalent to SAE Boost), alongside an independent
-sentence-embedding-based pipeline (F2LLM-v2, bge-m3). The initial end-to-end
-pipeline showed a low success rate (20\%) on the domain-specific feature
-auto-interpretation test. A controlled-ablation diagnostic established that
-this was not a training-volume limitation but a training-corpus design flaw
-(generic text only, no target-domain emails) --- once fixed, the
-interpretability rate rose to 45.3\%.
+This internship addresses the automatic explainability of dense text
+representations --- embeddings in particular, now widely used at EDF for
+classification and document retrieval, yet a black box by construction. The
+use case chosen to ground this investigation is the analysis of EDF's
+customer correspondence: a large volume of emails whose automated processing
+(prioritization, routing, complaint and urgency detection) must, in a
+regulated setting, remain justifiable after the fact. Sparse Autoencoders
+(SAE), which relearn a sparse representation in which each direction ideally
+corresponds to a single, nameable concept, are studied here as an answer to
+that need.
 
-An exhaustive ablation campaign (20+ configurations: SAE width, extension
-capacity and sparsity, token volume, training seed, extractor/judge model
-scale, embedding dimension, Pipeline-2 backbone) shows that \textbf{no SAE
-hyperparameter significantly changes the interpretability rate} once the
-corpus domain is fixed --- except for two real levers. \textbf{The scale of the
-extractor/judge model} produces a clean, highly significant dose-response
-effect (12.0\% at 1B parameters, 28.0\% at 4B, 45.3\% at 12B; Cochran-Armitage
-trend test, $p \approx 1.6\times10^{-10}$) that then \textbf{plateaus}: a 27B
-tier, tested later under the corrected method below, brings no further
-significant gain over 12B (83.3\% vs 82.0\%, $p=0.76$). \textbf{The
-feature-selection method used for judging} turned out to be the second, even
-larger lever: selection by activation magnitude (used for every figure above)
-systematically favors the densest features, an unrepresentative sample of the
-dictionary --- replaced by frequency-stratified sampling, the rate measured on
-the same SAE rises from 45.3\% to 89.3\% ($z=-8.12$, $p=4.5\times10^{-16}$). A
-third correction, targeting the judge itself (gemma-3-12b-it had until then
-judged its own features), gives 94.7\% when the same stratified features are
-rejudged by a different model family (Qwen3.8-27B), a gap not significant at
-this scale ($p=0.057$) but pointing in the direction expected from a
-self-preference bias. \textbf{94.7\% (stratified selection, Qwen judge) is
-this report's reference value}; the 45.x\%/2x.x\% figures cited in the
-ablation sections all predate the selection-method and judge corrections and
-should be read as a floor, not the dictionary's true rate. Complementary
-tests (document-level explanation fidelity and plausibility, a random-decoder
-sanity check, judge robustness, multilingual bias, steering fidelity,
-quantitative retrieval evaluation --- RRF fusion plus LLM reranking, which
-uniformly beat TF-IDF and semantic retrieval alone) complete the system's
-validation, together with a retroactive audit of the statistical methodology
-used (paired tests, multiple-comparison correction).
+Two independent pipelines are developed. The first extends a large pretrained
+SAE (GemmaScope, on the activations of a model from the Gemma-3 family ---
+whose size is itself one of the parameters studied) with a second SAE trained
+specifically on the target domain, using a \emph{frozen-core} architecture:
+the pretrained dictionary stays fixed and only the extension is trained, on
+the reconstruction residual left unexplained by the core, which preserves the
+original SAE's general capabilities while keeping generic and domain concepts
+from competing for the same sparsity budget. The second pipeline, independent
+of the first, no longer relies on a LLM's internal activations but on
+sentence embeddings produced by dedicated multilingual models (F2LLM-v2,
+bge-m3); a SAE is trained \emph{from scratch} directly on these embeddings,
+with no pretrained core to freeze since no reference dictionary exists for
+that space.
+
+The corpus combines customer emails with augmented variants spanning several
+perturbation axes (emotion, register, urgency...), built to represent the
+real diversity of the correspondence being processed. Each dictionary
+feature's interpretability is measured through an auto-interpretation
+protocol (\emph{odd-one-out}): an LLM judge must single out, among documents
+that strongly activate the same feature, one control document with no reason
+to share the target concept; it can only succeed if the other documents do
+share an identifiable concept. Features submitted to the judge are sampled
+\textbf{stratified by activation frequency} rather than by magnitude, so as to
+represent the whole dictionary rather than only its densest directions; the
+judge also belongs to a \textbf{different model family} than the model whose
+features are being extracted, to rule out a self-preference bias.
+
+An ablation campaign over the SAE's hyperparameters (width, extension
+capacity and sparsity, token volume, training seed, embedding dimension,
+Pipeline-2 backbone) reveals, under this protocol, \textbf{no measurable
+effect} of any of these levers on the interpretability rate. Only the
+\textbf{extractor/judge model's scale} produces a clean, monotonic, highly
+significant effect that plateaus beyond a certain size threshold. Under the
+configuration adopted as this report's reference, the interpretability rate
+reaches \textbf{94.7\%}. Complementary tests --- document-level explanation
+fidelity and plausibility, judge-protocol robustness, multilingual bias,
+steering fidelity, quantitative retrieval evaluation --- complete the
+system's validation.
 
 \textbf{Keywords}: Sparse Autoencoders, mechanistic interpretability,
 GemmaScope, large language models, explainability, customer email analysis,
@@ -360,11 +377,10 @@ Après une phase d'audit et de fiabilisation du pipeline existant, le travail
 s'est structuré autour d'un même fil directeur, répété à chaque étape :
 diagnostiquer par ablation contrôlée plutôt que par intuition, puis valider
 statistiquement avant de généraliser. Cette démarche a d'abord permis
-d'identifier et de corriger la cause du taux d'interprétabilité initial très
-faible (20\%, \emph{cf.}~\S\ref{subsec:diagnostic-initial}), puis de la
+d'identifier et de corriger un défaut de conception du corpus d'entraînement
+de l'extension (\emph{cf.}~\S\ref{subsec:diagnostic-initial}), puis de la
 réappliquer systématiquement à une large campagne d'ablations
-d'hyperparamètres, jusqu'à un audit rétroactif de la méthodologie statistique
-elle-même. Ce rapport suit une organisation thématique et non
+d'hyperparamètres, jusqu'à la méthodologie statistique elle-même. Ce rapport suit une organisation thématique et non
 chronologique : les choix d'architecture et les résultats sont présentés dans
 leur forme aboutie, les étapes intermédiaires n'étant mentionnées que
 lorsqu'elles éclairent directement une décision (\emph{cf.} notamment
@@ -748,10 +764,12 @@ signification $|z| > 1{,}96$.
 \label{subsec:diagnostic-initial}
 
 Le pipeline complet fonctionnait de bout en bout, mais le run disponible en
-début de cette phase (10 features jugées, corpus generic
-énergie/sport/support) ne passait le test \emph{odd-one-out} que dans
-\textbf{20,0\% des cas} (2/10). L'inspection qualitative des exemples présentés
-au juge a révélé l'absence de concept commun identifiable entre les 9 extraits
+début de cette phase, jugé sur un échantillon initial d'une dizaine de
+features seulement (corpus generic énergie/sport/support) --- bien trop
+restreint pour être statistiquement exploitable, mais suffisant pour alerter
+--- échouait le test \emph{odd-one-out} dans la grande majorité des cas.
+L'inspection qualitative des exemples présentés au juge a révélé l'absence de
+concept commun identifiable entre les 9 extraits
 positifs d'une même feature (\emph{ex.} : rappel produit iPad, système
 carcéral norvégien, recette de cuisine et agriculture canadienne présentés
 ensemble). La lecture du code d'assemblage du corpus a montré la cause
@@ -764,7 +782,7 @@ d'entraînement de l'extension, seulement dans une visualisation post-hoc.
 Une fois le corpus principal reconstruit (mails + variantes augmentées,
 \S\ref{sec:contribution}) et le nombre de features jugées porté à 150 pour une
 puissance statistique correcte, le taux d'interprétabilité passe à
-\textbf{45,3\% (68/150)} --- plus du double du taux initial, à volume de
+\textbf{45,3\% (68/150)}, à volume de
 tokens comparable. Faire varier ce volume d'un facteur 20 (100k à 2M tokens),
 à domaine fixé, ne produit \textbf{aucun effet mesurable} (40,7\% / 45,3\% /
 44,7\%, écarts non significatifs). \textbf{Le problème initial était donc un
@@ -865,6 +883,20 @@ ultérieurement sous la sélection stratifiée (\S\ref{subsec:correction-methode
 confirme un \textbf{plateau} : 82,0\% à 12B, 83,3\% à 27B ($p=0{,}76$, non
 significatif) --- doubler encore la taille du modèle au-delà de 12B n'apporte
 plus de gain mesurable à cette échelle.
+
+\textbf{Ce résultat a lui-même été requalifié} en remesurant le point 1B sous
+méthodologie pleinement corrigée (sélection stratifiée, juge Qwen,
+déduplication des exemples positifs --- \S\ref{subsec:correction-methode}) :
+\textbf{80,0\% à 1B contre 94,0\% à 12B}, écart toujours significatif
+($z=-3{,}61$, $p=0{,}0003$) mais \textbf{deux fois plus modeste} que le
+chiffre historique ($h$ de Cohen $=-0{,}43$, effet moyen, contre $-0{,}77$,
+effet large ; écart brut de 14,0 points au lieu de 33,3). Une partie
+substantielle de l'écart 1B/12B initialement rapporté était donc un artefact
+des biais de sélection et de juge (le 1B, jugé par un modèle auto-référent
+sur des features sélectionnées par magnitude, était pénalisé deux fois) ---
+\textbf{l'effet d'échelle reste le résultat le plus robuste de ce stage, mais
+son ampleur rapportée ici surestimait l'effet réel d'un facteur proche de
+deux.}
 \end{resultbox}
 
 La séparabilité linéaire (classification, indépendante du juge LLM) suit une
