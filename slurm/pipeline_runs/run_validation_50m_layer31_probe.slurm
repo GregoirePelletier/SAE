@@ -4,27 +4,26 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=1200G
+#SBATCH --mem=900G
 #SBATCH --time=48:00:00
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_probe_50m_layer31_%j.log
 
 # Point de mesure UNIQUE (pas un sweep) : 50M tokens, 12B/layer31/K_EXTRA=5,
 # pour obtenir un chiffre RAM réel avant de décider d'un sweep 50M/100M
-# complet -- l'extrapolation en loi de puissance faite à partir de deux
-# points seulement (5M -> 31,3 Go RSS job 44991 ; 25M -> 381,8 Go RSS job
-# 44994) n'est pas fiable pour un facteur x2 hors de la plage mesurée,
-# demande explicite de vérifier empiriquement plutôt que de faire confiance
-# à l'extrapolation. --mem=1200G : marge large sous les 2,02 To du nœud
-# dgx-h100 (sinfo -p h100 -N -o "%N %m"), largement au-dessus de
-# l'extrapolation prudente (~760 Go en loi linéaire, plus si la croissance
-# reste super-linéaire) -- si ce budget s'avère lui-même insuffisant, le job
-# sera tué par cgroup (MaxRSS visible malgré tout via `sacct`, donne un
-# signal même en cas d'échec). N_VOLUME_FILLER_TARGET_CHUNKS=1200000 :
-# le corpus réel (~14,6M tokens estimés) ne couvre qu'une fraction de la
-# cible, le filler comble le reste (~35M tokens) -- pool dimensionné avec
-# marge (cf. heuristique déjà utilisée pour la tentative 100M abandonnée,
-# run_validation_100M_layer31_h100.slurm, ~21 800 chunks/M tokens cible).
+# complet -- demande explicite de vérifier empiriquement plutôt que de faire
+# confiance à une extrapolation. --mem=900G, recalibré sur un point de mesure
+# RÉEL de cette session (pas l'ancien commentaire "memmap fix, 96G suffit",
+# infirmé) : job 45803 (layer12, même famille K_EXTRA=5/25M/12B) a
+# effectivement consommé 358,5 Go RSS (`sacct --format=MaxRSS`, pas
+# seulement demandé) -- extrapolation LINÉAIRE à 50M (d_model fixe) ≈717 Go,
+# 900G laisse ~25% de marge sans sur-réserver inutilement sur un nœud
+# partagé à 2,02 To (cf. discussion : 1200G précédent jugé disproportionné).
+# N_VOLUME_FILLER_TARGET_CHUNKS=1200000 : le corpus réel (~14,6M tokens
+# estimés) ne couvre qu'une fraction de la cible, le filler comble le reste
+# (~35M tokens) -- pool dimensionné avec marge (cf. heuristique de la
+# tentative 100M abandonnée, run_validation_100M_layer31_h100.slurm,
+# ~21 800 chunks/M tokens cible).
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
