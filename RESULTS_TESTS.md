@@ -4907,3 +4907,120 @@ notions de "mort" repérée côté P1 (`dead_frac` d'entraînement toujours à 0
 `dead_pct_extension` (`src/analysis/metrics.py`) séparent déjà la première
 confusion (core GemmaScope vs extension) mais pas encore celle-ci
 (reconstruction vs échantillonnage du juge).
+
+## 94. N3 résolu : taux par bin et repondération Horvitz-Thompson sur un rerun natif (stratifié + Qwen + déduplication par mail parent)
+
+**Question** : §87 concluait que le taux repondéré fiable pour le 89,3%
+(§79) n'était pas reconstructible a posteriori (sélection stratifiée non
+reproductible sur les fragments/corpus actuels). `b2_stratified_selection_rejudge.py`
+capture désormais `bin_info` nativement (`return_bin_info=True`) au moment
+de la sélection — ce run l'exerce pour la première fois, en même temps que
+le juge Qwen (`MODEL_ID` surchargé, cf. commit du correctif R5 sur `OUT_PATH`)
+et la déduplication par mail parent (correctif de cette session).
+
+**Écart à la configuration de référence** : sélection stratifiée refaite au
+moment du run (pas de reproduction a posteriori), juge Qwen3.8-27B au lieu
+de gemma-3-12b-it, déduplication par mail parent activée — trois
+changements simultanés par rapport à §79, comme §93 (P2).
+
+**Méthode statistique** : `horvitz_thompson_mean` (`src/analysis/stats.py`,
+poids $1/\pi_i$, $\pi_i$ = `bin_n_sampled`/`bin_population` par strate).
+
+**n** : 150 features, 9 strates non vides (sur 10 bins log-espacés — la
+strate 3 n'a aucun membre vivant sur cette tentative).
+
+**Résultat** (job 45887, h100,
+`results_v10_emails_main/cache/b2_stratified_selection_rejudge_Qwen3.8-27B.json`) :
+
+| Bin | n sélectionné | Interp. | Taux | Fréquence | Population du bin |
+|---|---|---|---|---|---|
+| 0 | 2 | 2 | 100,0% | 0,012–0,014 | 2 |
+| 1 | 2 | 2 | 100,0% | 0,024 | 2 |
+| 2 | 2 | 2 | 100,0% | 0,034–0,040 | 2 |
+| 4 | 2 | 2 | 100,0% | 0,098–0,100 | 2 |
+| 5 | 3 | 3 | 100,0% | 0,124–0,146 | 3 |
+| 6 | 4 | 4 | 100,0% | 0,186–0,254 | 4 |
+| 7 | 15 | 14 | 93,3% | 0,288–0,404 | 16 |
+| 8 | 19 | 17 | 89,5% | 0,440–0,632 | 63 |
+| 9 | 101 | 95 | 94,1% | 0,652–1,000 | 930 |
+
+**Taux brut (non pondéré) : 94,0% (141/150).** **Taux repondéré
+Horvitz-Thompson : 93,85%.**
+
+**Conclusion** : la critique structurelle de N3 (le stratifié sur-échantillonne
+les strates rares — ici les 4 premières strates ont une population de 2-4
+features mais contribuent chacune 2-4 features à l'échantillon de 150,
+sur-représentées d'un facteur ~40-75× par rapport à leur poids réel dans le
+dictionnaire) est confirmée à nouveau par construction. **Mais son impact
+empirique sur le taux agrégé est minime** : 94,0% brut contre 93,85%
+repondéré, un écart de 0,15 point. Les strates rares sur-échantillonnées
+sont toutes à 100% d'interprétabilité (features très spécifiques, peu
+fréquentes mais faciles à juger une fois identifiées) — les repondérer à la
+baisse ne change presque rien puisqu'elles ne tirent pas le taux vers le
+haut de façon disproportionnée. **N3 est donc résolu : le biais est réel en
+principe, négligeable en pratique sur ce dictionnaire.** 94,0% (brut) et
+93,85% (repondéré) sont tous deux citables ; le brut suffit, la nuance
+méthodologique n'a pas besoin d'être portée jusqu'au chiffre final du
+rapport.
+
+**Limite connue** : un seul seed/tirage ; la strate 9 (la plus peuplée, 930
+features, 101 échantillonnées) domine numériquement le calcul — un tirage
+différent dans cette seule strate pourrait faire bouger le taux repondéré
+plus que les strates rares elles-mêmes ; comme §89/§93, trois changements de
+protocole simultanés (sélection refaite, juge, déduplication) empêchent
+d'attribuer l'écart avec 89,3%/94,7% à un facteur isolé.
+
+## 95. Sweep taille de modèle, 1B sous méthodologie pleinement corrigée : l'effet d'échelle reste significatif mais son ampleur apparente était pour moitié un artefact de méthode
+
+**Question** : §82 sweepait 4B/12B/27B sous sélection stratifiée mais juge
+Gemma auto-référent, sans déduplication. Le 1B avait échoué deux fois (N1,
+crash `KeyError: raw_acts` ; puis OOM sur `a100`, cf. `docs/ops.md`) avant
+d'aboutir sous le code actuel — stratifié, juge Qwen (défaut), et
+déduplication par mail parent nativement dans `saev5.py`, sans qu'aucune
+configuration n'ait dû être forcée pour ça. C'est le premier point du sweep
+mesuré sous méthodologie pleinement corrigée dès le premier passage,
+pas par rejugement d'exemples déjà figés (contrairement à §89/§90/§94).
+
+**Écart à la configuration de référence** : identique à §82 (K_EXTRA=5,
+D_EXTRA=1024, 25M tokens, corpus mixte) sauf `MODEL_ID=gemma-3-1b-it`,
+`LAYER=13`, `SAE_ID=layer_13_width_16k_l0_medium`.
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`).
+
+**n** : 150 features.
+
+**Résultat** (job 45874, h100, `results_v29_.../cache/p1_judge_labels_extended.json`,
+sidecar confirmant `judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **80,0% (120/150), 0 dead/insuffisant.** Comparé
+au 12B sous la même méthodologie complète (§94, 94,0%, 141/150) :
+$z=-3{,}61$, **$p=0{,}0003$** (significatif), $h$ de Cohen$=-0{,}43$ (effet
+moyen). Comparé au 12B sous l'ANCIENNE méthodologie (magnitude, Gemma
+auto-référent, référence historique du sweep, 45,3%, 68/150 — comparaison
+non appariée, juge/sélection/corpus tous différents) :
+l'écart brut est de +34,7 points au lieu de −33,3 points côté 1B/12B
+historique (12,0% vs 45,3%, $z=-6{,}38$, $p=1{,}7\times10^{-10}$, $h=-0{,}77$,
+effet large).
+
+**Conclusion** : l'effet d'échelle du modèle **reste statistiquement
+significatif** sous méthodologie pleinement corrigée, mais son **ampleur
+apparente était pour une bonne moitié un artefact de méthode** :
+$h=-0{,}77$ (effet large) sous l'ancienne méthodologie devient $h=-0{,}43$
+(effet moyen) une fois sélection et juge corrigés — l'écart brut passe de
+33,3 points (12,0%→45,3%) à 14,0 points (80,0%→94,0%). Cohérent avec
+§89/§90 (l'effet de choix de juge est concentré sur les features que la
+sélection par magnitude sur-échantillonne) : le 1B semble avoir été
+pénalisé DEUX FOIS par l'ancienne méthodologie — une fois par la sélection
+par magnitude (features denses/génériques, difficiles à interpréter quel
+que soit le modèle), une fois par l'auto-jugement sévère d'un petit modèle
+sur ses propres features. Le résultat central du stage ("l'échelle du
+modèle domine tout effet architectural du SAE") tient toujours, mais le
+chiffre qui l'illustre (33,3 points d'écart 1B/12B) doit être requalifié :
+le vrai effet d'échelle, isolé des biais de méthode, est significatif mais
+deux fois plus modeste (~14 points).
+
+**Limite connue** : comparaison au 12B non appariée (features différentes
+entre 1B et 12B, comme pour tout le sweep taille de modèle) ; 4B et 27B pas
+encore remesurés sous méthodologie pleinement corrigée (seulement sous
+stratifié+Gemma, §82 : 72,0%/83,3%) — la courbe complète 1B→4B→12B→27B sous
+méthodologie corrigée reste à tracer avant de conclure sur la forme exacte
+du plateau ; un seul seed.
