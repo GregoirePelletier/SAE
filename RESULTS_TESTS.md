@@ -4640,3 +4640,270 @@ déjà en cache, même patron que `judge_model_separation_test.py`) — comme le
 reste du sweep taille de modèle (§82) et la référence layer 24
 (`results_v10_emails_main`), tous mesurés sous le même juge auto-référent
 avant cette décision.
+
+## 89. B.1/B.2, arme mixte stratifiée rejugée Qwen : 94,7% — nouveau chiffre de référence, écart à Gemma resserré et à la limite de la significativité
+
+**Question** : §79 (89,3%, 134/150) et §81 (B.1, résolu négativement contre
+82,0%) sont tous deux jugés par gemma-3-12b-it auto-référent, antérieurs à la
+décision de juger tout avec Qwen3.8-27B (AUDIT_SAE_2026-08.md §9, N4). Ce
+run rejuge les 150 features de l'arme MIXTE stratifiée (§79,
+`b2_stratified_selection_rejudge.json`, déjà en cache) avec Qwen, mêmes
+exemples, seul le juge change — même patron que §83
+(`judge_model_separation_test.py`), isolation délibérée (pas de
+déduplication par mail parent ici, cf. commit qui l'introduit : mélanger les
+deux changements casserait la comparaison à exemples fixes).
+
+**Écart à la configuration de référence** : uniquement le juge
+(`scripts/b1_stratified_mixte_qwen_rejudge.py`, `ALT_JUDGE_MODEL_ID=Qwen3.8-27B`).
+
+**Méthode statistique** : `paired_mcnemar_test` (`src/analysis/stats.py`,
+exact) sur les 150 paires (même feature, deux juges).
+
+**n** : 150 features.
+
+**Résultat** (job 45735, h100,
+`b1_stratified_mixte_qwen_rejudge_Qwen3.8-27B_seed42.json`) :
+
+| Juge | Taux interp. |
+|---|---|
+| gemma-3-12b-it (référence, §79) | 89,3% (134/150) |
+| Qwen3.8-27B | **94,7% (142/150)** |
+
+Accord 90,7% (136/150) ; 11 features basculent non-interprétable→interprétable
+avec Qwen contre 3 dans l'autre sens. McNemar exact sur les 14 paires
+discordantes : statistique=3,0, **p=0,057** (non significatif, à la limite).
+
+**Conclusion** : le sens de l'écart reproduit celui de §83 (Qwen plus
+généreux que Gemma) mais l'AMPLEUR est très différente : +33,4 points sous
+sélection par magnitude (§83, p=1,9e-8) contre +5,4 points sous sélection
+stratifiée ici (non significatif). Combiné à §90 ci-dessous (layer 41,
+stratifié : écart Qwen/Gemma non significatif, sens même légèrement
+inversé), un pattern émerge : **l'effet du choix de juge est concentré sur
+les features que la sélection par magnitude sur-échantillonne** (denses,
+proches de directions génériques) — sous sélection stratifiée, qui évite
+justement ces features, Gemma et Qwen s'accordent à 90%+ et l'écart résiduel
+n'atteint pas la significativité à n=150. **94,7% devient le chiffre de
+référence stratifié/Qwen à citer** en remplacement de 89,3% (Gemma) pour le
+taux d'interprétabilité principal du rapport.
+
+**Limite connue** : une seule graine ; le rejugement porte sur les EXEMPLES
+déjà fixés par le run Gemma original (pas de déduplication par mail parent
+ici, cf. §94 — un futur run "propre" combinant stratifié+Qwen+dédoublonnage
+donnerait un chiffre encore plus définitif mais nécessiterait un rejugement
+complet, pas un simple rejugement sur exemples figés) ; l'arme
+originaux+filler (§81) reste non rejugeable sans extraction fraîche
+(fragments supprimés) — la comparaison B.1 complète (deux bras, même juge)
+reste hors de portée.
+
+## 90. Sweep layer, suite (§88) : layer 41 rejugé Qwen — écart à Gemma non significatif, sens inversé par rapport à §83/§89
+
+**Question** : complète §88 (layer 41, Gemma auto-référent, 82,7%) avec le
+rejugement Qwen, même patron que §83/§89.
+
+**Écart à la configuration de référence** : uniquement le juge, sur les 150
+features de `results_v33_ablation_classic_setup_k5_25m_layer41/`.
+
+**Méthode statistique** : `paired_mcnemar_test` (approximation — 40 paires
+discordantes, au-delà du seuil habituel de l'exact binomial).
+
+**n** : 150 features.
+
+**Résultat** (job 45801, h100,
+`results_v33_.../cache/p1_judge_model_separation_Qwen3.8-27B_seed42.json`) :
+
+| Juge | Taux interp. | IC95% (Wilson) |
+|---|---|---|
+| gemma-3-12b-it (référence, §88) | 82,7% (124/150) | [75,8% ; 87,9%] |
+| Qwen3.8-27B | 78,7% (118/150) | [71,4% ; 84,5%] |
+
+Accord 73,3% (110/150) ; 17 features basculent non-interprétable→interprétable
+avec Qwen, 23 dans l'autre sens. McNemar : statistique=0,625, **p=0,429**
+(non significatif).
+
+**Conclusion** : cohérent avec §89 — sous sélection stratifiée, l'écart
+juge Gemma/Qwen n'atteint la significativité dans AUCUNE des deux
+réplications testées (§89 : +5,4 points, p=0,057 ; ici : −4,0 points,
+p=0,429, sens même légèrement inversé). Renforce l'hypothèse que l'écart
+massif de §83 (magnitude, +33,4 points) est un artefact du biais de
+sélection par magnitude, pas une propriété générale du choix de juge sur ce
+dépôt.
+
+**Limite connue** : IC95% larges qui se chevauchent fortement (une seule
+graine par juge) ; comme §89, pas de déduplication par mail parent dans ce
+rejugement à exemples figés.
+
+## 91. App D.2 (diffing structuré, génération JSON par LLM) — première exécution : verification_rate=80%, nettement au-dessus du run K.1 informel (§84, 40%)
+
+**Question** : App D.2 était la pièce la plus fraîche et la moins vérifiée
+de la session précédente (génération structurée d'hypothèses par LLM,
+risque de parsing raté ou d'hypothèses dégénérées comme pour NPMI_verified
+au premier essai) — job 45750 lancé en fin de session, jamais confirmé
+terminé ni le JSON inspecté en détail avant cette session.
+
+**Écart à la configuration de référence** : hypothèses générées par
+`src/analysis/diff_hypothesis_generator.py` (prompt structuré, top-200/seuil
+0,03 par différence de fréquence, `select_top_diff_features_by_frequency`)
+plutôt que reprises d'un CSV archivé comme en §84 ; corpus de vérification
+identique (40 documents energy + 40 sports, FineWeb2-fr, frais) ; même
+`HypothesisVerifier` (App K.1), même seuil 1%.
+
+**Méthode statistique** : `compute_verification_metrics`
+(`src/analysis/hypothesis_verifier.py`), descriptive (Figures 11/12 du
+papier).
+
+**n** : 10 hypothèses × 80 documents.
+
+**Résultat** (job 45750, h100, `diffing_structured_hypotheses.json`) :
+
+| Métrique | Valeur |
+|---|---|
+| `verification_rate` (seuil 1%) | **80,0% (8/10)** |
+| `coverage` | 55,0% |
+
+Détail : 8 hypothèses valides (|écart vérifié| > 1 point), 2 invalides
+(différence nulle dans les deux groupes — "regulations, compliance limits,
+penalties" et "promotional language, free codes, bonuses", confiance de
+génération la plus basse du lot, 0,75 et 0,65 respectivement). Les 8
+hypothèses valides couvrent les deux sens (`dataset: target/other` de la
+génération) : `verification_rate` mesure `|rate_in_group - rate_out_group| >
+seuil`, PAS que le sens prédit par le générateur soit confirmé — une
+hypothèse "other" (ex. sport) validée signifie que l'écart existe, pas
+nécessairement dans le sens énergie>sport (cohérent avec la définition du
+papier, Figure 11, déjà utilisée par §84 — pas une divergence introduite
+ici).
+
+**Conclusion** : verification_rate=80% est nettement supérieur au 40% de
+§84 — la génération structurée (JSON, confiance explicite, top-200 par
+différence de fréquence) sélectionne des hypothèses plus robustes que le
+CSV archivé (top par q-value NPMI, juillet, jamais régénéré) réutilisé en
+§84. Aucun signe de dégénérescence (pas de parsing raté, hypothèses
+lisibles et cohérentes sémantiquement avec leurs labels de features
+sources) — App D.2 est fonctionnel et donne un signal net.
+
+**Limite connue** : n=10 hypothèses, IC non calculé ici (comparaison
+descriptive à §84, pas de test formé faute d'un n commun) ; toujours pas de
+baseline LLM-only (Figure 11 du papier) pour situer ce taux en absolu ; un
+seul tirage de corpus/seed.
+
+## 92. Retrieval RRF + reranking LLM + RBO (App G), label remboursement resserré (N5) — le reranking domine uniformément, RBO confirme que TF-IDF et Latent Terms trouvent des documents différents
+
+**Question** : complète §80 (Latent Terms vs TF-IDF, ancien label
+remboursement bruité par "l'avoir"/"d'avoir") avec (a) le label resserré
+(N5, AUDIT_SAE_2026-08.md §8) et (b) la fusion RRF + reranking LLM + RBO,
+jamais mesurés avant cette session (App G implémentée mais jamais câblée
+sur un pipeline de requêtes réel avant `latent_retrieval_precision_eval.py`).
+
+**Écart à la configuration de référence** : `INTENT_KEYWORDS_FR["remboursement"]`
+resserré (`un\s+avoir|mon\s+avoir|notre\s+avoir`, "l'avoir"/"d'avoir"
+retirés) ; sinon protocole identique à §80 (4 requêtes paraphrasées, corpus
+complet 3480 mails).
+
+**Méthode statistique** : descriptive (MAP/MP@k agrégées,
+`src/analysis/metrics.py::mean_average_precision/mean_precision_at_k/
+reciprocal_rank_fusion/rank_biased_overlap`).
+
+**n** : 4 requêtes, corpus complet.
+
+**Résultat** (job 45745, h100, `latent_retrieval_precision_results.json`) :
+
+| Intention (taux de base) | TF-IDF P@10 | Latent Terms P@10 | RRF P@10 | RRF+rerank P@10 |
+|---|---|---|---|---|
+| réclamation (54,8%) | 1,00 | 0,50 | 0,90 | **1,00** |
+| remboursement (10,3%) | 0,30 | 0,90 | 0,70 | **0,90** |
+| information (60,7%) | 0,70 | 0,70 | 0,80 | **0,90** |
+| urgence (33,8%) | 0,80 | 0,80 | 0,80 | **1,00** |
+
+| Méthode | MAP | MP@10 | MP@20 |
+|---|---|---|---|
+| TF-IDF | 0,678 | 0,700 | 0,700 |
+| Latent Terms | 0,775 | 0,725 | 0,712 |
+| RRF | 0,761 | 0,800 | 0,675 |
+| **RRF + rerank LLM** | **0,922** | **0,950** | **0,938** |
+
+RBO (TF-IDF vs Latent Terms) moyen : **0,051** (0,012 à 0,122 selon la
+requête) — très bas.
+
+**Conclusion** : le label resserré (N5) ne change PAS le résultat déjà
+publié de §80 sur `remboursement` (P@10 Latent Terms=0,90, TF-IDF=0,30
+identiques au chiffre pré-N5 ; seul le taux de base recule légèrement,
+11,1%→10,3%, cohérent avec le retrait d'un peu de bruit sans changer les
+documents pertinents en tête de liste) — la conclusion de §80 était déjà
+robuste à ce défaut. **Nouveau résultat, net et uniforme** : le reranking
+LLM sur le RRF domine sur les 4 intentions (P@10 ≥ 0,90 partout, jamais
+inférieur à RRF seul), MAP passe de 0,761 (RRF) à 0,922 — premier résultat
+sans compromis de tout le chapitre retrieval (§80 opposait Latent Terms et
+TF-IDF sans vainqueur uniforme). Le RBO très bas confirme que TF-IDF et
+Latent Terms ne sont pas simplement deux réordonnancements du même ensemble
+de documents : même quand leur P@10 est proche (`information`, 0,70 vs
+0,70), les documents en tête diffèrent largement — les deux méthodes
+apportent un signal réellement différent, ce que le reranking exploite.
+
+**Limite connue** : toujours n=4 requêtes (une par intention, pas de
+réplication) — la réserve méthodologique déjà documentée (vérité terrain
+`INTENT_KEYWORDS_FR`, lexicale, favorise structurellement TF-IDF) s'applique
+identiquement ici ; le prompt de reranking du dépôt diverge du prompt exact
+du papier (non publié, `docs/references.md`) ; un seul juge (Qwen, défaut
+actuel) pour le reranking, pas de comparaison à Gemma sur cette tâche
+précise.
+
+## 93. Pipeline 2, première mesure d'interprétabilité valide : 58,7% sous sélection stratifiée + juge Qwen + déduplication par mail parent
+
+**Question** : jusqu'ici, le seul chiffre d'interprétabilité Pipeline 2
+(74,7%, 112/150) datait du 17 juillet — sélection par magnitude pure (jamais
+corrigée pour P2, contrairement à P1 depuis §79), juge gemma-3-12b-it
+auto-référent, et sans déduplication par mail parent des exemples positifs
+(le correctif de cette session). Jamais cité dans `RESULTS_TESTS.md` ni le
+rapport (qui ne cite que NMSE/`clf_acc_email_axes` côté P2, jamais
+l'interprétabilité). Ce run mesure le premier chiffre sous le protocole
+actuel.
+
+**Écart à la configuration de référence** : `FEATURE_SELECTION_METHOD=stratified`
+(nouveau, `feature_selection_stratified_by_frequency_dense`) au lieu du
+`topk` magnitude ; juge Qwen3.8-27B (défaut, `JUDGE_MODEL_ID`) au lieu de
+gemma-3-12b-it ; déduplication par mail parent des exemples positifs
+(`doc_groups=test_groups`, nouveau) ; `SAVE_DIR` inchangé
+(`results_v10_emails_main`), réutilise les embeddings F2LLM-v2-80M déjà en
+cache (pas de ré-extraction), réentraîne uniquement le `PhraseLevelSAE`
+(checkpoint supprimé par le nettoyage disque).
+
+**Méthode statistique** : descriptive (`proportion_with_ci`, Wilson).
+
+**n** : 150 features.
+
+**Résultat** (job 45805, h100, `results_v10_emails_main/cache/
+p2_feature_labels.json`, sidecar `p2_feature_labels.json.meta.json` confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) :
+
+**58,7% (88/150) interprétable, IC95% [50,7% ; 66,3%]** — 17/150 `dead_feature`
+(moins de 3 exemples positifs valides après déduplication par mail parent).
+Reconstruction (même job) : NMSE=0,0671 (meilleur que le 0,0745 déjà cité
+dans le rapport pour F2LLM-v2-80M, §3.5), ρ_SAE=0,9614, dead%=0,4% (sur le
+dictionnaire complet, 8192 features), `clf_acc_email_axes`=81,4% (vs 79,3%
+cité dans le rapport).
+
+**Conclusion** : à la différence de Pipeline 1 (où stratifier a PLUS QUE
+DOUBLÉ le taux mesuré, 45,3%→89,3%), corriger la méthodologie de sélection/
+jugement de Pipeline 2 fait BAISSER le taux mesuré (74,7%→58,7%) — les trois
+changements (sélection, juge, déduplication) sont bundlés dans ce run, pas
+décomposés individuellement, donc impossible d'attribuer la baisse à un
+facteur précis sans rejugements supplémentaires. Ce que ça confirme sans
+ambiguïté : **Pipeline 2 n'est PAS aussi mature que le rapport le laisse
+entendre** ("les deux pipelines fonctionnent... avec des résultats
+quantifiés" — vrai pour la reconstruction, pas pour l'interprétabilité tant
+que le seul chiffre venait d'un protocole obsolète). 58,7% reste un taux
+raisonnable (pas un effondrement), mais c'est désormais le chiffre à citer,
+pas 74,7%.
+
+**Limite connue** : les 3 facteurs de changement ne sont pas isolés (coût
+d'un ablation complet non engagé cette session) ; une seule graine ; le
+`dead_feature` du juge (17/150, "moins de 3 exemples positifs trouvés dans
+l'échantillon") est une notion DIFFÉRENTE du `dead_pct` de reconstruction
+(0,4% sur le dictionnaire complet) — un artefact d'échantillonnage possible
+(peu de documents parmi les `sample_docs` tirés activent la feature) plutôt
+qu'une feature réellement morte, pas décomposé ici. Même ambiguïté à trois
+notions de "mort" repérée côté P1 (`dead_frac` d'entraînement toujours à 0,
+`dead_pct` final de reconstruction, `dead_feature` du juge) — `dead_pct_core`/
+`dead_pct_extension` (`src/analysis/metrics.py`) séparent déjà la première
+confusion (core GemmaScope vs extension) mais pas encore celle-ci
+(reconstruction vs échantillonnage du juge).
