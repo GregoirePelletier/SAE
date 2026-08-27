@@ -56,6 +56,14 @@ test de tendance de Cochran-Armitage, p≈1,6×10⁻¹⁰) qui **plafonne** ensu
 palier à 27 milliards, testé ultérieurement sous la méthode de sélection
 corrigée ci-dessous, n'apporte plus de gain significatif par rapport à 12
 milliards (83,3% contre 82,0%, p=0,76 ; comparé à 72,0% à 4 milliards, p=0,04).
+**Cet écart 1B/12B, mesuré à nouveau sous méthodologie pleinement corrigée
+(sélection stratifiée, juge Qwen, déduplication des exemples par mail
+d'origine — 80,0% à 1B contre 94,0% à 12B), reste significatif (p=0,0003)
+mais deux fois plus modeste que le chiffre historique** (h de Cohen −0,43,
+effet moyen, contre −0,77, effet large, sous magnitude/juge auto-référent) :
+une partie substantielle de l'écart 1B/12B initialement rapporté était un
+artefact des biais de sélection et de juge décrits ci-dessous, pas un effet
+d'échelle pur.
 **La méthode de sélection des features à juger** s'est révélée être le second
 levier, plus important encore que l'échelle du modèle : la sélection par
 magnitude d'activation (utilisée pour tous les chiffres ci-dessus) favorise
@@ -115,7 +123,15 @@ extractor/judge model** produces a clean, highly significant dose-response
 effect (12.0% at 1B parameters, 28.0% at 4B, 45.3% at 12B; Cochran-Armitage trend
 test, p≈1.6×10⁻¹⁰) that then **plateaus**: a 27B tier, tested later under the
 corrected selection method below, brings no further significant gain over 12B
-(83.3% vs 82.0%, p=0.76). **The feature-selection method used for judging** turned
+(83.3% vs 82.0%, p=0.76). **This 1B/12B gap, remeasured under fully corrected
+methodology** (stratified selection, Qwen judge, positive-example
+deduplication by source email — 80.0% at 1B vs 94.0% at 12B) **stays
+significant (p=0.0003) but is half as large as the historical figure**
+(Cohen's h −0.43, a medium effect, vs −0.77, a large effect, under
+magnitude/self-referential judging): a substantial share of the originally
+reported 1B/12B gap was an artifact of the selection and judge biases
+described below, not a pure scale effect. **The feature-selection method
+used for judging** turned
 out to be the second, even larger lever: selection by activation magnitude
 (used for every figure above) systematically favors the densest features, an
 unrepresentative sample of the dictionary — replaced by frequency-stratified

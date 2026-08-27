@@ -89,7 +89,7 @@ observé (avec n=10, l'incertitude sur un taux observé est trop large pour conc
 
 | Corpus | `N_TOKENS_EXTRA_TRAIN` | n features jugées | Features mortes | Taux d'interprétabilité |
 |---|---|---|---|---|
-| Generic (avant correction) | 500 000 | 10 | 0 | **20,0%** (2/10) |
+| Generic (avant correction) | 500 000 | 10 | 0 | n trop faible pour être exploitable |
 | Emails + augmentés | 100 000 | 150 | 0 | **40,7%** (61/150) |
 | Emails + augmentés | 500 000 | 150 | 0 | **45,3%** (68/150) |
 | Emails + augmentés | 2 000 000 | 150 | 0 | **44,7%** (67/150) |
@@ -103,7 +103,8 @@ malgré un facteur 20 entre le budget de tokens le plus faible et le plus élev�
 **Interprétation** :
 
 - **Corriger le domaine du corpus (generic → emails), à volume comparable (500 000
-  tokens), plus que double le taux d'interprétabilité (20,0% → 45,3%).** C'est le
+  tokens), fait passer le taux d'interprétabilité d'un échantillon initial trop
+  restreint pour être exploitable à 45,3% mesuré à n=150.** C'est le
   facteur dominant identifié dans cette investigation.
 - **Faire varier le volume de tokens d'un facteur 20, à domaine fixé (emails), ne
   produit aucun effet mesurable.** Le SAE d'extension n'est pas limité par le volume de
@@ -669,6 +670,25 @@ de paramètres : le gain 4B→12B reste significatif, mais 12B→27B ne l'est
 plus. Doubler la taille du modèle extracteur/juge au-delà de 12B n'apporte
 donc plus de gain mesurable à cette échelle de mesure (n=150). Détail
 complet : `RESULTS_TESTS.md` §82.
+
+**L'écart 1B/12B lui-même, requalifié sous méthodologie pleinement corrigée**
+— le point 1B du sweep, jamais mesuré sous sélection stratifiée jusqu'ici,
+aboutit sous le code actuel (stratifié + juge Qwen + déduplication des
+exemples positifs par mail parent, sans qu'aucun de ces trois correctifs
+n'ait dû être forcé) : **80,0% (120/150)**, contre 94,0% pour 12B sous la
+même méthodologie complète (`RESULTS_TESTS.md` §94/§95). L'écart reste
+significatif ($z=-3{,}61$, $p=0{,}0003$) mais son **ampleur est deux fois
+plus modeste** que le chiffre historique (14,0 points contre 33,3 points ;
+$h$ de Cohen $=-0{,}43$, effet moyen, contre $-0{,}77$, effet large) :
+cohérent avec §83/§89/§90 (l'effet du choix de juge est concentré sur les
+features que la sélection par magnitude sur-échantillonne), le 1B semble
+avoir été pénalisé deux fois par l'ancienne méthodologie — une fois par la
+sélection, une fois par l'auto-jugement sévère d'un petit modèle sur ses
+propres features. **L'effet d'échelle du modèle reste le résultat le plus
+robuste de ce projet, mais son ampleur rapportée initialement (33,3 points)
+surestimait l'effet réel d'un facteur proche de deux.** 4B et 27B restent à
+remesurer sous cette méthodologie complète pour tracer la courbe corrigée
+en entier.
 
 ### 4.2. Layer d'extraction
 
