@@ -974,28 +974,44 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
 
 ### 3. Verdict et liste de jobs
 
-**Pas encore prêt à lancer la campagne finale d'ablations pour le rapport —
-mais proche : le principal front ouvert n'est plus "implémenter" (fait la
-session précédente), c'est "rejuger sous la politique Qwen".** Priorité
-stricte, du moins cher/plus urgent au plus cher/moins urgent, compte tenu de
-J-14 :
+**Mise à jour post-campagne : 1, 2a, 3 (partiel) faits — résultats écrits
+`RESULTS_TESTS.md` §89-93.** Un vrai bug de planification attrapé au passage
+(pas anticipé dans la liste ci-dessous à l'origine) : le job 1B (45724,
+`a100`) a tourné 2h23 d'extraction complète puis OOM au chargement du juge
+— `a100` (39,49 Go) n'a plus la marge pour Qwen3.8-27B bf16 (~52 Go)
+depuis que c'est devenu le défaut. Script corrigé (`--partition=h100`),
+resoumis (45874, réutilise l'extraction déjà en cache). Documenté en
+détail : `docs/ops.md`. `layer12` (45803→45725 nettoyé, cf. plus haut)
+tourne toujours au moment de cette mise à jour.
 
-| # | Job | Coût GPU | Nourrit | Priorité |
-|---|---|---|---|---|
-| 1 | Vérifier 45735/45745/45750 dès qu'ils terminent (§79 Qwen, §80 label resserré, App D.2) | 0 (déjà en file) | §79/§80/App D.2 | **Critique** — bloque le chiffre de référence du rapport |
-| 2a | Rejuger Qwen `results_v33.../` (layer41) — `p1_all_doc_acts*.pt`/`p1_token_fragments` encore intacts sur disque (seul des 4 dans ce cas), script dédié déjà écrit (`slurm/analysis/run_judge_model_separation_qwen_layer41.slurm`), vrai rejugement seul, aucune extraction/entraînement | ~20-40 min GPU | §88 | **Haute** — vraiment bon marché |
-| 2b | **Correction d'estimation** : `results_v27.../` (layer31/12B), `results_v30.../` (4B), `results_v31.../` (27B) ont eu leurs `p1_all_doc_acts*.pt`/`p1_extended_sae.pt`/`p1_token_fragments` supprimés par le nettoyage disque (ne restent que `results.json`+labels+plots) — **pas un simple rejugement possible**, il faut réentraîner l'extension SAE (le script standalone `judge_model_separation_test.py` échouerait, fichiers manquants). Resoumettre directement les `.slurm` ORIGINAUX (`run_ablation_classic_setup_k5_25m_layer31/model_scale_4b/model_scale_27b.slurm`, aucun ne pin `JUDGE_MODEL_ID` donc Qwen par défaut sans modification) — le cache RAW partagé (`local_data/activation_cache/`, 423 Go, 4 clés déjà présentes) devrait éviter de refaire l'extraction LLM, mais l'entraînement de l'extension (10 époques) et le merge/judge complet sont à refaire : coût proche d'un rerun complet moins l'extraction, pas quelques minutes | ~1-2h GPU/palier estimé (à vérifier au premier relancé — pas mesuré précisément), 3 soumissions | §82 (table sweep complète, cohérente Qwen) | **Moyenne** — plus cher que prévu initialement, à lancer après 2a/3 si le temps le permet |
-| 3 | Vérifier 45724 (1B)/45725 (layer12) dès qu'ils terminent, écrire la ligne 1B et la section layer 12 sous Qwen nativement | 0 (déjà en file) | §82/§88 | **Haute** |
-| 4 | Rejuger Qwen le magnitude/référence historique si le rapport cite encore 45,3% comme un chiffre à part (déjà fait en fait, §83 — vérifier juste que le rapport pointe vers §83 et pas vers l'ancien 45,3% Gemma sans le dire) | 0 (déjà fait) | passages "45,3%" du rapport | **Moyenne** — vérification de rédaction, pas un rerun |
-| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen explicitement pour chaque occurrence | 0 (lecture) | tout le rapport | **Moyenne** |
-| 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (`bin_info` natif) pour remplacer N3/§87 par un chiffre repondéré fiable ET jugé Qwen | faible (rejugement seul, réutilise cache) | §79 remplaçant définitif, N3 | **Moyenne** — utile mais #1 (job 45735) donne déjà un chiffre Qwen exploitable sans repondération |
-| 7 | App I (F1 lecteur 12B/27B) — extraction fraîche + calcul | ~6h GPU | App I (jamais commencé) | **Basse** — confirmatoire, pas un front nouveau, à ne lancer que si le temps le permet après 1-6 |
-| 8 | Extraction fraîche de l'arme originaux+filler (`results_v26_.../`) pour compléter N4/B.1 sous Qwen | plusieurs heures GPU (extraction complète) | §81/N4 | **Basse** — B.1 est déjà tranché négativement (§81), un rejugement Qwen ne changerait probablement pas la conclusion "pas d'effet démontrable" |
+| # | Job | Statut | Résultat |
+|---|---|---|---|
+| 1 | 45735 (b1 mixte Qwen)/45745 (retrieval)/45750 (diffing D.2) | ✅ **fait** | §89 (94,7% vs 89,3%, p=0,057) / §92 (RRF+rerank domine, RBO=0,051) / §91 (verification_rate=80%) |
+| 2a | Rejugement Qwen layer41 | ✅ **fait** | §90 (78,7% vs 82,7%, p=0,429, non significatif) |
+| 2b | Relance complète layer31/4B/27B sous Qwen | **pas fait** | coût réévalué ~1-2h GPU/palier, pas prioritaire tant que §89/§90 suffisent à établir le pattern (écart Qwen/Gemma non significatif sous stratifié) |
+| 3 | 45724 (1B)/45725→45803 (layer12) | ⚠️ **1B replanté (a100→OOM), resoumis 45874** ; **layer12 en cours** | ligne 1B et section layer 12 à écrire dès que 45874/45803 terminent |
+| 4 | Vérification rédactionnelle 45,3%/§83 | **pas fait** | reporté avec #5 |
+| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen | **pas fait** | à faire avant remise finale — le rapport cite encore 89,3%/45,3% sans dire lequel des deux juges les a produits |
+| 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (bin_info natif) | **pas fait** | moins urgent maintenant que §89 donne déjà un chiffre Qwen exploitable (94,7%) sans repondération |
+| 7 | App I | **pas fait** | toujours aucune mention dans `report/*.md` — confirmé non prioritaire |
+| 8 | Extraction fraîche arme originaux+filler | **pas fait** | toujours basse priorité, B.1 déjà tranché négativement |
 
-**Recommandation concrète pour la suite immédiate** : lancer 2a (rejugement
-layer41, vraiment bon marché) maintenant. Décider 2b (relance complète
-layer31/4B/27B, ~1-2h GPU chacun d'après une première estimation à vérifier)
-une fois 1/3 confirmés, pour ne pas saturer la file inutilement en même temps
-que les 5 jobs déjà en cours. Ne pas lancer #7/#8 avant d'avoir confirmé que
-le rapport en a réellement besoin (aucune mention d'App I dans `report/*.md`
-à ce jour).
+**Hors liste initiale, fait cette session** : déduplication des exemples
+positifs du juge par mail d'origine (parent_id) — corrige un biais de
+protocole distinct (paraphrases quasi-identiques présentées comme exemples
+indépendants, mesuré à 22-34% des features de la référence), branché dans
+le pipeline principal et dans `b2_stratified_selection_rejudge.py` mais PAS
+dans les rejugements #1/#2a/#6 ci-dessus (isolation délibérée du juge comme
+seule variable — cf. `RESULTS_TESTS.md` §89/§90). Première mesure
+d'interprétabilité Pipeline 2 valide (§93, 58,7%, remplace le 74,7% périmé
+jamais cité). `dead_pct_core`/`dead_pct_extension` séparés dans
+`results.json` (le blended surestimait la mortalité de l'extension).
+Dashboard mis à jour pour afficher explicitement quelle source/juge produit
+chaque taux affiché (avant : toujours le cache Gemma historique, sans le
+dire).
+
+**Reste avant remise finale** : #4/#5 (vérification rédactionnelle du
+rapport — le report cite encore les anciens chiffres Gemma sans préciser le
+juge, malgré §83/§89/§90/§93 qui donnent maintenant des alternatives Qwen) ;
+écrire les lignes 1B/layer12 dès que 45874/45803 terminent ; décider #2b/#6
+si le temps le permet après la vérification rédactionnelle.
