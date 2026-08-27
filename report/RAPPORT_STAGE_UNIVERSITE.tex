@@ -684,11 +684,17 @@ directement les concepts sémantiques qui dictent la décision.
 \subsubsection{Auto-interprétation par juge LLM}
 Le taux d'interprétabilité rapporté dans tout ce rapport est mesuré par le
 protocole \emph{odd-one-out} : pour chaque feature échantillonnée, un juge LLM
-(le même modèle que l'extracteur, sauf mention contraire) reçoit 9 documents
-activant fortement la feature et 1 document-contrôle (activation quasi
-nulle), et doit désigner l'intrus. Un juge qui réussit démontre l'existence
-d'un concept partagé identifiable ; l'échec ne prouve pas nécessairement
-l'absence de concept (bruit du protocole, \emph{cf.}~\S\ref{subsec:robustesse}).
+reçoit 9 documents activant fortement la feature et 1 document-contrôle
+(activation quasi nulle), et doit désigner l'intrus. Un juge qui réussit
+démontre l'existence d'un concept partagé identifiable ; l'échec ne prouve pas
+nécessairement l'absence de concept (bruit du protocole,
+\emph{cf.}~\S\ref{subsec:robustesse}). La majorité des résultats de ce
+rapport (sections d'ablation, \S\ref{sec:resultats}) utilisent le même modèle
+comme extracteur et comme juge --- un choix dont le stage a établi
+\emph{a posteriori} qu'il n'était pas neutre (\S\ref{subsec:correction-methode}) :
+la valeur de référence retenue (94,7\%) découple les deux rôles, un juge de
+famille différente (Qwen3.8-27B) jugeant les features extraites par
+Gemma-3-12B-it.
 
 \subsection{Construction du corpus}
 
