@@ -5461,12 +5461,36 @@ seule leur distribution d'ensemble épouse la forme du nuage réel).
 **n** : 150 prévu (borné par le nombre de directions actives sous décodeur
 figé, cf. §98 --- peut être très inférieur, comme pour C1).
 
-**Résultat** (job 45988, h100, `results_v42_ablation_c1b_sanity_frozen_decoder_cov_init/`) :
-*en attente — job en file d'attente au moment de la rédaction.*
+**Résultat** (job 45988, h100, COMPLETED,
+`results_v42_ablation_c1b_sanity_frozen_decoder_cov_init/`, sidecar confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : `dead_pct_extension` = **97,0%** (contre 98,9%
+pour C1/`iso`, 5,7% pour R0) --- `cov` laisse un peu plus de directions
+vivantes (31 contre 11) mais reste massivement dégénéré. Sur les 31 :
+**80,6% (25/31)**. Contre R0 (84,7%, 127/150) : $z=0{,}56$, $p=0{,}578$, non
+significatif. Contre C1 (54,5%, 6/11) : $z=-1{,}69$, $p=0{,}091$, non
+significatif (mais dans le sens attendu : `cov` moins dégradé que `iso`).
 
-**Conclusion** : *à compléter.*
+FVE (console, `_fve_pair`, domaine + hors domaine désormais disponibles pour
+ce run) : domaine --- FVE(core)=0,7451, FVE(core+extension)=0,7536,
+**ΔFVE=+0,0086** (R0 : +0,1393 ; C1/`iso` : +0,0001) ; hors domaine ---
+FVE(core)=0,6879, FVE(core+extension)=0,6891, ΔFVE=+0,0012.
 
-**Limite connue** : *à compléter (a minima : un seul seed).*
+**Conclusion** : `cov` confirme être, comme chez Korznikov et al., une
+baseline **plus dure à battre** que `iso` (ΔFVE 86x plus grand que C1,
+dead_pct_extension 2 points plus bas) --- mais R0 la bat quand même
+nettement : ΔFVE $+0{,}1393$ contre $+0{,}0086$, un facteur **~16**. Même sous
+le schéma d'initialisation que Korznikov et al. utilisent pour leurs
+résultats publiés (Fig. 1, Tables 2-4), le SAE entraîné produit une extension
+qui explique ${\sim}16\times$ plus de variance supplémentaire qu'un décodeur
+figé à une covariance réaliste mais non apprise. Le taux d'interprétabilité
+brut (80,6\%, proche de R0) est à interpréter avec la même prudence que pour
+C1 : $n=31$ reste sous-alimenté, et **c'est le $\Delta$FVE qui tranche ici**,
+pas le taux jugé.
+
+**Limite connue** : un seul seed ; comparaison non appariée ; $n=31$ toujours
+sous-alimenté pour la comparaison de taux (IC large, non calculé faute de
+gain d'information au-delà du $\Delta$FVE).
 
 ## 106. A3 — largeur du SAE core 65k sous méthodologie finale
 
@@ -5540,3 +5564,69 @@ entraînement 4x plus long, jugement inchangé).
 **Conclusion** : *à compléter.*
 
 **Limite connue** : *à compléter.*
+
+## 109. L1 — layer 24 sous méthodologie finale (clôture partielle du sweep layer)
+
+**Question** : layer 24 était le layer par défaut historique du dépôt
+(couverture Neuronpedia) avant l'adoption de layer 31 comme référence
+(§51, écart significatif sous magnitude+auto-jugement, jamais répliqué
+sous stratifié). Contre R0 (§97, layer 31), sous méthodologie totalement
+homogène. Complète, avec layer 12 (§96, 88,7%) et layer 41 (rerun en
+cours, job 45973 -- l'ancien résultat §90 datait d'un cache incompatible,
+cf. AUDIT_SAE_2026-08.md), le sweep layer à K5/25M sous Qwen.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`LAYER=24`, `SAE_ID=layer_24_width_16k_l0_medium`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 45896, h100, COMPLETED,
+`results_v34_ablation_classic_setup_k5_25m_layer24/`, sidecar confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **80,7% (121/150)**. Contre R0 (84,7%, 127/150) :
+$z=0{,}92$, $p=0{,}360$, non significatif.
+
+**Conclusion** : cohérent avec §88 (layer 41 vs 31, magnitude) et §96
+(layer 12 vs 31, méthodologie complète) -- aucun des trois layers
+alternatifs testés (12, 24, 41) ne se distingue significativement de layer
+31 une fois la sélection stratifiée et le juge Qwen appliqués aux deux
+bras. Le seul écart individuel jamais significatif du dépôt (§51, layer 31
+vs 24 sous magnitude+auto-jugement) ne réplique donc toujours pas sous
+méthodologie corrigée, cette fois avec les DEUX layers directement
+comparés à la config de référence retenue (pas seulement l'un des deux).
+
+**Limite connue** : un seul seed ; comparaison non appariée ; layer 41 sous
+méthodologie finale encore en cours (job 45973) pour clore complètement le
+sweep.
+
+## 110. M1 — sélection par magnitude, juge auto-référent, à la configuration de R0 (25M tokens)
+
+**Question** : la comparaison stratifié/magnitude et Gemma/Qwen ne
+disposait jusqu'ici de tous ses points qu'à 500k tokens
+(`results_v10_emails_main`, K$_\text{extra}=32$, layer 24, §correction-methode)
+--- un volume sous le plancher de crédibilité retenu pour ce rapport (25M).
+À la configuration de R0 (K$_\text{extra}=5$, layer 31, 25M tokens), on
+dispose déjà de stratifié+Gemma (82,0\%, §82) et stratifié+Qwen (84,7\%,
+R0/§97) ; ce run ajoute magnitude+Gemma pour compléter la grille méthode
+$\times$ juge à un volume de tokens crédible, sans dépendre du run 500k.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`FEATURE_SELECTION_METHOD=magnitude` et `JUDGE_MODEL_ID=gemma-3-12b-it`
+(auto-référent, ablation ponctuelle documentée -- pas un changement du
+comportement par défaut, qui reste juge découplé de `MODEL_ID`).
+
+**Méthode statistique** : `two_proportion_test` contre §82 (stratifié+Gemma,
+même config, même juge) et contre R0 (stratifié+Qwen).
+
+**n** : 150 features.
+
+**Résultat** (job 46067, h100, `results_v48_ablation_m1_magnitude_gemma_classic_setup_25m_layer31/`) :
+*en attente — job en file d'attente au moment de la rédaction.*
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter (a minima : un seul seed ; complète 3
+cellules sur 4 de la grille méthode$\times$juge à 25M tokens, magnitude+Qwen
+non mesuré à cette config).*

@@ -890,54 +890,49 @@ falsification le plus net de ce stage.
 \subsection{Protocole de jugement : sélection des features et choix du juge}
 \label{subsec:correction-methode}
 
-La campagne d'ablations qui précède (\S\ref{subsec:synthese-ablations})
-sélectionne les features à juger par \textbf{magnitude d'activation moyenne},
-avec gemma-3-12b-it comme juge --- le même modèle que celui dont les
-activations sont extraites. Ces deux choix, tout aussi susceptibles
-d'influencer le taux mesuré qu'un hyperparamètre du SAE, sont eux-mêmes
-évalués comme deux ablations à part entière, contre deux alternatives : une
-\textbf{sélection stratifiée} par bins de fréquence (échantillonnage équilibré
-sur des strates log-espacées plutôt que sur les seules features les plus
-actives), et un \textbf{juge de famille différente} (Qwen3.8-27B), pour
-écarter un biais d'auto-préférence.
+Deux choix de protocole, tout aussi susceptibles d'influencer le taux mesuré
+qu'un hyperparamètre du SAE, sont eux-mêmes traités comme des variables
+d'ablation : la \textbf{méthode de sélection} des features soumises au juge
+(\textbf{magnitude} d'activation moyenne --- favorise systématiquement les
+features les plus denses, proches de directions génériques --- contre
+\textbf{stratifiée} par bins de fréquence, échantillonnage équilibré sur des
+strates log-espacées) et le \textbf{choix du juge} (gemma-3-12b-it,
+auto-référent car même famille que le modèle extracteur, contre Qwen3.8-27B,
+famille indépendante). Le tableau ci-dessous croise ces deux variables à la
+configuration retenue comme référence pour l'ensemble de la campagne
+d'ablations ($K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens, layer 31,
+gemma-3-12b-it comme extracteur) :
 
-La sélection stratifiée s'avère être, de loin, le second effet le plus large
-mesuré dans ce stage : sur le même SAE et le même corpus, le taux passe de
-45,3\% (68/150, sélection par magnitude) à 89,3\% (134/150, sélection
-stratifiée) --- écart hautement significatif ($z=-8{,}12$,
-$p=4{,}5\times10^{-16}$). La sélection par magnitude favorise systématiquement
-les features les plus denses, proches de directions génériques et donc plus
-difficiles à interpréter individuellement : un échantillon non représentatif
-du dictionnaire complet, qui sous-estime structurellement le taux réel.
+\begin{table}[h!]
+\centering
+\caption{Sélection $\times$ juge, à la configuration de référence (25M tokens)}
+\label{tab:selection-juge}
+\vspace{0.4em}\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Sélection} & \textbf{Juge gemma-3-12b-it} & \textbf{Juge Qwen3.8-27B} \\ \midrule
+Stratifiée & 82,0\% (123/150) & \textbf{84,7\% (127/150) --- référence (R0)} \\
+Magnitude & \emph{en cours} (M1) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Rejugeant les mêmes features stratifiées avec Qwen3.8-27B, le taux mesuré
-monte à \textbf{94,0\% (141/150, déduplication des exemples par mail parent
-incluse)} --- Qwen se montre systématiquement un peu plus généreux que
-gemma-3-12b-it. Sur un échantillon sélectionné par magnitude en revanche, le
-même changement de juge produit un écart massif
-(45,3\%~$\to$~78,7\%, McNemar apparié $\chi^2=31{,}59$, $p=1{,}9\times10^{-8}$) :
-l'effet du choix de juge est \textbf{concentré sur les features denses} que la
-sélection par magnitude sur-échantillonne, plutôt qu'une propriété générale du
-dictionnaire. Cette campagne établit ainsi la \textbf{méthodologie corrigée}
-retenue pour le reste du rapport (sélection stratifiée, juge Qwen3.8-27B,
-déduplication par mail parent) --- mais elle porte sur une configuration
-(\texttt{results\_v10\_emails\_main} : $K_\text{extra}=32$, 500\,000 tokens,
-layer 24) distincte de celle choisie comme référence pour la campagne
-d'ablations à variable unique isolée (\S\ref{subsec:synthese-ablations},
-$K_\text{extra}=5$, 25M tokens, layer 31) --- comparer directement 94,0\% aux
-chiffres de cette dernière confondrait deux configurations qui diffèrent sur
-trois axes à la fois, l'erreur exacte que \S\ref{subsec:model-scale}
-identifie et corrige pour l'effet d'échelle.
+À sélection stratifiée fixée, le choix du juge ne produit \textbf{aucun écart
+significatif} à cette configuration (82,0\%~$\to$~84,7\%, $z=-0{,}62$,
+$p=0{,}535$) --- une réplication, à un volume de tokens et un $K_\text{extra}$
+désormais cohérents avec le reste de la campagne, de l'observation déjà faite
+à plus faible volume (\S\ref{subsec:diagnostic-initial}) : sous sélection
+stratifiée, le taux d'interprétabilité ne dépend (quasiment) plus du modèle
+qui juge. La case magnitude+gemma-3-12b-it (M1) complètera la comparaison
+avec l'effet de méthode de sélection à cette même configuration ; en son
+absence, aucun chiffre construit à un volume inférieur au plancher de
+crédibilité retenu pour ce rapport (25M tokens) n'est cité ici.
 
 \begin{resultbox}[Valeur de référence retenue]
-Sous la méthodologie ci-dessus, appliquée à la configuration retenue comme
-référence de la campagne d'ablations ($K_\text{extra}=5$, $D_\text{extra}=1024$,
-25M tokens, layer 31, gemma-3-12b-it) : \textbf{84,7\% (127/150) est le taux
-d'interprétabilité de référence de ce rapport.} Le 94,0\% ci-dessus
-(\texttt{results\_v10\_emails\_main}) reste la mesure qui a \emph{validé} cette
-méthodologie mais n'est plus cité comme référence, faute de partager la même
-configuration que le reste de la campagne d'ablations. Les chiffres en
-45,x\%/2x,x\% cités dans la campagne d'ablations d'hyperparamètres du SAE
+\textbf{84,7\% (127/150), $K_\text{extra}=5$, $D_\text{extra}=1024$, 25M
+tokens, layer 31, sélection stratifiée, juge Qwen3.8-27B (R0) est le taux
+d'interprétabilité de référence de ce rapport.} Les chiffres en 45,x\%/2x,x\%
+cités dans la campagne d'ablations d'hyperparamètres du SAE
 (\S\ref{subsec:synthese-ablations}) restent des comparaisons \emph{internes}
 valides --- les deux bras de chaque ablation y sont mesurés sous le même
 protocole --- mais leurs valeurs absolues se lisent comme un plancher, pas
