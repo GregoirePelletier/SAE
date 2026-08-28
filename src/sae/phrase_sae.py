@@ -147,10 +147,16 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
 
     try:
         from src.config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
-        from src.storage.checkpoint import read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown
+        from src.storage.checkpoint import (
+            read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown,
+            EXIT_CODE_GRACEFUL_CHECKPOINT,
+        )
     except ImportError:
         from config import EMB_MODEL, MATRYOSHKA_DIM, EMB_POOLING
-        from checkpoint import read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown
+        from checkpoint import (
+            read_checkpoint, write_checkpoint, clear_checkpoint, GracefulShutdown,
+            EXIT_CODE_GRACEFUL_CHECKPOINT,
+        )
     # EMB_MODEL affiché (pas "F2LLM-v2-80M" figé) : le message était trompeur pour
     # tout run avec un backbone différent (ex. F2LLM-v2-330M, cf. RESULTS_TESTS.md).
     print(f"  [Phrase] Extraction embeddings avec {EMB_MODEL} (pooling={EMB_POOLING}, "
@@ -233,7 +239,7 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
     if _early_exit:
         del model, tokenizer
         gc.collect(); torch.cuda.empty_cache()
-        sys.exit(0)
+        sys.exit(EXIT_CODE_GRACEFUL_CHECKPOINT)
 
     _flush_shard(len(texts))  # dernier shard, potentiellement partiel
 

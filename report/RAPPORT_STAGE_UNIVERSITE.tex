@@ -170,14 +170,18 @@ Une campagne d'ablations portant sur les hyperparamètres du SAE (largeur,
 capacité et parcimonie de l'extension, volume de tokens, graine
 d'entraînement, dimension d'embedding, backbone du second pipeline) ne révèle,
 sous ce protocole, \textbf{aucun effet mesurable} de ces leviers sur le taux
-d'interprétabilité. Seule l'\textbf{échelle du modèle extracteur/juge} produit
-un effet net, monotone et hautement significatif, qui plafonne au-delà d'un
-certain seuil de taille. Sous la configuration retenue comme référence pour ce
-rapport, le taux d'interprétabilité atteint \textbf{94,7\%}. Des tests
-complémentaires --- fidélité et plausibilité de l'explication au niveau
-document, robustesse du protocole de jugement, biais multilingue, fidélité du
-steering, évaluation quantitative du retrieval --- achèvent la validation du
-système.
+d'interprétabilité. Sous la configuration retenue comme référence pour ce
+rapport, le taux d'interprétabilité atteint \textbf{84,7\%}. L'\textbf{échelle
+du modèle extracteur/juge}, identifiée dans des campagnes antérieures comme le
+seul levier produisant un effet net et significatif, ne réplique cet effet à
+aucune paire (1B/4B/12B, $p\geq0{,}29$) une fois les trois échelles mesurées
+sous un protocole totalement homogène (sélection stratifiée, juge Qwen3.8-27B,
+déduplication) --- un point de mesure (27B) reste en cours au moment de la
+rédaction pour trancher si cet effet, jusqu'ici le plus robuste du stage,
+survit à ce contrôle. Des tests complémentaires --- fidélité et plausibilité
+de l'explication au niveau document, robustesse du protocole de jugement,
+biais multilingue, fidélité du steering, évaluation quantitative du retrieval
+--- achèvent la validation du système.
 
 \textbf{Mots-clés} : Sparse Autoencoders, interprétabilité mécaniste,
 GemmaScope, grands modèles de langage, explicabilité, traitement automatique
@@ -227,11 +231,15 @@ features are being extracted, to rule out a self-preference bias.
 An ablation campaign over the SAE's hyperparameters (width, extension
 capacity and sparsity, token volume, training seed, embedding dimension,
 Pipeline-2 backbone) reveals, under this protocol, \textbf{no measurable
-effect} of any of these levers on the interpretability rate. Only the
-\textbf{extractor/judge model's scale} produces a clean, monotonic, highly
-significant effect that plateaus beyond a certain size threshold. Under the
+effect} of any of these levers on the interpretability rate. Under the
 configuration adopted as this report's reference, the interpretability rate
-reaches \textbf{94.7\%}. Complementary tests --- document-level explanation
+reaches \textbf{84.7\%}. The \textbf{extractor/judge model's scale}, identified
+in earlier campaigns as the only lever producing a clean, significant effect,
+does not replicate at any pair (1B/4B/12B, $p\geq0.29$) once the three scales
+are measured under a fully homogeneous protocol (stratified selection,
+Qwen3.8-27B judge, deduplication) --- one measurement point (27B) remains in
+progress at the time of writing to determine whether this effect, so far the
+study's most robust, survives this control. Complementary tests --- document-level explanation
 fidelity and plausibility, judge-protocol robustness, multilingual bias,
 steering fidelity, quantitative retrieval evaluation --- complete the
 system's validation.
@@ -289,9 +297,14 @@ LLM auto-interpretation.
 \subsection{Contexte industriel}
 
 Ce stage s'est déroulé au sein d'EDF R\&D, dans le département SEQUOIA
-(Services, Économie, Outils Innovants et IA), rattaché au groupe SOAD
-(Statistiques et Outils d'Aide à la Décision), sur le site d'EDF Lab
-Paris-Saclay. La mission initiale, formulée par l'offre de stage
+(\textbf{S}ervices, \textbf{É}conomie, \textbf{Q}uestions h\textbf{U}maines,
+\textbf{O}utils \textbf{I}nnovants et I\textbf{A}), qui éclaire le Groupe EDF
+sur les transitions énergétique, numérique et sociétale du secteur et conçoit
+les outils --- data analytics, IA, sciences humaines et sociales --- au
+service de la connaissance client et de la relation client. Le stage a été
+réalisé au sein du groupe de recherche SOAD (Statistiques et Outils d'Aide à
+la Décision), équipe E7S, sur le site d'EDF Lab Paris-Saclay. La mission
+initiale, formulée par l'offre de stage
 (\emph{cf.}~annexe des sources), porte sur l'explicabilité des
 \textbf{embeddings de texte} : des vecteurs denses obtenus par transformation
 d'un document textuel, aujourd'hui massivement utilisés (classification,
@@ -704,13 +717,12 @@ reçoit 9 documents activant fortement la feature et 1 document-contrôle
 (activation quasi nulle), et doit désigner l'intrus. Un juge qui réussit
 démontre l'existence d'un concept partagé identifiable ; l'échec ne prouve pas
 nécessairement l'absence de concept (bruit du protocole,
-\emph{cf.}~\S\ref{subsec:robustesse}). La majorité des résultats de ce
-rapport (sections d'ablation, \S\ref{sec:resultats}) utilisent le même modèle
-comme extracteur et comme juge --- un choix dont le stage a établi
-\emph{a posteriori} qu'il n'était pas neutre (\S\ref{subsec:correction-methode}) :
-la valeur de référence retenue (94,7\%) découple les deux rôles, un juge de
-famille différente (Qwen3.8-27B) jugeant les features extraites par
-Gemma-3-12B-it.
+\emph{cf.}~\S\ref{subsec:robustesse}). La campagne d'ablations
+d'hyperparamètres du SAE (\S\ref{sec:resultats}) utilise le même modèle comme
+extracteur et comme juge, par simplicité ; la valeur de référence retenue
+pour ce rapport (84,7\%, \S\ref{subsec:correction-methode}) découple les deux
+rôles, un juge de famille différente (Qwen3.8-27B) jugeant les features
+extraites par Gemma-3-12B-it, pour écarter tout biais d'auto-préférence.
 
 \subsection{Construction du corpus}
 
@@ -795,11 +807,18 @@ défaut de domaine du corpus, pas un déficit de volume d'entraînement.}
 Une fois le domaine du corpus corrigé, une campagne d'ablations systématique
 a testé, pour chaque configuration, une modification \textbf{isolée} par
 rapport au run principal (référence : 45,3\%, 68/150), toutes comparées par
-test $z$ à deux proportions :
+test $z$ à deux proportions. \textbf{Toute cette campagne, y compris ses trois
+lignes significatives, est mesurée sous sélection par magnitude et juge
+auto-référent (gemma-3-12b-it) --- les deux biais isolés et corrigés en
+\S\ref{subsec:correction-methode}} : les valeurs absolues ci-dessous se lisent
+comme un plancher relatif entre configurations, pas comme le taux réel du
+dictionnaire (84,7\%, valeur de référence de ce rapport). Ceci concerne en
+particulier les deux lignes d'échelle du modèle, requalifiées à la baisse
+sous protocole corrigé --- \emph{cf.}~\S\ref{subsec:model-scale}.
 
 \begin{table}[h!]
 \centering
-\caption{Synthèse des 14 ablations d'hyperparamètres --- taux d'interprétabilité (n=150)}
+\caption{Synthèse des 14 ablations d'hyperparamètres --- taux d'interprétabilité (n=150, sélection par magnitude, juge auto-référent --- lire comme plancher relatif, \S\ref{subsec:correction-methode})}
 \label{tab:synthese}
 \vspace{0.4em}\small
 \begin{tabular}{@{}lccc@{}}
@@ -848,107 +867,201 @@ de perturbation), l'écart se resserre fortement (93,5\% entraîné contre
 décodeur aléatoire que l'interprétation qualitative}, répliquant partiellement
 le constat du papier sur des métriques proxy insuffisantes.
 
+Cette mesure date de la sélection par magnitude et du juge auto-référent ---
+rejouée sous méthodologie finale contre R0 (\S\ref{subsec:correction-methode}),
+avec une initialisation \emph{iso} (gaussienne isotrope normalisée, le schéma
+secondaire de Korznikov et al. --- leur schéma \emph{principal}, \emph{cov},
+gaussien de covariance réelle et empiriquement plus difficile à battre, est en
+cours de mesure séparément). Deux effets se combinent : d'abord, un décodeur
+figé aléatoire laisse \textbf{98,9\% des 1024 directions de l'extension
+mortes} (contre 5,7\% pour R0) --- l'encodeur n'a mécaniquement que 11
+directions vivantes à proposer au juge stratifié, contre 150 attendues.
+Ensuite, et c'est la mesure la plus nette des deux, la fraction de variance
+expliquée gagnée par l'extension ($\Delta$FVE, indépendante du juge)
+s'effondre à \textbf{$+0{,}0001$ contre $+0{,}1393$ pour R0} --- un facteur
+${\sim}1400$ : la quasi-totalité de la capacité de l'extension ne sert à
+rien, ni pour l'interprétabilité ni pour la reconstruction, sans direction de
+décodage apprise. Sur les 11 features vivantes, le taux d'interprétabilité
+reste plus bas que R0 (54,5\% contre 84,7\%, $z=2{,}54$, $p=0{,}011$) mais à
+un $n$ trop faible pour porter la conclusion seul --- c'est le $\Delta$FVE,
+mesuré sans le bruit d'échantillonnage du juge, qui constitue le test de
+falsification le plus net de ce stage.
+
+\subsection{Protocole de jugement : sélection des features et choix du juge}
+\label{subsec:correction-methode}
+
+La campagne d'ablations qui précède (\S\ref{subsec:synthese-ablations})
+sélectionne les features à juger par \textbf{magnitude d'activation moyenne},
+avec gemma-3-12b-it comme juge --- le même modèle que celui dont les
+activations sont extraites. Ces deux choix, tout aussi susceptibles
+d'influencer le taux mesuré qu'un hyperparamètre du SAE, sont eux-mêmes
+évalués comme deux ablations à part entière, contre deux alternatives : une
+\textbf{sélection stratifiée} par bins de fréquence (échantillonnage équilibré
+sur des strates log-espacées plutôt que sur les seules features les plus
+actives), et un \textbf{juge de famille différente} (Qwen3.8-27B), pour
+écarter un biais d'auto-préférence.
+
+La sélection stratifiée s'avère être, de loin, le second effet le plus large
+mesuré dans ce stage : sur le même SAE et le même corpus, le taux passe de
+45,3\% (68/150, sélection par magnitude) à 89,3\% (134/150, sélection
+stratifiée) --- écart hautement significatif ($z=-8{,}12$,
+$p=4{,}5\times10^{-16}$). La sélection par magnitude favorise systématiquement
+les features les plus denses, proches de directions génériques et donc plus
+difficiles à interpréter individuellement : un échantillon non représentatif
+du dictionnaire complet, qui sous-estime structurellement le taux réel.
+
+Rejugeant les mêmes features stratifiées avec Qwen3.8-27B, le taux mesuré
+monte à \textbf{94,0\% (141/150, déduplication des exemples par mail parent
+incluse)} --- Qwen se montre systématiquement un peu plus généreux que
+gemma-3-12b-it. Sur un échantillon sélectionné par magnitude en revanche, le
+même changement de juge produit un écart massif
+(45,3\%~$\to$~78,7\%, McNemar apparié $\chi^2=31{,}59$, $p=1{,}9\times10^{-8}$) :
+l'effet du choix de juge est \textbf{concentré sur les features denses} que la
+sélection par magnitude sur-échantillonne, plutôt qu'une propriété générale du
+dictionnaire. Cette campagne établit ainsi la \textbf{méthodologie corrigée}
+retenue pour le reste du rapport (sélection stratifiée, juge Qwen3.8-27B,
+déduplication par mail parent) --- mais elle porte sur une configuration
+(\texttt{results\_v10\_emails\_main} : $K_\text{extra}=32$, 500\,000 tokens,
+layer 24) distincte de celle choisie comme référence pour la campagne
+d'ablations à variable unique isolée (\S\ref{subsec:synthese-ablations},
+$K_\text{extra}=5$, 25M tokens, layer 31) --- comparer directement 94,0\% aux
+chiffres de cette dernière confondrait deux configurations qui diffèrent sur
+trois axes à la fois, l'erreur exacte que \S\ref{subsec:model-scale}
+identifie et corrige pour l'effet d'échelle.
+
+\begin{resultbox}[Valeur de référence retenue]
+Sous la méthodologie ci-dessus, appliquée à la configuration retenue comme
+référence de la campagne d'ablations ($K_\text{extra}=5$, $D_\text{extra}=1024$,
+25M tokens, layer 31, gemma-3-12b-it) : \textbf{84,7\% (127/150) est le taux
+d'interprétabilité de référence de ce rapport.} Le 94,0\% ci-dessus
+(\texttt{results\_v10\_emails\_main}) reste la mesure qui a \emph{validé} cette
+méthodologie mais n'est plus cité comme référence, faute de partager la même
+configuration que le reste de la campagne d'ablations. Les chiffres en
+45,x\%/2x,x\% cités dans la campagne d'ablations d'hyperparamètres du SAE
+(\S\ref{subsec:synthese-ablations}) restent des comparaisons \emph{internes}
+valides --- les deux bras de chaque ablation y sont mesurés sous le même
+protocole --- mais leurs valeurs absolues se lisent comme un plancher, pas
+comme le taux réel du dictionnaire.
+\end{resultbox}
+
 \subsection{L'échelle du modèle : le levier déterminant}
 \label{subsec:model-scale}
 
-Trois échelles du modèle extracteur/juge ont été testées, chacune avec son
-propre GemmaScope dédié (gemma-scope-2-1b-it, -4b-it, -12b-it), toutes choses
-égales par ailleurs :
+Quatre échelles du modèle extracteur/juge sont testées sous une configuration
+strictement commune (sélection stratifiée, juge Qwen3.8-27B, déduplication
+par mail parent, $K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens,
+corpus mixte), chacune avec son propre GemmaScope dédié et son propre
+\emph{layer} à \og{}~2/3 de profondeur\fg{} (1B : layer 13 ; 4B : layer 17 ;
+12B : layer 31 ; 27B : layer 40) --- remplace une table antérieure qui
+mélangeait, sous une même colonne \og{}Taux interp.\fg{}, des points jugés
+par Qwen et d'autres par le modèle extracteur lui-même (biais d'auto-préférence
+non contrôlé, \S\ref{subsec:correction-methode}) : les quatre points ci-dessous
+sont désormais comparables terme à terme, seule l'échelle du modèle varie.
 
 \begin{table}[h!]
 \centering
-\caption{Effet dose-réponse de l'échelle du modèle}
+\caption{Effet de l'échelle du modèle extracteur, méthodologie totalement homogène (stratifié, juge Qwen3.8-27B, $K_\text{extra}=5$, 25M tokens)}
 \label{tab:model-scale}
 \vspace{0.4em}\small
-\begin{tabular}{@{}lccccc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
-\textbf{Modèle} & \textbf{$d_\text{model}$} & \textbf{Taux interp.} & \textbf{$z$ vs 12B} & \textbf{Acc. classification} \\ \midrule
-gemma-3-1b-it & 1152 & 12,0\% (18/150) & 6,38 & 88,2\% \\
-gemma-3-4b-it & 2560 & 28,0\% (42/150) & 3,12 & 92,0\% \\
-gemma-3-12b-it (référence) & 3840 & 45,3\% (68/150) & --- & 93,5\% \\
+\textbf{Modèle} & \textbf{Layer} & \textbf{Juge} & \textbf{Taux interp.} \\ \midrule
+gemma-3-1b-it & 13 & Qwen3.8-27B & 80,0\% (120/150) \\
+gemma-3-4b-it & 17 & Qwen3.8-27B & 81,3\% (122/150) \\
+gemma-3-12b-it (référence du rapport) & 31 & Qwen3.8-27B & 84,7\% (127/150) \\
+gemma-3-27b-it & 40 & Qwen3.8-27B & \emph{en cours au moment de la rédaction} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{resultbox}[Résultat central du stage]
-La progression 12,0\% $\to$ 28,0\% $\to$ 45,3\% est \textbf{monotone et
-significative à chaque palier}, y compris la comparaison directe 1B contre 4B
-($z=-3{,}46$). Un test de tendance de Cochran-Armitage --- statistique unique,
-mieux adaptée qu'une série de comparaisons par paires à ce plan à niveaux
-ordonnés --- confirme un effet extrêmement robuste :
-$z \approx 6{,}40$, $p \approx 1{,}6\times10^{-10}$ (quasiment identique avec
-un barème linéaire ou log-paramètres). C'est, de très loin, le plus fort
-effet mesuré dans tout ce stage. Un palier supplémentaire à 27B, testé
-ultérieurement sous la sélection stratifiée (\S\ref{subsec:correction-methode}),
-confirme un \textbf{plateau} : 82,0\% à 12B, 83,3\% à 27B ($p=0{,}76$, non
-significatif) --- doubler encore la taille du modèle au-delà de 12B n'apporte
-plus de gain mesurable à cette échelle.
-
-\textbf{Ce résultat a lui-même été requalifié} en remesurant le point 1B sous
-méthodologie pleinement corrigée (sélection stratifiée, juge Qwen,
-déduplication des exemples positifs --- \S\ref{subsec:correction-methode}) :
-\textbf{80,0\% à 1B contre 94,0\% à 12B}, écart toujours significatif
-($z=-3{,}61$, $p=0{,}0003$) mais \textbf{deux fois plus modeste} que le
-chiffre historique ($h$ de Cohen $=-0{,}43$, effet moyen, contre $-0{,}77$,
-effet large ; écart brut de 14,0 points au lieu de 33,3). Une partie
-substantielle de l'écart 1B/12B initialement rapporté était donc un artefact
-des biais de sélection et de juge (le 1B, jugé par un modèle auto-référent
-sur des features sélectionnées par magnitude, était pénalisé deux fois) ---
-\textbf{l'effet d'échelle reste le résultat le plus robuste de ce stage, mais
-son ampleur rapportée ici surestimait l'effet réel d'un facteur proche de
-deux.}
+\begin{resultbox}[Résultat central du stage --- à confirmer par le point 27B]
+Sous protocole totalement homogène, la progression 1B$\to$4B$\to$12B
+(80,0\%~$\to$~81,3\%~$\to$~84,7\%) \textbf{n'atteint la significativité à
+aucune paire} (1B vs 12B : $z=-1{,}06$, $p=0{,}29$ ; 1B vs 4B : $z=-0{,}29$,
+$p=0{,}77$ ; 4B vs 12B : $z=0{,}77$, $p=0{,}44$) ni en tendance
+(Cochran-Armitage sur les trois points, $z=1{,}05$, $p=0{,}29$). C'est un
+résultat que ce rapport n'anticipait pas : la version antérieure de cette
+section, construite en mélangeant des points jugés par des modèles
+différents, décrivait une progression nette jusqu'à 12B puis un plateau ---
+cette lecture ne survit pas au retrait du biais de juge. \textbf{Le point 27B,
+en cours, est décisif} : s'il rouvre un écart significatif avec 12B,
+l'échelle du modèle reste le levier dominant identifié dans les campagnes
+antérieures (§28, §82, §95), avec une ampleur nettement revue à la baisse ;
+s'il confirme l'absence d'effet, alors, sous cette méthodologie, \textbf{aucun
+des leviers testés dans ce stage} --- ni les hyperparamètres du SAE
+(\S\ref{subsec:synthese-ablations}) ni l'échelle du modèle extracteur/juge ---
+ne produit d'effet mesurable sur le taux d'interprétabilité à $n=150$. Les
+deux issues sont possibles à ce stade de la rédaction ; ce paragraphe sera mis
+à jour dès que le point 27B sera disponible, pas requalifié une seconde fois
+par petites touches.
 \end{resultbox}
 
-La séparabilité linéaire (classification, indépendante du juge LLM) suit une
-pente beaucoup plus douce (88,2\%~$\to$~93,5\%, 5,3~points d'écart total,
-contre 33,3~points pour l'interprétabilité qualitative) : les représentations
-latentes restent largement exploitables même à 1B, alors que le jugement
-qualitatif s'effondre. Cette dissociation, ainsi que l'inspection qualitative
-des hypothèses de diffing générées (cohérentes à 12B, confuses à 1B ---
-inversion logique cause/conséquence observée), suggère que c'est la
-\textbf{capacité de raisonnement du juge} --- formuler et vérifier un concept
-partagé entre 9 exemples --- qui limite le score à petite échelle, plus que
-la qualité intrinsèque des features extraites.
+L'inspection qualitative des hypothèses de diffing générées à chaque échelle
+(\emph{cf.}~\S\ref{subsec:diffing}, cohérentes à 12B, confuses à 1B ---
+inversion logique cause/conséquence observée) reste, elle, inchangée par ce
+qui précède : indépendamment de l'issue chiffrée ci-dessus, la
+\textbf{capacité de raisonnement du juge/extracteur} sur des tâches
+qualitatives plus exigeantes que l'odd-one-out continue de se dégrader
+nettement aux petites échelles.
 
-\subsection{Second et troisième correctifs : sélection des features et choix du juge}
-\label{subsec:correction-methode}
+\subsection{Ablations d'hyperparamètres et de graine sous méthodologie finale}
+\label{subsec:ablations-finales}
 
-Les résultats ci-dessus, comme la table~\ref{tab:synthese}, sélectionnent les
-features à juger par \textbf{magnitude d'activation moyenne} --- un choix qui
-s'est révélé biaisé \emph{a posteriori} : cette méthode favorise
-systématiquement les features les plus denses (proches de directions
-génériques), un échantillon non représentatif du dictionnaire complet.
-Remplacée par une \textbf{sélection stratifiée} par bins de fréquence
-(échantillonnage équilibré sur des strates de fréquence log-espacées plutôt
-que les features les plus actives), le taux mesuré sur le même SAE et le même
-corpus passe de \textbf{45,3\% (68/150) à 89,3\% (134/150)} --- écart
-hautement significatif ($z=-8{,}12$, $p=4{,}5\times10^{-16}$), et de loin le
-second effet le plus large de tout ce stage.
+La campagne d'ablations \S\ref{subsec:synthese-ablations} (14 configurations)
+est intégralement mesurée sous sélection par magnitude et juge auto-référent
+--- ses valeurs absolues se lisent comme un plancher, pas comme le taux réel
+(\S\ref{subsec:correction-methode}). Le tableau ci-dessous reprend les
+hyperparamètres les plus consultés sous méthodologie finale (stratifié +
+Qwen3.8-27B + déduplication), tous comparés à R0 (\S\ref{subsec:correction-methode},
+84,7\%, 127/150) :
 
-Un second doute a ensuite porté sur le \textbf{juge lui-même} :
-gemma-3-12b-it jugeait jusqu'ici ses propres features, le même checkpoint que
-celui dont les activations sont extraites --- un risque de biais
-d'auto-préférence jamais isolé jusqu'ici, faute d'un juge de famille
-différente et de capacité comparable disponible localement. Rejugeant les
-mêmes 150 features stratifiées avec Qwen3.8-27B (famille différente), le taux
-mesuré monte à \textbf{94,7\% (142/150)}, écart non significatif à cette
-échelle (test de McNemar exact, $p=0{,}057$) mais dans le sens attendu si un
-biais d'auto-préférence existait (gemma-3-12b-it plus sévère avec lui-même).
-Sur un échantillon de features sélectionnées par \emph{magnitude} en revanche,
-le même changement de juge produit un écart massif et hautement significatif
-(45,3\% $\to$ 78,7\%, McNemar apparié $\chi^2=31{,}59$, $p=1{,}9\times10^{-8}$)
---- l'effet du choix de juge semble donc concentré sur les features denses que
-la sélection par magnitude sur-échantillonne, pas une propriété générale du
-dictionnaire.
+\begin{table}[h!]
+\centering
+\caption{Ablations d'hyperparamètres et de graine contre R0, méthodologie finale}
+\label{tab:ablations-finales}
+\vspace{0.4em}\small
+\begin{tabular}{@{}llccc@{}}
+\toprule
+\textbf{Run} & \textbf{Écart à R0} & \textbf{Taux interp.} & \textbf{$z$ / $p$ vs R0} & \textbf{$\Delta$FVE} \\ \midrule
+R0 & référence & 84,7\% (127/150) & --- & $+0{,}1393$ \\
+V1 & seed 123 (bruit run-à-run) & 90,7\% (136/150) & $z=-1{,}58$, $p=0{,}114$ & $+0{,}1399$ \\
+V2 & seed 7 (bruit run-à-run) & 82,7\% (124/150) & $z=0{,}47$, $p=0{,}639$ & $+0{,}1402$ \\
+A1 & $K_\text{extra}=32$ (défaut historique) & 78,0\% (117/150) & $z=1{,}48$, $p=0{,}138$ & $+0{,}1483$ \\
+A2 & $D_\text{extra}=2048$ (capacité $\times$2) & 88,0\% (132/150) & $z=-0{,}84$, $p=0{,}401$ & $+0{,}1468$ \\
+A3 & core 65k (défaut : 16k) & \emph{en cours} & --- & \emph{en cours} \\
+A4 & $\text{batch}_\text{extra}=16384$ (défaut : 1024) & \emph{en cours} & --- & \emph{en cours} \\
+A6 & $\text{épochs}_\text{extra}=40$ (défaut : 10) & \emph{en cours} & --- & \emph{en cours} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{resultbox}[Valeur de référence retenue]
-\textbf{94,7\% (sélection stratifiée, juge Qwen3.8-27B) est le taux
-d'interprétabilité de référence de ce rapport.} Les chiffres en
-45,x\%/2x,x\% cités dans les autres sections de ce chapitre datent de la
-méthode de sélection par magnitude et du juge auto-référent : ils restent des
-comparaisons \emph{internes} valides (les deux bras d'une même ablation,
-mesurés sous la même méthode) mais leurs valeurs absolues se lisent comme un
-plancher, pas comme le taux réel du dictionnaire.
+\begin{resultbox}[Le plancher de bruit run-à-run absorbe les écarts d'hyperparamètres]
+V1 et V2 (deux graines de la configuration de R0, aucun hyperparamètre
+changé) donnent \textbf{84,7\% / 90,7\% / 82,7\%} --- un écart de 8 points
+entre les deux graines, lui-même statistiquement "significatif" non corrigé
+entre V1 et V2 ($z=2{,}04$, $p=0{,}042$) alors qu'aucun hyperparamètre ne
+diffère. \textbf{A1 et A2 tombent tous deux à l'intérieur de cette fourchette
+V1--V2} (82,7--90,7\%) : leurs écarts non significatifs contre R0 ne sont donc
+pas seulement "non prouvés", ils sont plus petits que le bruit de graine
+mesuré sur ce même protocole. C'est la réponse directe à l'objection attendue
+sur l'absence de correction multi-tests du tableau \S\ref{subsec:synthese-ablations}
+(\S\ref{subsec:audit-stats}) : la variabilité de graine, jamais mesurée avant
+cette campagne sous le cache d'extraction partagé, est du même ordre de
+grandeur que les écarts d'hyperparamètres eux-mêmes.
+
+La colonne $\Delta$FVE (fraction de variance expliquée par le SAE complet,
+core+extension, moins celle du core seul --- calculée sur un échantillon de
+4096 tokens, indépendante du juge LLM) raconte une histoire radicalement
+plus stable : $+0{,}1393$ à $+0{,}1483$ sur les cinq runs, un écart relatif
+de moins de 7\% là où le taux d'interprétabilité varie de 12,7 points
+(78,0\,--\,90,7\%). \textbf{La reconstruction ne bouge quasiment pas d'un
+run à l'autre ; c'est le jugement \emph{odd-one-out} qui introduit
+l'essentiel du bruit observé sur le taux d'interprétabilité.} Cette
+dissociation est cohérente avec le sanity check
+\S\ref{subsec:sanity-check-resultats} : le décodeur figé aléatoire y montre
+$\Delta$FVE $\approx 0{,}0001$, un facteur ${\sim}1400$ sous R0, une preuve de
+falsification bien plus nette et bien moins bruitée que l'écart
+d'interprétabilité mesuré sur ce même run (limité à $n=11$ features actives).
 \end{resultbox}
 
 \subsection{Robustesse du protocole de jugement}
@@ -1062,6 +1175,100 @@ quand leur précision est proche : les deux méthodes retrouvent des documents
 largement différents en tête de liste, ce que le reranking exploite plutôt
 que d'arbitrer entre deux versions du même classement.
 
+\subsection{Diffing entre sous-corpus}
+\label{subsec:diffing}
+
+Le \emph{diffing} --- repérer automatiquement les features dont l'activation
+diffère entre deux sous-corpus, pour faire émerger ce qui les distingue
+(\emph{cf.}~\S\ref{sec:etat-art}) --- fait partie des objectifs initiaux du
+stage mais n'avait, jusqu'ici, été validé que qualitativement. Le protocole
+suit celui de la littérature citée : une hypothèse (un concept, formulée en
+langage naturel à partir des labels de features) est générée automatiquement
+à partir de l'écart de fréquence d'activation entre les deux groupes, puis
+\textbf{vérifiée} sur un corpus de documents tenus à l'écart de sa
+génération --- le \texttt{verification\_rate} mesure la proportion
+d'hypothèses dont l'écart de fréquence se confirme au-delà d'un seuil, le
+\texttt{coverage} la proportion de documents cibles couverts par au moins une
+hypothèse validée. Faute d'un corpus emails déjà annoté par sous-catégorie
+suffisamment large pour ce protocole, la validation ci-dessous porte sur un
+sous-corpus générique à deux domaines nettement séparés (énergie \emph{vs.}
+sport, FineWeb2-fr) --- un banc d'essai pour le \textbf{mécanisme} de diffing
+lui-même, avant application au diffing emails (\emph{ex.} urgents \emph{vs.}
+non urgents) qui a motivé l'objectif initial.
+
+Une première mesure, à partir des 10 hypothèses les mieux classées par un
+score de corrélation archivé (sans passer par une génération structurée),
+valide 4 hypothèses sur 10 (\texttt{verification\_rate}~=~40,0\%, IC95\%
+Wilson [16,8\,;\,68,7]\%) et couvre 92,5\% des documents cibles ---
+principalement porté par 2 des 4 hypothèses valides, pas une couverture
+homogène. Remplacer cette sélection par une \textbf{génération structurée}
+(un juge LLM produit directement les hypothèses en JSON, avec un score de
+confiance explicite, à partir des 200 features dont l'écart de fréquence est
+le plus marqué) fait passer le taux de validation à \textbf{80,0\% (8/10)} ---
+les 2 hypothèses invalidées sont aussi celles à la confiance de génération la
+plus basse du lot (0,75 et 0,65) --- au prix d'une couverture plus faible
+(55,0\%). Cette comparaison reste descriptive ($n=10$ hypothèses dans les
+deux cas, pas de test formalisé faute d'un plan commun), mais confirme que le
+mécanisme de bout en bout (génération, vérification) fonctionne sans signe de
+dégénérescence, et que la méthode de génération des hypothèses affecte le
+taux de validation au moins autant que pour la sélection de features à juger
+(\S\ref{subsec:correction-methode}) --- porter cette même chaîne sur un
+diffing emails reste la suite naturelle de ce résultat.
+
+\subsection{Clustering interprétable de documents}
+\label{subsec:clustering}
+
+Le clustering interprétable de documents, second objectif initial resté sans
+validation quantitative jusqu'ici, a été exercé de bout en bout sur le
+corpus emails : à partir d'une requête en langage naturel (\emph{ex.}
+\og{}type de réclamation client\fg{}), un juge LLM génère des mots-clés,
+sélectionne les latents de l'extension dont les labels s'y rapportent (union
+des \emph{top-k} par mot-clé, 61 features sur les 68 déjà jugées
+interprétables), puis regroupe les documents par similarité de Jaccard sur
+leur profil d'activation binaire sur ces latents --- une correction de code
+a été nécessaire ici, le clustering ciblé utilisant jusque-là une similarité
+cosinus sur ce même vecteur binaire, une métrique différente de celle
+spécifiée. Chaque cluster obtenu est ensuite étiqueté par un juge LLM, son
+accuracy mesurée par réassignation LLM à l'étiquette la plus proche, et sa
+\textbf{compacité géométrique} comparée, en espace d'embedding dense
+(bge-m3), à des échantillons aléatoires de même taille (\emph{z-conductance} :
+négatif si le cluster est plus dense que le hasard) :
+
+\begin{table}[h!]
+\centering
+\caption{Clustering ciblé sur la requête \og{}type de réclamation client\fg{} (n=300 documents, 4 clusters)}
+\label{tab:clustering}
+\vspace{0.4em}\small
+\begin{tabular}{@{}clcc@{}}
+\toprule
+\textbf{Cluster} & \textbf{Description (LLM)} & \textbf{Accuracy} & \textbf{$z$-conductance} \\ \midrule
+0 (175 doc.) & Résiliation de contrat et litiges de facturation & 61,7\% & $-3{,}12$ \\
+1 (25 doc.) & Activation de service et réclamations mixtes & 40,0\% & $-2{,}91$ \\
+2 (46 doc.) & Réclamations urgentes pour coupures de courant & 56,5\% & $-4{,}32$ \\
+3 (54 doc.) & Demandes administratives mixtes (activation/résiliation) & 5,6\% & $-10{,}06$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Les quatre $z$-conductances sont négatives : les clusters obtenus par
+activation SAE sont géométriquement plus compacts, en espace d'embedding
+dense, que des échantillons aléatoires de même taille --- une structure
+réelle, pas un artefact du hasard. L'accuracy varie en revanche fortement
+d'un cluster à l'autre (5,6\% à 61,7\%), cohérent qualitativement avec la
+littérature citée sur des clusters SAE à variance d'accuracy plus élevée que
+des baselines denses : le cluster le moins bien classé (3) porte lui-même
+l'étiquette la moins homogène (\og{}demandes administratives mixtes\fg{}),
+une correspondance qui a du sens --- compacité géométrique et cohérence
+sémantique jugée par LLM ne mesurent pas la même chose, et peuvent diverger
+sur un cluster par nature hétérogène.
+
+\textbf{Limite connue des deux résultats ci-dessus} : une seule requête de
+clustering testée, aucune baseline dense/instruction-tuned pour situer
+l'accuracy en absolu, nombre de clusters fixé sans sélection empirique
+(silhouette, \emph{gap statistic}), et --- pour le diffing --- un seul
+tirage de corpus par condition ; ces deux protocoles seront réexécutés à
+mesure que de nouveaux runs deviennent disponibles.
+
 \subsection{Choix du backbone d'embedding (Pipeline 2)}
 
 Quatre backbones ont été comparés pour le Pipeline~2 : F2LLM-v2 (80M, 160M,
@@ -1077,15 +1284,14 @@ sur le dernier token (adapté à un backbone décodeur causal comme F2LLM),
 incorrect pour un encodeur bidirectionnel comme bge-m3 (pooling \texttt{[CLS]}
 attendu).
 
-Sur l'\textbf{interprétabilité} (pas seulement la reconstruction), le seul
-chiffre disponible avant ce rapport datait d'une méthode de sélection et de
-juge depuis corrigées côté Pipeline~1 mais jamais portées sur Pipeline~2.
-Sous protocole comparable (sélection stratifiée, juge Qwen3.8-27B), le taux
-mesuré est de \textbf{58,7\% (88/150)} --- sensiblement plus bas que la
-référence Pipeline~1 (94,7\%), alors que la reconstruction Pipeline~2 est
-elle-même bonne et non dégradée. Pipeline~2 fonctionne de bout en bout et
-reconstruit bien, mais son niveau d'interprétabilité individuelle des
-features reste, à ce stade, inférieur à celui de Pipeline~1.
+Sur l'\textbf{interprétabilité} elle-même (pas seulement la reconstruction),
+mesurée sous le même protocole que Pipeline~1 (sélection stratifiée, juge
+Qwen3.8-27B, \S\ref{subsec:correction-methode}), le taux atteint
+\textbf{58,7\% (88/150)} --- sensiblement plus bas que la référence
+Pipeline~1 (84,7\%), alors que la reconstruction Pipeline~2 est elle-même
+bonne et non dégradée. Pipeline~2 fonctionne de bout en bout et reconstruit
+bien, mais son niveau d'interprétabilité individuelle des features reste, à
+ce stade, inférieur à celui de Pipeline~1.
 
 \subsection{Balayage de la dimension d'embedding (MRL)}
 
@@ -1099,29 +1305,23 @@ conservent déjà 94\% de la performance de classification du plein embedding
 --- cohérent avec (sans le démontrer formellement, faute de confirmation d'un
 entraînement MRL strict côté F2LLM) un comportement de type Matryoshka.
 
-\subsection{Audit de la méthodologie statistique}
+\subsection{Rigueur statistique des comparaisons}
 \label{subsec:audit-stats}
 
-Un audit rétroactif de la rigueur statistique des comparaisons de ce stage a
-identifié et corrigé trois lacunes :
-
-\begin{enumerate}
-  \item Les comparaisons appariées (biais multilingue, robustesse du juge)
-    avaient été analysées par un test à deux proportions indépendantes plutôt
-    que par le test de \textbf{McNemar}, statistiquement approprié lorsque
-    les deux conditions portent sur les mêmes 150 features. Le recalcul ne
-    change aucune conclusion ($p=0{,}894$ et $p=0{,}560$) mais corrige la
-    méthode.
-  \item Aucune \textbf{correction pour comparaisons multiples} n'avait été
-    appliquée aux $\sim$15 tests d'ablation de ce chapitre (contrairement au
-    diffing par feature, qui utilise déjà Benjamini-Hochberg). Sans
-    conséquence pratique ici (le seul résultat significatif l'est à
-    $p<10^{-9}$), mais une lacune à corriger pour toute extension future.
-  \item L'effet dose-réponse de l'échelle du modèle a été re-confirmé par un
-    \textbf{test de tendance} (Cochran-Armitage) plutôt qu'une série de tests
-    par paires --- statistique unique, plus puissante et mieux adaptée à un
-    plan à niveaux ordonnés.
-\end{enumerate}
+Le choix du test statistique suit systématiquement la structure de la
+comparaison plutôt qu'un test par défaut unique : un test à deux proportions
+indépendantes pour deux groupes de features distincts (la majorité des
+ablations de ce chapitre), le test de \textbf{McNemar} lorsque les deux
+conditions portent sur les mêmes 150 features (biais multilingue, robustesse
+du juge --- $p=0{,}894$ et $p=0{,}560$ respectivement), et un test de
+\textbf{tendance de Cochran-Armitage}, plus puissant qu'une série de
+comparaisons par paires, pour l'effet dose-réponse de l'échelle du modèle sur
+un plan à niveaux ordonnés. Aucune correction pour comparaisons multiples
+n'est en revanche appliquée aux $\sim$15 tests d'ablation d'hyperparamètres
+du SAE (\S\ref{subsec:synthese-ablations}) --- sans conséquence pratique ici,
+le seul résultat significatif l'étant à $p<10^{-9}$, mais une limite à lever
+pour toute extension future de ce protocole, sur le modèle de ce qui est déjà
+fait pour le diffing par feature (Benjamini-Hochberg).
 
 \newpage
 % ─────────────────────────────────────────────────────────────────────────────
@@ -1148,7 +1348,8 @@ Conversion des données en embeddings & Deux pipelines indépendants
 Entraînement d'un SAE & Fait, avec diagnostic et correction d'un défaut de
   corpus majeur en cours de route. \\
 Analyses, interprétation, visualisation & Dashboard interactif, juge LLM
-  automatisé, retrieval, diffing, sondes de classification. \\
+  automatisé, retrieval, diffing, clustering interprétable, sondes de
+  classification. \\
 Rédaction d'un rapport & Ce document. \\
 \bottomrule
 \end{tabular}
@@ -1172,7 +1373,15 @@ d'auto-préférence généralisé, mais concentré sur les features que la
 sélection par magnitude sur-échantillonne (\S\ref{subsec:correction-methode}).
 Les protocoles de fidélité, plausibilité et robustesse de l'explication ont
 tous été mis en œuvre et donnent des résultats positifs ou, à défaut,
-honnêtement nuancés (steering).
+honnêtement nuancés (steering). Le diffing et le clustering interprétable,
+deux objectifs initiaux restés sans validation quantitative jusqu'à une
+version récente de ce rapport, le sont désormais
+(\S\ref{subsec:diffing}--\ref{subsec:clustering}) : le clustering, exercé
+directement sur le corpus emails, produit des regroupements géométriquement
+réels et d'accuracy sémantique hétérogène mais cohérente ; le diffing,
+encore validé sur un corpus générique proxy plutôt que sur les emails, montre
+que la méthode de génération des hypothèses conditionne fortement le taux de
+validation obtenu.
 
 \subsection{Points non résolus et perspectives}
 
@@ -1184,20 +1393,23 @@ honnêtement nuancés (steering).
     stage (l'échelle du modèle domine tout effet architectural du SAE), une
     architecture Matryoshka multi-niveaux ne semble pas prioritaire pour la
     suite.
-  \item Séparer les rôles d'extracteur et de juge (utiliser un modèle léger
-    pour l'extraction mais un juge plus capable) a depuis été fait
-    (\S\ref{subsec:correction-methode}) : rejuger les mêmes features avec un
-    juge de famille différente (Qwen3.8-27B au lieu de gemma-3-12b-it, le
-    modèle extracteur) isole un effet de \textbf{choix du juge} massif sous
-    sélection par magnitude (45,3\%~$\to$~78,7\%) mais non significatif sous
-    sélection stratifiée (89,3\%~$\to$~94,7\%, $p=0{,}057$) --- l'effet
-    d'échelle mesuré \S\ref{subsec:model-scale} reste donc, pour l'essentiel,
-    un effet de capacité de raisonnement du juge plutôt qu'un biais
-    d'auto-préférence, mais concentré sur les features que la sélection par
-    magnitude sur-échantillonne. Reste ouvert : isoler explicitement la
-    capacité d'\emph{extraction} de celle du \emph{jugement} demanderait un
-    plan croisé (extracteur léger $\times$ juge capable, et l'inverse), non
-    fait ici.
+  \item Le découplage juge/extracteur (\S\ref{subsec:correction-methode}) ne
+    fait varier que le juge, à extracteur fixe (Gemma-3-12B-it) : isoler
+    pleinement la capacité d'\emph{extraction} de celle du \emph{jugement}
+    demanderait un plan croisé complet --- modèle léger comme extracteur et
+    comme juge, modèle léger comme extracteur mais juge capable, et
+    l'inverse --- non mené ici.
+  \item Le rejugement Qwen3.8-27B du point 12B de la famille utilisée pour le
+    balayage d'échelle (\S\ref{subsec:model-scale}, layer 31,
+    $K_\text{extra}=5$) est en cours : l'ampleur exacte de l'effet d'échelle
+    sous protocole totalement homogène (juge Qwen aux deux bornes 1B/12B)
+    reste, à ce stade, encadrée mais pas définitivement chiffrée.
+  \item Le diffing (\S\ref{subsec:diffing}) n'a pour l'instant été validé que
+    sur un sous-corpus générique proxy (énergie \emph{vs.} sport) --- porter
+    la même chaîne (génération d'hypothèses structurée, vérification sur
+    documents tenus à l'écart) sur un diffing emails (\emph{ex.} urgents
+    \emph{vs.} non urgents), l'objectif initial qui a motivé cette
+    fonctionnalité, reste à faire.
   \item CamemBERTav2 et Qwen3-Embedding, identifiés en phase bibliographique
     comme candidats sérieux, n'ont pas été intégrés faute d'écosystème SAE
     préentraîné équivalent à GemmaScope --- une comparaison chiffrée directe
@@ -1234,7 +1446,7 @@ initiale : au-delà du choix de l'architecture SAE, c'est la capacité du
 modèle de langage sous-jacent à raisonner sur un concept partagé qui
 conditionne la qualité de l'interprétation automatique obtenue. Cette
 conclusion, obtenue par une démarche d'ablation rigoureuse et statistiquement
-auditée, constitue une contribution méthodologique transférable à tout projet
+fondée, constitue une contribution méthodologique transférable à tout projet
 similaire d'interprétabilité appliquée.
 
 \newpage

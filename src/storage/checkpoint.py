@@ -80,6 +80,12 @@ def clear_checkpoint(path: str) -> None:
         os.remove(path)
 
 
+# Code de sortie d'un arrêt propre sur checkpoint (GracefulShutdown.requested) :
+# distinct de 0 pour que `sacct`/`--dependency=afterok` puisse le distinguer
+# d'un run réellement terminé -- les deux sortaient en 0 auparavant.
+EXIT_CODE_GRACEFUL_CHECKPOINT = 64
+
+
 class GracefulShutdown:
     """Un seul jeu de handlers process-wide (signal.signal est global, pas par
     instance) -- utiliser la classe directement, ne pas instancier."""

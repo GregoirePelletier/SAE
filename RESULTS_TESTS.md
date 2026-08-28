@@ -5072,3 +5072,471 @@ taux bruts (80,0% pour 1B, 88,7% pour layer 12) restent valides tels quels ;
 seuls les tests de significativité contre "12B" sont à refaire une fois
 `results_v27` remesuré (job lancé,
 cf. priorisation de la campagne dans `AUDIT_SAE_2026-08.md` §9).
+
+## 97. Run de référence (R0) : remplace `results_v27` purgé, comparateur unique de la campagne finale
+
+**Question** : établir une référence unique sous méthodologie finale
+(sélection stratifiée + juge Qwen3.8-27B + déduplication par mail parent) à
+12B/layer 31/K_EXTRA=5/D_EXTRA=1024/25M tokens — le point de comparaison à
+variable unique isolée que §95/§96 identifient comme manquant (`results_v27`,
+seul candidat existant pour ce rôle, avait son cache purgé). Toute la
+campagne d'ablations finale (C1, V1/V2, A1/A2, S1/S2, L1) compare contre ce
+run.
+
+**Écart à la configuration de référence** : aucun — ce run EST la
+configuration de référence (`docs/evaluation_protocol.md`).
+
+**Méthode statistique** : `proportion_with_ci` (Wilson) pour le taux seul ;
+`two_proportion_test`/`paired_mcnemar_test` pour toute comparaison contre ce
+point (utilisé ci-dessous contre S1 et contre le 1B de §95).
+
+**n** : 150 features jugées (voir Limite connue — la campagne prévoyait
+n=300 pour ce run précis, le script de lancement n'a pas repris cette
+valeur).
+
+**Résultat** (job 45893, h100, `results_v27_ablation_classic_setup_k5_25m_layer31/`,
+sidecar `p1_judge_labels_extended.json.meta.json` confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **84,7% (127/150)**, IC95% Wilson [78,0% ; 89,6%].
+Fidélité de reconstruction (`_fve_pair`, console — `fve_extended`/`fve_pretrained`
+non encore persistés dans `results.json` pour ce run, corrigé depuis pour les
+runs suivants) : FVE(core seul)=0,7451, FVE(core+extension)=0,8844,
+**ΔFVE=+0,1393**.
+
+Comparé au 1B pleinement corrigé (§95, 80,0%, 120/150) : $z=-1{,}06$,
+$p=0{,}289$, **non significatif**. Comparé au 4B pleinement corrigé (§100,
+81,3%, 122/150) : $z=0{,}77$, $p=0{,}442$, **non significatif**. Tendance de
+Cochran-Armitage sur les trois points (1B/4B/12B, tous sous méthodologie
+pleinement corrigée) : $z=1{,}05$, $p=0{,}293$, **non significative**.
+
+**Conclusion** : **sous méthodologie totalement homogène (stratifié + Qwen +
+dédup aux trois échelles), la progression 1B→4B→12B (80,0%/81,3%/84,7%) n'est
+plus significative, ni par paire ni en tendance.** Ce n'est plus une
+requalification à la baisse d'un facteur deux comme l'annonçait §95 (qui ne
+comparait le 1B corrigé qu'au 12B *non* corrigé de §82/§94) — c'est,
+provisoirement et sous réserve de S2 (27B, en attente), la **disparition de
+la significativité de l'effet d'échelle une fois les trois points mesurés
+sous le même protocole**. Le "résultat central du stage" tel qu'actuellement
+formulé dans `RAPPORT_STAGE_UNIVERSITE.tex` (§model-scale) n'est plus soutenu
+par ces trois chiffres et doit être révisé avant toute autre rédaction — pas
+seulement requalifié à la baisse, sa significativité elle-même est
+maintenant en question à ce sous-ensemble de tailles.
+
+**Limite connue** : n=150 et non 300 comme prévu par la campagne (le script
+de lancement n'a pas repris `N_FEATURES_TO_LABEL=300` ; n=150 retenu tel
+quel comme référence définitive, décision utilisateur, pas de rerun à 300) ;
+un seul seed (cf. §99/§100 pour le plancher de bruit une fois disponibles) ;
+S2 (27B) manquant à ce jour pour clore le sweep sous méthodologie homogène —
+la conclusion ci-dessus peut encore changer de sens si 27B rouvre un écart.
+
+## 98. C1 — sanity check décodeur figé aléatoire sous méthodologie finale (Korznikov et al. 2026)
+
+**Question** : le sanity check §19 (45,3% vs 29,3%, décodeur entraîné vs
+figé aléatoire) mesurait sous sélection par magnitude + juge auto-référent —
+les deux biais corrigés depuis (§79, §89). Sous méthodologie finale
+(stratifié + Qwen3.8-27B + dédup), un décodeur figé à une initialisation
+aléatoire (jamais entraîné, `SANITY_CHECK_FROZEN_DECODER=1`,
+`FrozenDecoderExtendedSAE`) approche-t-il encore R0 (§97) ? Un rapprochement
+marqué remettrait en cause la validité du protocole d'évaluation lui-même,
+pas seulement le SAE.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+décodeur extra figé aléatoire au lieu d'entraîné (`W_dec_extra` gelé à son
+init PCA-free, seuls `W_enc_extra`/`b_enc_extra`/seuil BatchTopK appris).
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 prévu — **11 obtenus** (voir Résultat pour la cause, pas un
+raccourcissement délibéré).
+
+**Résultat** (job 45953, h100, `results_v37_ablation_c1_sanity_frozen_decoder_stratified_qwen/`,
+sidecar confirmant `judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : `dead_pct_extension` = **98,9%** (`results.json`,
+contre **5,7%** pour R0 entraîné normalement, §97) — sur les 1024 directions
+de l'extension, seules ~11 restent actives sous décodeur figé aléatoire, ce
+qui borne mécaniquement le pool de features stratifiables à 11 (et non 150 :
+`_select_features` ne peut pas stratifier sur des directions mortes). Sur ces
+11 : **54,5% (6/11)**, IC95% Wilson [28,0% ; 78,7%] (large, n petit). Comparé
+à R0 (84,7%, 127/150) : $z=2{,}54$, $p=0{,}011$, significatif mais à
+interpréter avec prudence vu le $n$ effectif.
+
+Fidélité de reconstruction (console, `_fve_pair`) : FVE(core seul)=0,7451
+(identique à R0, même core figé), FVE(core+extension)=0,7452,
+**ΔFVE=+0,0001** — contre **ΔFVE=+0,1393 pour R0** (§97). L'extension à
+décodeur figé aléatoire n'améliore quasiment pas la reconstruction du tout.
+
+**Conclusion** : trois métriques indépendantes convergent, et la troisième
+est la plus propre statistiquement des trois. Le résultat qui **porte** ici
+n'est pas le taux d'interprétabilité à $n=11$ (sous-alimenté, IC à ±25 points)
+mais `dead_pct_extension` et **`ΔFVE`**, deux métriques continues mesurées
+sans le bruit d'échantillonnage du juge : un décodeur figé à une
+initialisation aléatoire laisse l'encodeur n'exploiter utilement qu'**~1% de
+la capacité** nominale de l'extension (11/1024, contre 94,3% pour un
+décodeur entraîné normalement), et cette capacité inutilisée ne sert
+**quasiment à rien pour la reconstruction** : ΔFVE tombe de +0,1393 (R0) à
++0,0001 (C1), un facteur ~1400 sur un échantillon de 4096 tokens — bien plus
+net et bien moins bruité que l'écart d'interprétabilité à $n=11$. Sous
+méthodologie finale comme sous l'ancien protocole (§19), le SAE entraîné bat
+donc nettement le décodeur aléatoire — mais la **raison** diffère de ce que
+§19 laissait penser : ce n'est pas (seulement) que les quelques directions
+aléatoires actives sont individuellement moins interprétables, c'est que la
+quasi-totalité de la capacité disponible ne sert à rien, ni pour
+l'interprétabilité ni pour la reconstruction, sans direction de décodage
+apprise. **`ΔFVE` devrait être la métrique citée en premier pour ce sanity
+check dans le rapport** — le taux d'interprétabilité à $n=11$ reste correct
+mais sa faible puissance statistique en fait un second argument, pas le
+premier.
+
+**Limite connue** : un seul seed ; comparaison non appariée ; le taux
+d'interprétabilité 54,5% (6/11) ne doit pas être cité seul dans le rapport
+sans le $n=11$ et sans `dead_pct_extension` en regard — un rapporteur qui ne
+verrait que "54,5% vs 84,7%, p=0,011" sans ce contexte surestimerait la
+robustesse statistique de la comparaison à features individuelles.
+
+## 99. V1 — variabilité run-à-run de R0, seed 123
+
+**Question** : tout le dépôt mesure à n=1 graine d'entraînement SAE
+(`SEED`) à ce jour (cf. `CLAUDE.md`, section Diagnostics, point 5). Ce run
+rejoue R0 (§97) à l'identique, `SEED=123` au lieu de 42
+(`CORPUS_SPLIT_SEED` inchangé, split corpus identique), pour donner un
+plancher de bruit run-à-run à la campagne finale — cf. aussi V2 (§101,
+seed 7) pour un second point.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`SEED=123`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97) ; à
+combiner avec V2 (§101) pour une amplitude de variation run-à-run plutôt
+qu'un unique écart ponctuel.
+
+**n** : 150 features.
+
+**Résultat** (job 45954, h100, COMPLETED,
+`results_v38_ablation_v1_seed123_classic_setup_k5_25m_layer31/`) :
+**90,7% (136/150)**. Contre R0 (84,7%, 127/150) : $z=-1{,}58$, $p=0{,}114$,
+non significatif. FVE(core+extension)=0,8849, ΔFVE=+0,1399 (R0 : +0,1393 —
+quasi identique malgré 6 points d'écart sur l'interprétabilité : la
+reconstruction est beaucoup moins sensible au seed que le jugement LLM).
+
+**Conclusion** : voir §101 (V2) pour la lecture combinée du plancher de
+bruit run-à-run — ce point seul montre déjà un écart brut de 6,0 points
+(84,7%→90,7%) sans changer un seul hyperparamètre ni le seed du corpus,
+uniquement l'init/l'ordre de mélange de l'entraînement SAE.
+
+**Limite connue** : deux graines ne bornent qu'approximativement la
+variabilité réelle ; cf. §100 note sur l'effet de seed restreint depuis le
+cache d'extraction partagé, N9.
+
+## 100. S1 — 4B sous méthodologie pleinement corrigée (courbe d'échelle, complète §95)
+
+**Question** : §95 n'a rejugé que le point 1B sous méthodologie pleinement
+corrigée (stratifié + Qwen + dédup) ; le point 4B restait sous
+stratifié+Gemma (§82, 72,0%). Ce run mesure 4B sous méthodologie totalement
+homogène avec R0 (§97) et le 1B de §95, pour reconstruire la courbe
+d'échelle 1B/4B/12B à variable unique isolée.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`MODEL_ID=gemma-3-4b-it`, `MODEL_SIZE=4b`, `LAYER=17`,
+GemmaScope `gemma-scope-2-4b-it` dédié.
+
+**Méthode statistique** : `two_proportion_test`/`cochran_armitage_trend_test`
+contre le 1B (§95) et R0/12B (§97) — calculs reportés dans la Conclusion de
+§97 pour éviter la duplication.
+
+**n** : 150 features.
+
+**Résultat** (job 45894, h100, `results_v30_ablation_classic_setup_k5_25m_model_scale_4b/`,
+COMPLETED 05:29:59, sidecar confirmant `judge_model_id=Qwen3.8-27B`,
+`feature_selection_method=stratified`, `doc_groups_dedup=true`) :
+**81,3% (122/150)**, IC95% Wilson [74,3% ; 86,8%]. FVE(core seul)=0,6323
+(bien plus bas que R0/12B : 0,7451 — le core lui-même explique moins la
+variance au layer 17/4B), FVE(core+extension)=0,9317, **ΔFVE=+0,2994**, plus
+du double de R0 (+0,1393) : l'extension compense davantage un core plus
+faible, cohérent avec la logique de l'architecture, mais ce gain de
+reconstruction ne se traduit PAS en gain d'interprétabilité (81,3% contre
+84,7% pour R0) — la fidélité de reconstruction et l'interprétabilité jugée
+peuvent diverger nettement d'une échelle à l'autre.
+
+**Conclusion** : voir §97 — avec ce point, les trois échelles 1B/4B/12B sous
+méthodologie totalement homogène ne montrent plus d'effet d'échelle
+significatif, ni par paire ni en tendance (Cochran-Armitage $p=0{,}293$).
+Résultat inattendu par rapport à toutes les mesures antérieures de ce
+dépôt (§28, §82, §95) qui montraient toutes un effet net — la différence
+tient entièrement au fait que celles-ci comparaient des points mesurés sous
+des protocoles différents (cf. §96, correction post-hoc).
+
+**Limite connue** : un seul seed ; S2 (27B) manquant pour clore le sweep ;
+comparaison non appariée (features différentes entre échelles de modèle).
+
+## 101. V2 — variabilité run-à-run de R0, seed 7 (second point, complète §99)
+
+**Question** : second point de variabilité run-à-run, en complément de V1
+(§99, seed 123) — deux écarts indépendants donnent une amplitude de
+variation plutôt qu'un unique point, cf. §99 pour la motivation complète.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`SEED=7`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97) et contre V1
+(§99).
+
+**n** : 150 features.
+
+**Résultat** (job 45956, h100, COMPLETED,
+`results_v39_ablation_v2_seed7_classic_setup_k5_25m_layer31/`) :
+**82,7% (124/150)**. Contre R0 (84,7%, 127/150) : $z=0{,}47$, $p=0{,}639$, non
+significatif. Contre V1 (90,7%, 136/150) : $z=2{,}04$, $p=0{,}042$,
+**significatif** (non corrigé). FVE(core+extension)=0,8852, ΔFVE=+0,1402
+(R0 : +0,1393 ; V1 : +0,1399) — les trois graines donnent un ΔFVE quasi
+identique à la 3e décimale, alors que le taux d'interprétabilité varie de
+8 points entre elles : confirme le constat de §100, la reconstruction est
+un signal beaucoup plus stable que le jugement LLM.
+
+**Conclusion** : trois seeds de la même configuration exacte (R0/V1/V2 :
+84,7\% / 90,7\% / 82,7\%, IC95\% Wilson [78,0-89,6] / [84,9-94,4] / [75,8-87,9])
+donnent un **plancher de bruit run-à-run de ~8 points** (V1 vs V2, la paire la
+plus écartée) — et ce plancher est lui-même statistiquement "significatif"
+non corrigé ($p=0{,}042$) entre deux runs qui ne diffèrent que par l'init et
+l'ordre de mélange de l'entraînement SAE, aucun hyperparamètre. **Conséquence
+directe pour toute la campagne d'ablations (§102-108)** : un écart isolé à
+$p<0{,}05$ contre R0 ne peut plus être lu comme un effet d'hyperparamètre sans
+le comparer à cette amplitude de bruit intrinsèque — A1 (78,0\%, écart de
+6,7 points) et A2 (88,0\%, écart de 3,3 points) sont tous deux **à l'intérieur**
+de la fourchette V1-V2 (82,7-90,7\%), ce qui renforce leur non-significativité
+plutôt que de la remettre en cause. Ceci répond à l'objection attendue d'un
+jury sur un tableau à 15 comparaisons non corrigées (\S\ref{subsec:audit-stats}) :
+la variabilité de seed, mesurée ici pour la première fois sous le cache
+d'extraction partagé, est du même ordre de grandeur que les écarts
+d'hyperparamètres testés — ce n'est donc pas seulement une lacune de
+correction multi-tests, c'est un plancher de bruit réel et non négligeable
+à $n=150$.
+
+**Limite connue** : $n=2$ graines borne grossièrement l'amplitude réelle de
+variabilité (l'écart-type effectif reste mal estimé à si peu de points) ;
+comparaisons non appariées (features différentes tirées à chaque run).
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter.*
+
+## 102. A1 — `K_EXTRA=32` sous méthodologie finale (défaut historique du dépôt)
+
+**Question** : `K_EXTRA=32` était le défaut du dépôt avant l'ablation
+"setup classique du papier" qui a introduit `K_EXTRA=5` (recommandation SAE
+Boost, §25/§45) — jamais retesté sous méthodologie finale. Ce run mesure
+l'écart contre R0 (§97, `K_EXTRA=5`) sous stratifié+Qwen+dédup.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`K_EXTRA=32`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 45957, h100, COMPLETED,
+`results_v40_ablation_a1_k_extra32_classic_setup_25m_layer31/`) :
+**78,0% (117/150)**, `dead_pct_extension=0,0%`, `rho_sae=0,924`. Contre R0
+(84,7%, 127/150) : $z=1{,}48$, $p=0{,}138$, non significatif. FVE(core+extension)=0,8933,
+ΔFVE=+0,1483 (R0 : +0,1393) — reconstruction légèrement meilleure avec plus
+de features actives par token, sans gain d'interprétabilité correspondant.
+
+**Conclusion** : `K_EXTRA=32` (défaut historique, plus dense que le `K_EXTRA=5`
+recommandé par SAE Boost et retenu par R0) ne se distingue pas significativement
+de R0 sur le taux d'interprétabilité, malgré un écart brut de 6,7 points dans
+le sens d'une dégradation. `dead_pct_extension=0,0%` confirme qu'une extension
+plus dense (32 features actives/token au lieu de 5) ne meurt pas davantage —
+la parcimonie plus faible n'est pas un problème d'entraînement, juste sans
+bénéfice mesurable sur l'interprétabilité à ce $n$.
+
+**Limite connue** : un seul seed ; $n=150$ laisse une puissance limitée pour
+détecter un écart de cette taille (6,7 points) — ne pas lire "non significatif"
+comme "prouvé équivalent".
+
+## 103. A2 — `D_EXTRA=2048` sous méthodologie finale (capacité doublée de l'extension)
+
+**Question** : `D_EXTRA=2048` (capacité doublée de l'extension résiduelle)
+avait déjà été testé sous magnitude+Gemma (§27, pas d'écart) — jamais sous
+méthodologie finale. Ce run mesure l'écart contre R0 (§97, `D_EXTRA=1024`)
+sous stratifié+Qwen+dédup.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`D_EXTRA=2048`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 45958, h100, COMPLETED,
+`results_v41_ablation_a2_d_extra2048_classic_setup_25m_layer31/`) :
+**88,0% (132/150)**, `dead_pct_extension=14,7%`, `rho_sae=0,903`. Contre R0
+(84,7%, 127/150) : $z=-0{,}84$, $p=0{,}401$, non significatif. FVE(core+extension)=0,8918,
+ΔFVE=+0,1468 (R0 : +0,1393) — reconstruction légèrement meilleure malgré
+14,7% de directions mortes, cohérent avec un budget de capacité en excès
+plutôt qu'insuffisant.
+
+**Conclusion** : doubler la capacité de l'extension (1024→2048 directions) ne
+produit pas d'écart significatif, cohérent avec §27 (déjà sans effet sous
+l'ancienne méthodologie). `dead_pct_extension` passe de 5,7% (R0) à 14,7% —
+une capacité plus grande laisse mécaniquement plus de directions inutilisées,
+sans que cela dégrade `rho_sae` (0,903 contre 0,883) ni le taux
+d'interprétabilité mesuré.
+
+**Limite connue** : un seul seed ; comme A1, $n=150$ limite la puissance pour
+détecter un écart modéré.
+
+## 104. D1 — sondes d'intention sur les codes de R0 : baseline TF-IDF+LogReg honnête
+
+**Question** : les labels d'intention (`INTENT_KEYWORDS_FR`, `src/data/dataset.py`)
+sont construits par mots-clés, donc structurellement lexicaux — une baseline
+TF-IDF+LogReg est-elle battue par les codes SAE sur cette tâche, ou seulement
+égalée (ce qu'un jury industriel demande en premier,
+`AUDIT_SAE_2026-08.md`) ? Les deux sondes sont évaluées sur des plis de CV
+**identiques** (même `StratifiedKFold`, même ordre document) pour permettre un
+McNemar apparié sur les prédictions hors-pli plutôt qu'une simple comparaison
+de moyennes.
+
+**Écart à la configuration de référence** : aucun calcul GPU — réutilise les
+codes SAE déjà extraits par R0 (§97, `p1_all_doc_acts_ext_d1024.pt`) sur les
+3300 mails originaux (hors augmentation). TF-IDF (`max_features=20000`,
+`sublinear_tf`) refit à chaque pli sur le train du pli uniquement.
+
+**Méthode statistique** : `paired_mcnemar_test` par intention (`b`=SAE
+correct/TF-IDF faux, `c`=SAE faux/TF-IDF correct) ; `fdr_bh` sur les 5 tests.
+
+**n** : 3300 mails originaux par intention (5 intentions testées).
+
+**Résultat** (job 45972, h100, `results_v27_.../cache/intent_urgency_probe_results.json`) :
+
+| Intention | Base. majoritaire | acc SAE | acc TF-IDF | McNemar $p$ (BH) |
+|---|---|---|---|---|
+| Réclamation (55,2\% pos.) | 55,2\% | 98,0\% | 97,6\% | 0,074 (0,092) |
+| Résiliation (24,6\% pos.) | 75,4\% | 98,2\% | 96,0\% | $1{,}2\times10^{-13}$ ($2{,}9\times10^{-13}$) |
+| Remboursement (10,3\% pos.) | 89,7\% | 94,8\% | 90,4\% | $1{,}4\times10^{-22}$ ($7{,}0\times10^{-22}$) |
+| Information (60,8\% pos.) | 60,8\% | 87,9\% | 85,6\% | 0,00051 (0,00084) |
+| Urgence (33,8\% pos.) | 66,2\% | 95,8\% | 95,8\% | 1,000 (1,000) |
+
+**Conclusion** : les codes SAE **battent ou égalent** TF-IDF+LogReg sur les 5
+intentions, jamais l'inverse (`mcnemar_b_sae_only` > `mcnemar_c_tfidf_only`
+dans les 5 cas). L'écart est significatif après correction BH pour 3
+intentions sur 5 (résiliation, remboursement, information) et non significatif
+pour 2 (réclamation, urgence — TF-IDF quasi à égalité). C'est le résultat que
+l'audit demandait explicitement de produire avant tout autre : la baseline
+lexicale honnête ne dépasse les codes SAE sur aucune des 5 tâches testées, et
+perd nettement sur les 3 intentions les moins fréquentes/les plus
+structurées (résiliation, remboursement) — cohérent avec l'idée que le SAE
+capture une structure sémantique qui dépasse la simple présence de
+mots-clés, alors même que les labels eux-mêmes sont construits par
+mots-clés (un avantage structurel pour TF-IDF que le SAE surmonte quand même).
+
+**Limite connue** : les labels d'intention restent des labels FAIBLES (regex
+sur mots-clés, pas une annotation humaine) — un désaccord SAE/TF-IDF peut
+refléter un bruit d'étiquetage partagé par les deux sondes plutôt qu'un signal
+réel. Corpus mails originaux uniquement (hors variantes augmentées, cohérent
+avec `intent_urgency_probe.py` historique) ; un seul split train/test
+(`CORPUS_SPLIT_SEED` fixe).
+
+## 105. C1b — sanity check décodeur figé, init `cov` (schéma principal de Korznikov et al.)
+
+**Question** : lecture de `pdf/sanitychecks.pdf` (Korznikov et al. 2026) après
+C1 (§98) : leur baseline Frozen Decoder est testée sous deux schémas d'init,
+`iso` (Gaussien isotrope normalisé, ce que C1 utilise) et `cov` (Gaussien de
+covariance réelle, puis normalisé) --- et c'est **`cov`** qu'ils utilisent
+pour tous leurs résultats publiés (Fig. 1, Tables 2-4, Annexe E) car
+empiriquement plus difficile à battre (Explained Variance 0,570 contre 0,430
+sur BatchTopK/Gemma-2-2B layer 12, à configuration comparable). C1 (`iso`)
+sous-estime donc potentiellement la sévérité du sanity check tel que publié.
+`cov_init` ajouté à `FrozenDecoderExtendedSAE`
+(`src/sae/frozen_core.py::_reinit_decoder_cov` : tirage $\mathcal{N}(0,\Sigma)$,
+$\Sigma$ = covariance empirique de $x$ sur 8192 échantillons, régularisation
+ridge, puis normalisation --- PAS une PCA, les directions restent aléatoires,
+seule leur distribution d'ensemble épouse la forme du nuage réel).
+
+**Écart à la configuration de référence** : identique à C1 (§98) sauf
+`SANITY_CHECK_FROZEN_DECODER_INIT=cov` au lieu du défaut `iso`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97) et contre C1
+(§98) ; comparaison de `dead_pct_extension` entre les deux schémas d'init
+(métrique continue, pas de test de proportion nécessaire).
+
+**n** : 150 prévu (borné par le nombre de directions actives sous décodeur
+figé, cf. §98 --- peut être très inférieur, comme pour C1).
+
+**Résultat** (job 45988, h100, `results_v42_ablation_c1b_sanity_frozen_decoder_cov_init/`) :
+*en attente — job en file d'attente au moment de la rédaction.*
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter (a minima : un seul seed).*
+
+## 106. A3 — largeur du SAE core 65k sous méthodologie finale
+
+**Question** : le balayage de largeur du core (§17 : 16k/65k/262k) n'a jamais
+été mesuré sous méthodologie finale ni au layer de référence 31 (le 65k
+disponible localement ne couvrait que layer 24). SAE GemmaScope-2
+`layer_31_width_65k_l0_medium` téléchargé pour ce run. Contre R0 (§97, core
+16k).
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`SAE_ID` (largeur du core figé ; `D_EXTRA`/`K_EXTRA` de l'extension
+inchangés). **Ré-extraction complète requise** (pas de partage de cache
+avec R0) : `compute_activation_cache_key` inclut `sae_id`, les activations
+core max-poolées dépendent de la largeur du dictionnaire figé —
+contrairement à ce que supposait la catégorisation initiale de cette
+campagne (largeur core classée à tort "cache-partagé, ~1h" au même titre que
+`K_EXTRA`/`D_EXTRA`/seed/`BATCH_SIZE_EXTRA`, qui eux n'entrent réellement pas
+dans la clé).
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 46026, h100, `results_v46_ablation_a3_core_width65k_classic_setup_25m_layer31/`) :
+*en attente — job en file d'attente au moment de la rédaction.*
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter.*
+
+## 107. A4 — `BATCH_SIZE_EXTRA=16384` sous méthodologie finale
+
+**Question** : le budget top-k de BatchTopK est partagé sur tout le batch
+aplati (k·B pré-activations) — un batch 16x plus large (16384 contre 1024
+par défaut) change le régime de parcimonie effectif par échantillon.
+Trade-off `dead_pct`/`rho_sae` observé par l'audit externe mais jamais
+tranché à pleine puissance statistique. Contre R0 (§97, `BATCH_SIZE_EXTRA=1024`).
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`BATCH_SIZE_EXTRA=16384` (hors clé de cache, extraction partagée avec R0).
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97) ; comparaison
+`dead_pct_extension`/`rho_sae` (`results.json`) pour trancher le trade-off.
+
+**n** : 150 features.
+
+**Résultat** (job 46027, h100, `results_v45_ablation_a4_batch_size_extra16384_classic_setup_25m_layer31/`) :
+*en attente — job en file d'attente au moment de la rédaction.*
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter.*
+
+## 108. A6 — `EPOCHS_EXTRA=40` (×4) sous méthodologie finale
+
+**Question** : l'ancienne ablation "Époques ×4 (40/100)" (§synthese-ablations,
+41,3\%, $z=0{,}70$, non significatif) ne testait que sous sélection par
+magnitude et juge auto-référent. Contre R0 (§97, `EPOCHS_EXTRA=10`).
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`EPOCHS_EXTRA=40` (hors clé de cache, extraction partagée avec R0 —
+entraînement 4x plus long, jugement inchangé).
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 46028, h100, `results_v47_ablation_a6_epochs40_classic_setup_25m_layer31/`) :
+*en attente — job en file d'attente au moment de la rédaction.*
+
+**Conclusion** : *à compléter.*
+
+**Limite connue** : *à compléter.*

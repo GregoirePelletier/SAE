@@ -161,6 +161,7 @@ try:
         write_checkpoint as _write_checkpoint,
         clear_checkpoint as _clear_checkpoint,
         GracefulShutdown as _GracefulShutdown,
+        EXIT_CODE_GRACEFUL_CHECKPOINT as _EXIT_CODE_GRACEFUL_CHECKPOINT,
     )
 except ImportError:
     from checkpoint import (
@@ -169,6 +170,7 @@ except ImportError:
         write_checkpoint as _write_checkpoint,
         clear_checkpoint as _clear_checkpoint,
         GracefulShutdown as _GracefulShutdown,
+        EXIT_CODE_GRACEFUL_CHECKPOINT as _EXIT_CODE_GRACEFUL_CHECKPOINT,
     )
 
 
@@ -313,7 +315,7 @@ FEATURE_SELECTION_METHOD = os.environ.get("FEATURE_SELECTION_METHOD", "stratifie
 from src.config import (
     EMB_MODEL, EMB_POOLING, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
-    N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, EXTRACTION_BATCH_SIZE,
+    N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, SANITY_CHECK_FROZEN_DECODER_INIT, EXTRACTION_BATCH_SIZE,
     EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA, REENCODE_BATCH_SIZE,
     MAX_LENGTH, SIGMA_CLIP, SKIP_FIRST_CONTENT_TOKEN,
 )
@@ -1342,7 +1344,7 @@ def run_llm_max_pool_pipeline(
             _fragment_writer.close()
             if _hook_handle is not None:
                 _hook_handle.remove()
-            sys.exit(0)  # _flush_pending_reservoir_writes() déjà appelé dans le bloc checkpoint ci-dessus
+            sys.exit(_EXIT_CODE_GRACEFUL_CHECKPOINT)  # _flush_pending_reservoir_writes() déjà appelé dans le bloc checkpoint ci-dessus
         _fragment_writer.close()
         # Écritures réservoir en attente : le dernier lot peut être resté sous le
         # seuil _RESERVOIR_FLUSH_SIZE sans jamais avoir déclenché de flush --
@@ -1373,7 +1375,16 @@ def run_llm_max_pool_pipeline(
             
         if _hook_handle is not None:
             _hook_handle.remove()
-        del llm, tokenizer
+        # `_decoder_stack` (llm.model.language_model / llm.model, ligne ~1106) reste
+        # lié dans cette portée de fonction bien après son dernier usage (ligne 1137)
+        # -- un alias vers la pile de blocs décodeur qui, non supprimé ici, empêchait
+        # `del llm` de libérer la mémoire GPU du modèle EXTRACTEUR (confirmé job 45895,
+        # 27B : ~52 Go encore "in use" au chargement du juge alors que `llm` était déjà
+        # supprimé -- sans effet visible aux échelles <=12B où il restait assez de VRAM
+        # pour charger Qwen3.8-27B par-dessus la fuite). `_hook_capture` retient le
+        # dernier tenseur d'activation capturé (taille batch, pas le modèle) -- supprimé
+        # par cohérence, pas la cause du OOM.
+        del llm, tokenizer, _decoder_stack, _hook_capture
         _trim_host_memory()
 
     # Extraction RAW terminée (cache-hit ou fraîche) -- libère le verrou du
@@ -1471,6 +1482,7 @@ def run_llm_max_pool_pipeline(
                     ext_sae = FrozenDecoderExtendedSAE(
                         pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
                         domain_inputs=domain_inputs_cpu,
+                        cov_init=(SANITY_CHECK_FROZEN_DECODER_INIT == "cov"),
                     ).to(DEVICE)
                 else:
                     ext_sae = SAEBoostResidualSAE(
@@ -1556,9 +1568,17 @@ def run_llm_max_pool_pipeline(
                 # document sans avoir besoin de raw_acts pour les documents déjà faits.
                 _reencode_progress_path = _checkpoint_path(CACHE_DIR, "p1_reencode")
                 _eval_raw_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens.pt")
+                # p1_eval_raw_tokens_diff.pt : même capture que _eval_raw mais sur la
+                # plage diff_texts (corpus générique énergie/sports/support), PAS le
+                # domaine email -- permet de comparer la FVE domaine-spécifique à la FVE
+                # hors domaine (valide/invalide la promesse du cœur figé : préserver la
+                # capacité générale pendant que l'extension se spécialise, jamais mesuré
+                # directement jusqu'ici, seule la FVE domaine l'était).
+                _eval_raw_diff_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens_diff.pt")
                 _reencode_progress = _read_checkpoint(_reencode_progress_path)
                 _reencode_resume_from = 0
                 _eval_raw = []
+                _eval_raw_diff = []
                 if _reencode_progress is not None and 0 < _reencode_progress["next_idx"] < len(re_encode_targets):
                     _reencode_resume_from = _reencode_progress["next_idx"]
                     print(f"  [P1] Reprise du ré-encodage à la position {_reencode_resume_from}"
@@ -1575,6 +1595,8 @@ def run_llm_max_pool_pipeline(
                     # purgés de leur fragment).
                     if os.path.exists(_eval_raw_path):
                         _eval_raw = [torch.load(_eval_raw_path, map_location="cpu", weights_only=True)]
+                    if os.path.exists(_eval_raw_diff_path):
+                        _eval_raw_diff = [torch.load(_eval_raw_diff_path, map_location="cpu", weights_only=True)]
                     # En position dans re_encode_targets (filler exclu), le test
                     # commence juste après le train, à la position n_train (pas
                     # n_train+n_filler comme en indice de document brut).
@@ -1585,6 +1607,7 @@ def run_llm_max_pool_pipeline(
                               "d'évaluation FVE/rho_SAE sera vide ou incomplet pour ce run.")
 
                 _EVAL_CAP = 4096   # capture x_t brut du split test avant purge (fix B1)
+                _EVAL_CAP_DIFF = 4096   # même capacité, plage diff_texts (FVE hors domaine)
                 _GracefulShutdown.install()
                 _last_checkpoint_reencode = _reencode_resume_from
                 _reencode_early_exit = False
@@ -1630,6 +1653,9 @@ def run_llm_max_pool_pipeline(
                             if n_train + n_filler <= i < n_train + n_filler + n_test and \
                                sum(t.shape[0] for t in _eval_raw) < _EVAL_CAP:
                                 _eval_raw.append(raw_acts.float().cpu())
+                            if i >= n_train + n_filler + n_test and \
+                               sum(t.shape[0] for t in _eval_raw_diff) < _EVAL_CAP_DIFF:
+                                _eval_raw_diff.append(raw_acts.float().cpu())
 
                             csr = merge_extra(frag, token_extra_acts.float().cpu(), d_core)
                             save_fragment(ext_fragments_dir, i,
@@ -1659,6 +1685,8 @@ def run_llm_max_pool_pipeline(
                                 _write_checkpoint(_reencode_progress_path, next_idx=_cur_pos + 1)
                                 if _eval_raw:   # sauvegarde incrémentale : irrécupérable après purge sinon
                                     torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
+                                if _eval_raw_diff:
+                                    torch.save(torch.cat(_eval_raw_diff)[:_EVAL_CAP_DIFF], _eval_raw_diff_path)
                                 _last_checkpoint_reencode = _cur_pos + 1
                             if _GracefulShutdown.requested:
                                 print(f"  [P1] Signal de coupure reçu -- checkpoint écrit à la position "
@@ -1674,13 +1702,15 @@ def run_llm_max_pool_pipeline(
 
                 if _reencode_early_exit:
                     _fragment_writer.close()
-                    sys.exit(0)
+                    sys.exit(_EXIT_CODE_GRACEFUL_CHECKPOINT)
                 _fragment_writer.close()
 
                 _clear_checkpoint(_reencode_progress_path)
                 torch.save(all_doc_sae_acts, cache_acts_ext)
                 if _eval_raw:
                     torch.save(torch.cat(_eval_raw)[:_EVAL_CAP], _eval_raw_path)
+                if _eval_raw_diff:
+                    torch.save(torch.cat(_eval_raw_diff)[:_EVAL_CAP_DIFF], _eval_raw_diff_path)
 
                 # Les shards d'extraction (token_fragments_dir) ne sont PLUS
                 # nettoyés ici : depuis le correctif N1 (AUDIT_SAE_2026-08.md
@@ -1906,27 +1936,45 @@ def run_llm_max_pool_pipeline(
         eval_raw_tokens = None
         rho_sae = float("nan")
 
-    print("\n  [FR/EN] Comparaison FVE baseline sur un échantillon de tokens...")
-    if eval_raw_tokens is not None:
-        token_sample = eval_raw_tokens[:4096]
+    _nan_metrics = {"FVE": float("nan"), "NMSE": float("nan")}
+
+    def _fve_pair(token_sample, label: str) -> tuple[dict, dict]:
+        """FVE(core) et FVE(core+extension) sur un échantillon de tokens bruts
+        donné -- factorisé pour être appelé identiquement sur le domaine
+        (emails, test split) et hors domaine (diff_texts, générique)."""
         with torch.no_grad():
-            metrics_pretrained = compute_metrics(
-                pretrained_sae, token_sample,
-                is_saelens=True, device=DEVICE
-            )
-        print(f"  FVE (pretrained, tokens FR) = {metrics_pretrained['FVE']:.4f} | "
-              f"NMSE = {metrics_pretrained['NMSE']:.4f}")
-              
+            m_pre = compute_metrics(pretrained_sae, token_sample, is_saelens=True, device=DEVICE)
+        print(f"  FVE (pretrained, {label}) = {m_pre['FVE']:.4f} | NMSE = {m_pre['NMSE']:.4f}")
+        m_ext = dict(_nan_metrics)
         if USE_FROZEN_CORE and active_sae is not pretrained_sae:
             with torch.no_grad():
-                metrics_ext = compute_metrics(active_sae, token_sample,
-                                              is_saelens=False, device=DEVICE)
-            print(f"  FVE (SAEBoostResidualSAE, tokens FR) = {metrics_ext['FVE']:.4f} | "
-                  f"NMSE = {metrics_ext['NMSE']:.4f} | "
-                  f"ΔFVE = {metrics_ext['FVE'] - metrics_pretrained['FVE']:+.4f}")
+                m_ext = compute_metrics(active_sae, token_sample, is_saelens=False, device=DEVICE)
+            print(f"  FVE (SAEBoostResidualSAE, {label}) = {m_ext['FVE']:.4f} | "
+                  f"NMSE = {m_ext['NMSE']:.4f} | ΔFVE = {m_ext['FVE'] - m_pre['FVE']:+.4f}")
+        return m_pre, m_ext
+
+    print("\n  [FR/EN] Comparaison FVE baseline sur un échantillon de tokens (domaine email)...")
+    if eval_raw_tokens is not None:
+        metrics_pretrained, metrics_ext = _fve_pair(eval_raw_tokens[:4096], "domaine email")
     else:
-        metrics_pretrained = {"FVE": float("nan")}
-        print("  [Metrics] Échantillon de tokens indisponible pour la FVE.")
+        metrics_pretrained, metrics_ext = dict(_nan_metrics), dict(_nan_metrics)
+        print("  [Metrics] Échantillon de tokens indisponible pour la FVE (domaine).")
+
+    # FVE hors domaine (corpus générique énergie/sports/support, p1_eval_raw_tokens_diff.pt,
+    # cf. capture symétrique au split test dans la boucle de ré-encodage ci-dessus) : le
+    # cœur figé promet de préserver la capacité GÉNÉRALE pendant que l'extension se
+    # spécialise sur le domaine -- jusqu'ici seule la FVE domaine était mesurée, incapable
+    # de distinguer "l'extension apprend le domaine" de "l'extension dégrade le général".
+    print("\n  [FR/EN] Comparaison FVE baseline sur un échantillon de tokens (hors domaine, générique)...")
+    eval_raw_diff_path = os.path.join(CACHE_DIR, "p1_eval_raw_tokens_diff.pt")
+    if os.path.exists(eval_raw_diff_path):
+        eval_raw_tokens_diff = torch.load(eval_raw_diff_path, weights_only=True)
+        metrics_pretrained_general, metrics_ext_general = _fve_pair(
+            eval_raw_tokens_diff[:4096], "hors domaine")
+    else:
+        metrics_pretrained_general, metrics_ext_general = dict(_nan_metrics), dict(_nan_metrics)
+        print("  [Metrics] p1_eval_raw_tokens_diff.pt absent (run antérieur à cette capture, "
+              "ou PIPELINES sans diff_texts) -- FVE hors domaine indisponible.")
 
     print("\n  [Downstream P1] Sonde logistique sur SAE activations (energy vs sports, corpus diffing)...")
     en_mask = torch.from_numpy(energy_mask)
@@ -1993,6 +2041,13 @@ def run_llm_max_pool_pipeline(
         "clf_acc_email_axes": clf_results_email.get("acc_sae", float("nan")),
         "clf_n_email_classes": len(usable_labels),
         "fve_pretrained": metrics_pretrained.get("FVE", float("nan")),
+        # FVE core+extension (in/hors domaine) : calculées depuis toujours (_fve_pair,
+        # imprimées en console) mais jamais persistées avant ce correctif -- la seule
+        # valeur qui reflète réellement l'effet d'une ablation (K_EXTRA/D_EXTRA/etc. ne
+        # vivent que dans l'extension) restait invisible hors des logs bruts.
+        "fve_extended": metrics_ext.get("FVE", float("nan")),
+        "fve_pretrained_general": metrics_pretrained_general.get("FVE", float("nan")),
+        "fve_extended_general": metrics_ext_general.get("FVE", float("nan")),
         "_test_doc_acts": test_doc_acts_out,
         "_label_map": label_map_p1,
         "_top_core": top_core_indices,
