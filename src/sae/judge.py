@@ -295,13 +295,33 @@ def build_feature_examples_with_control(
         token_acts = feature_column(doc_data, f_idx)
         candidate_magnitude = float(token_acts.max())
         toks = doc_data["token_strings"]
-        # B.3 : argmax de CETTE feature sur ce document non-activant, pas le
-        # milieu du document -- même construction que les positifs (contexte
-        # autour de l'argmax), pour que la seule différence entre positifs et
-        # négatif soit la présence du concept, pas un artefact de position/
-        # saillance (explication mécanique plausible de l'instabilité à 31%
-        # du protocole odd-one-out, RESULTS_TESTS.md §13.1).
-        target_idx = int(token_acts.argmax())
+        # B.3 (RÉVISÉ, RESULTS_TESTS.md §115) : argmax de CETTE feature sur ce
+        # document n'a de sens que si le document porte un VRAI signal
+        # (aussi faible soit-il). Pour un document où la feature est
+        # EXACTEMENT nulle partout (le cas normal pour un negatif candidat
+        # -- BatchTopK, la feature est hard-zero hors de son top-k) --
+        # np.argmax sur un vecteur constant renvoie déterministiquement
+        # l'index 0 (convention numpy sur les ex-aequo) -- PAS un signal de
+        # bruit "qui atterrit près du début", un artefact mécanique de
+        # argmax lui-même. Mesuré : 100% des candidats testés pour une
+        # feature typique ont une activation nulle partout, donc l'ancien
+        # code retombait TOUJOURS sur target_idx=0 quel que soit le
+        # candidat -- la garde de longueur minimale ajoutée en premier
+        # correctif (B.6) ne pouvait donc jamais trouver de candidat
+        # qualifiant en balayant plus de candidats (tous à target_idx=0).
+        # Fix : si le pic est nul (<=threshold_pos), la position à
+        # surligner n'a aucune signification -- tirage aléatoire (graine
+        # déterministe f_idx/d_idx, replay-stable) d'un début de mot avec
+        # assez de contexte gauche, plutôt que argmax dégénéré. Si le
+        # candidat porte un signal réel non nul (rare pour neg_pool mais
+        # possible, cf. B.5), argmax reste légitime et est conservé.
+        if candidate_magnitude <= threshold_pos:
+            word_starts = [i for i in range(len(toks)) if _is_word_start(toks[i])]
+            rich_starts = [i for i in word_starts if i >= MIN_NEG_CONTEXT_TOKENS]
+            pool = rich_starts if rich_starts else word_starts
+            target_idx = random.Random((f_idx, int(d_idx))).choice(pool) if pool else 0
+        else:
+            target_idx = int(token_acts.argmax())
         word_start, _ = _word_span(toks, target_idx)
 
         if best_magnitude is None or candidate_magnitude < best_magnitude:

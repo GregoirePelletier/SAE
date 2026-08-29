@@ -5848,3 +5848,109 @@ préférentiellement près du début du document même après masquage
 BOS/sink ?) non pleinement élucidée — hypothèse de travail : effet
 résiduel d'"attention sink" sur les tokens 2-4 (juste après le token masqué),
 non couvert par `sigma_clip=4.0`. À creuser si le temps le permet.
+
+## 116. Rejugement R0 sous le correctif B.6 (§115) : le garde-fou de longueur n'engage quasiment jamais
+
+**Question** : le correctif B.6 (`MIN_NEG_CONTEXT_TOKENS=20`, pool élargi à
+`_NEG_POOL_SCAN=40`) change-t-il le taux d'interprétabilité de référence
+(R0, 84,7%) et résout-il la contamination décrite en §115 ?
+
+**Écart à la configuration de référence** : aucun — même SAE entraîné
+(`results_v27_ablation_classic_setup_k5_25m_layer31/`, cache d'extraction et
+checkpoint réutilisés), seul le jugement est refait (job 46151).
+
+**Méthode statistique** : test z à deux proportions appariées sur le même
+jeu de 150 features (`two_proportion_test`, `src/analysis/stats.py`) entre
+`p1_judge_labels_extended.json` avant (`.bak_pre_neg_context_fix`) et après
+correctif ; mesure descriptive répliquant exactement le tableau de §115 sur
+le fichier post-correctif.
+
+**Résultat** :
+
+| Statistique | R0 pré-correctif (§115) | R0 post-correctif (job 46151) |
+|---|---|---|
+| `interp_score` | 127/150 = 84,7% | 127/150 = 84,7% |
+| features où `interp_score` change de valeur | — | 0/150 |
+| `[WARN] neg_context_truncated=True` (repli déclenché) | — | **148/150 (98,7%)** |
+| `neg_example` à $\le$ 3 mots | 150/150 (100%) | 148/150 (98,7%) |
+| `neg_example` = `<<,>>` exactement | 60/150 (40%) | 59/150 (39%) |
+| `neg_example` distincts sur 150 | 43 | 45 |
+| features où le négatif est plus court que LES 9 positifs | 147/150 (98%) | 145/150 (96,7%) |
+| `neg_example` textuellement différent du pré-correctif | — | 2/150 |
+
+`two_proportion_test(127, 150, 127, 150)` : diff = 0,0 point, z = 0,0,
+p = 1,0.
+
+**Conclusion — le correctif B.6 n'a quasiment pas engagé.** Sur les 150
+features de R0, le garde-fou `MIN_NEG_CONTEXT_TOKENS=20` ne trouve un
+candidat qualifiant que pour 2 features (16604, 16733 — négatifs
+authentiquement riches en contexte après correctif) ; pour les 148 autres,
+aucun des 40 candidats du pool négatif n'atteint 20 tokens de contexte
+gauche, et le code replie explicitement sur l'ancien critère (magnitude
+seule) — le négatif produit est alors, textuellement, **identique** à avant
+correctif. L'identité du taux d'interprétabilité (84,7% des deux côtés,
+0 feature dont le score change) n'est donc PAS une preuve que le biais de
+construction du négatif est bénin : c'est la conséquence mécanique du fait
+que le correctif change presque partout... rien. Ceci confirme empiriquement
+l'hypothèse de travail de §115 (biais positionnel systématique de l'argmax
+de bruit, pas un phénomène rare) : si le contexte pauvre n'affectait qu'une
+poignée de documents du pool négatif, élargir le balayage de 20 à 40
+candidats aurait dû en trouver un correct pour l'écrasante majorité des
+features — ce n'est pas le cas, ce qui indique que la quasi-totalité du pool
+de documents quasi-non-activants pour une feature donnée produit un argmax
+de bruit proche du début du document, pas seulement une minorité de "cas
+difficiles" contournables par un plus grand pool.
+
+**Limite connue** : un correctif qui résout réellement le biais devrait
+découpler le contexte affiché pour le négatif de l'argmax de la feature
+cible sur ce document (bruit par construction sur un document non-activant)
+— par exemple un segment à position fixe ou aléatoire du document négatif,
+comme c'est implicitement le cas pour les positifs (dont le contexte est
+centré sur un argmax réellement informatif). Ce changement de conception
+n'a pas été implémenté ni mesuré ici ; la contamination documentée en §115
+reste donc essentiellement intacte sur R0 et, par extension plausible, sur
+tout run antérieur utilisant `odd_one_out_judge` sans ce correctif plus
+profond (§115 pour la liste : S1, S2, C1, C1b, V1, V2, A1-A6, L1, M1, layer
+41, 50M/1B).
+
+## 117. Correctif profond : position aléatoire au lieu d'argmax pour un négatif au signal nul
+
+**Question** : §116 identifie précisément la cause mécanique du non-effet
+de B.6 --- `np.argmax` sur un vecteur d'activation EXACTEMENT nul (le cas
+normal pour un candidat du pool négatif : BatchTopK, la feature est
+hard-zero hors de son top-k) renvoie déterministiquement l'index 0
+(convention numpy sur les ex-aequo), pas une position de bruit distribuée.
+Vérifié directement sur les fragments (feature 16511, 200/200 documents du
+pool négatif à activation exactement nulle partout, `argmax=0` à chaque
+fois) : ce n'est pas un biais positionnel résiduel post-masquage BOS/sink,
+c'est un artefact déterministe de `argmax` sur un vecteur constant. Élargir
+le pool balayé (B.6, 20→40) ne peut structurellement rien changer : tous
+les candidats produisent la même position 0. §116 recommande explicitement
+de découpler le contexte affiché de l'argmax quand le signal est nul --- ce
+correctif l'implémente.
+
+**Écart à la configuration de référence** : aucun changement de config,
+correctif de code uniquement (`src/sae/judge.py::build_feature_examples_with_control`,
+commentaire B.3 révisé). Quand `candidate_magnitude <= threshold_pos` (signal
+nul, le cas normal pour neg_pool), la position à surligner n'a plus de sens
+mécanique --- tirage aléatoire déterministe (graine `(f_idx, d_idx)`,
+replay-stable comme l'exige le protocole) d'un début de mot avec au moins
+`MIN_NEG_CONTEXT_TOKENS=20` tokens de contexte gauche disponibles (repli sur
+n'importe quel début de mot si aucun ne qualifie, pour les documents
+authentiquement courts). Quand un candidat porte un signal réel non nul
+(rare dans neg_pool mais possible, cf. B.5), l'argmax reste utilisé --- il
+est alors légitimement informatif.
+
+**Méthode statistique** : identique à §116, sur un nouveau rejugement
+(job 46152) contre le pré-correctif de §115
+(`.bak_pre_neg_context_fix`) et contre le rejugement B.6 de §116
+(`.bak_pre_random_position_fix`).
+
+**n** : 150 features.
+
+**Résultat** : *en attente — job 46152 en cours au moment de la rédaction.*
+Tests `judge` (10/10) verts après ce correctif.
+
+**Conclusion** : *à compléter une fois le job 46152 terminé.*
+
+**Limite connue** : *à compléter.*
