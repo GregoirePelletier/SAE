@@ -319,7 +319,10 @@ def build_feature_examples_with_control(
             word_starts = [i for i in range(len(toks)) if _is_word_start(toks[i])]
             rich_starts = [i for i in word_starts if i >= MIN_NEG_CONTEXT_TOKENS]
             pool = rich_starts if rich_starts else word_starts
-            target_idx = random.Random((f_idx, int(d_idx))).choice(pool) if pool else 0
+            # random.Random n'accepte pas de tuple comme graine (TypeError,
+            # job 46152) -- combine f_idx/d_idx en un entier unique, seul
+            # type garanti stable et accepté.
+            target_idx = random.Random(f_idx * 1_000_003 + int(d_idx)).choice(pool) if pool else 0
         else:
             target_idx = int(token_acts.argmax())
         word_start, _ = _word_span(toks, target_idx)
