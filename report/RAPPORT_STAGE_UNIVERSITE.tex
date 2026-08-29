@@ -933,15 +933,23 @@ gemma-3-12b-it comme extracteur) :
 \vspace{0.4em}\small
 \begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Sélection} & \textbf{Juge gemma-3-12b-it} & \textbf{Juge Qwen3.8-27B} \\ \midrule
+\textbf{Sélection} & \textbf{Juge gemma-3-12b-it}\footnotemark & \textbf{Juge Qwen3.8-27B} \\ \midrule
 Stratifiée & 82,0\% (123/150) & \textbf{84,7\% (127/150) --- référence (R0)} \\
-Magnitude & \emph{en cours} (M1) & --- \\
+Magnitude & 89,3\% (134/150) --- M1, \S\ref{subsec:ablations-finales} & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
+\footnotetext{Le run source du 82,0\% (§82 de \texttt{RESULTS\_TESTS.md}, cache
+purgé depuis) ne porte pas de confirmation de déduplication des exemples
+positifs par mail parent, contrairement à R0 dont le sidecar la confirme
+explicitement (\texttt{doc\_groups\_dedup=true}) --- la colonne pourrait donc
+confondre choix du juge et introduction de la déduplication, pas isoler le
+juge seul.}
 
-À sélection stratifiée fixée, le choix du juge ne produit \textbf{aucun écart
-significatif} à cette configuration (82,0\%~$\to$~84,7\%, $z=-0{,}62$,
+À sélection stratifiée fixée (colonne de gauche vs colonne de droite,
+réserve de la note ci-dessus), le passage au juge découplé ne produit
+\textbf{aucun écart significatif} à cette configuration
+(82,0\%~$\to$~84,7\%, $z=-0{,}62$,
 $p=0{,}535$) --- une réplication, à un volume de tokens et un $K_\text{extra}$
 désormais cohérents avec le reste de la campagne, de l'observation déjà faite
 à plus faible volume (\S\ref{subsec:diagnostic-initial}) : sous sélection
@@ -974,7 +982,11 @@ corpus mixte), chacune avec son propre GemmaScope dédié et son propre
 mélangeait, sous une même colonne \og{}Taux interp.\fg{}, des points jugés
 par Qwen et d'autres par le modèle extracteur lui-même (biais d'auto-préférence
 non contrôlé, \S\ref{subsec:correction-methode}) : les quatre points ci-dessous
-sont désormais comparables terme à terme, seule l'échelle du modèle varie.
+sont désormais comparables terme à terme, sous le même protocole de
+sélection/jugement --- mais seul le \textbf{triplet} modèle/layer/SAE core
+varie d'un point à l'autre, chaque layer étant la meilleure estimation
+\og{}~2/3 profondeur\fg{} disponible pour son échelle : la taille du modèle
+n'est donc pas isolée du layer dans ce sweep.
 
 \begin{table}[h!]
 \centering
