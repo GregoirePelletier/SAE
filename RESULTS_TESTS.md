@@ -5514,12 +5514,20 @@ dans la clé).
 
 **n** : 150 features.
 
-**Résultat** (job 46026, h100, `results_v46_ablation_a3_core_width65k_classic_setup_25m_layer31/`) :
-*en attente — job en file d'attente au moment de la rédaction.*
+**Résultat** (job 46026, h100, COMPLETED,
+`results_v46_ablation_a3_core_width65k_classic_setup_25m_layer31/`) :
+**83,3% (125/150)**, `dead_pct_extension=5,1%`, `rho_sae=0,878`. Contre R0
+(84,7%, 127/150) : $z=0{,}31$, $p=0{,}753$, non significatif.
 
-**Conclusion** : *à compléter.*
+**Conclusion** : quadrupler la largeur du core figé (16k→65k) ne produit
+aucun écart mesurable — cohérent avec le fait que l'extension résiduelle
+(D_EXTRA/K_EXTRA inchangés) fait tout le travail de spécialisation domaine,
+la largeur du core ne conditionnant que sa couverture générique.
 
-**Limite connue** : *à compléter.*
+**Limite connue** : un seul seed ; ré-extraction complète (sae_id dans la
+clé de cache), donc corpus vu par le modèle rigoureusement identique à R0
+mais représentation core différente — pas un simple recalcul sur cache
+partagé.
 
 ## 107. A4 — `BATCH_SIZE_EXTRA=16384` sous méthodologie finale
 
@@ -5537,12 +5545,19 @@ tranché à pleine puissance statistique. Contre R0 (§97, `BATCH_SIZE_EXTRA=102
 
 **n** : 150 features.
 
-**Résultat** (job 46027, h100, `results_v45_ablation_a4_batch_size_extra16384_classic_setup_25m_layer31/`) :
-*en attente — job en file d'attente au moment de la rédaction.*
+**Résultat** (job 46027, h100, COMPLETED,
+`results_v45_ablation_a4_batch_size_extra16384_classic_setup_25m_layer31/`) :
+**89,3% (134/150)**, `dead_pct_extension=6,7%`, `rho_sae=0,898`. Contre R0
+(84,7%, 127/150) : $z=-1{,}20$, $p=0{,}230$, non significatif.
 
-**Conclusion** : *à compléter.*
+**Conclusion** : le trade-off `dead_pct`/`rho_sae` suspecté par l'audit
+externe ne se matérialise pas en écart d'interprétabilité : `dead_pct_extension`
+(6,7% contre 5,7% pour R0) et `rho_sae` (0,898 contre 0,883) bougent à peine,
+dans le sens d'une légère amélioration des deux. Batch 16x plus large,
+aucun signal de dégradation.
 
-**Limite connue** : *à compléter.*
+**Limite connue** : un seul seed ; écart brut (+4,6 points) dans la
+fourchette du plancher de bruit V1/V2 (§101).
 
 ## 108. A6 — `EPOCHS_EXTRA=40` (×4) sous méthodologie finale
 
@@ -5558,10 +5573,18 @@ entraînement 4x plus long, jugement inchangé).
 
 **n** : 150 features.
 
-**Résultat** (job 46028, h100, `results_v47_ablation_a6_epochs40_classic_setup_25m_layer31/`) :
-*en attente — job en file d'attente au moment de la rédaction.*
+**Résultat** (job 46028, h100, COMPLETED,
+`results_v47_ablation_a6_epochs40_classic_setup_25m_layer31/`) :
+**88,0% (132/150)**, `dead_pct_extension=6,9%`, `rho_sae=0,888`. Contre R0
+(84,7%, 127/150) : $z=-0{,}84$, $p=0{,}401$, non significatif.
 
-**Conclusion** : *à compléter.*
+**Conclusion** : quadrupler les époques (10→40) ne produit aucun écart
+significatif, cohérent avec §97 (dead_frac/loss déjà stables dès l'epoch 2
+sur R0, cf. l'analyse de convergence de C1/R0) — le SAE est déjà convergé
+à 10 époques, 4x plus d'entraînement n'apporte rien de mesurable.
+
+**Limite connue** : un seul seed ; écart brut (+3,3 points) dans la
+fourchette du plancher de bruit V1/V2 (§101).
 
 **Limite connue** : *à compléter.*
 
@@ -5622,11 +5645,206 @@ même config, même juge) et contre R0 (stratifié+Qwen).
 
 **n** : 150 features.
 
-**Résultat** (job 46067, h100, `results_v48_ablation_m1_magnitude_gemma_classic_setup_25m_layer31/`) :
-*en attente — job en file d'attente au moment de la rédaction.*
+**Résultat** (job 46067, h100, COMPLETED,
+`results_v48_ablation_m1_magnitude_gemma_classic_setup_25m_layer31/`) :
+**89,3% (134/150)** --- plus haut que stratifié+Gemma (§82, 82,0%,
+$z=-1{,}81$, $p=0{,}070$, tendanciel non significatif) et que R0
+stratifié+Qwen (84,7%, $z=-1{,}20$, $p=0{,}229$, non significatif).
 
-**Conclusion** : *à compléter.*
+**Conclusion — À TRAITER AVEC PRUDENCE, cf. §115.** Ce résultat inverse le
+sens de l'effet de sélection observé à 500k tokens (magnitude nettement
+*sous* stratifié, §correction-methode) : ici magnitude+Gemma est
+numériquement le taux le plus haut de toute la campagne R0. Avant d'écrire
+quoi que ce soit dans le rapport à partir de ce chiffre, noter que §115
+documente une contamination de `neg_example` (contexte négatif trivial,
+souvent 1-2 mots, corrélée à la densité d'activation de la feature) qui
+n'a pas encore été mesurée spécifiquement sur cette sélection par magnitude
+(features plus denses par construction, §82 B.2 -- le pool de négatifs
+`f_acts <= threshold_neg` pourrait se comporter différemment). **Ne pas
+conclure "magnitude bat stratifié à 25M" avant d'avoir vérifié que ce run
+n'est pas plus contaminé que R0, ou de l'avoir rejugé avec le correctif de
+§115.**
 
-**Limite connue** : *à compléter (a minima : un seul seed ; complète 3
-cellules sur 4 de la grille méthode$\times$juge à 25M tokens, magnitude+Qwen
-non mesuré à cette config).*
+**Limite connue** : un seul seed ; complète 3 cellules sur 4 de la grille
+méthode$\times$juge à 25M tokens (magnitude+Qwen non mesuré) ; résultat
+non encore validé sous le correctif de négatif de §115.
+
+## 112. S2 — 27B sous méthodologie pleinement corrigée (clôture de la courbe d'échelle)
+
+**Question** : dernier point de la courbe 1B/4B/12B/27B sous méthodologie
+totalement homogène (§97 le déclarait décisif). Job initial (45895) échoué
+après 7h37 (fuite mémoire GPU, `_decoder_stack` non libéré avant le
+chargement du juge — corrigé dans `saev5.py`, cf. commit) ; relancé sur
+h100-bis (job 46022) une fois le correctif appliqué.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`MODEL_ID=gemma-3-27b-it`, `MODEL_SIZE=27b`, `LAYER=40`, GemmaScope
+`gemma-scope-2-27b-it` dédié.
+
+**Méthode statistique** : `two_proportion_test`/`cochran_armitage_trend_test`
+sur les quatre points 1B/4B/12B/27B.
+
+**n** : 150 features.
+
+**Résultat** (job 46022, h100-bis, COMPLETED,
+`results_v31_ablation_classic_setup_k5_25m_model_scale_27b/`, sidecar
+confirmant `judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **85,3% (128/150)**. Contre R0/12B (84,7%,
+127/150) : $z=-0{,}16$, $p=0{,}872$, non significatif.
+
+**Conclusion** : **la courbe d'échelle sous méthodologie totalement
+homogène est maintenant complète : 1B 80,0% / 4B 81,3% / 12B 84,7% / 27B
+85,3%.** Le palier 12B→27B confirme le plateau déjà observé sous
+magnitude+Gemma (§82, 82,0%→83,3%) : doubler encore la taille du modèle
+au-delà de 12B n'apporte aucun gain mesurable. Combiné à §97 (Cochran-Armitage
+1B/4B/12B, $p=0{,}293$), l'issue que §97 présentait comme ouverte est
+tranchée : **aucun effet d'échelle significatif ne survit au retrait des
+biais de sélection/juge, sur les quatre tailles testées.** Ce résultat
+lui-même reste soumis à la même réserve que tout le reste de la campagne
+(§115) : les quatre points partagent la même construction de `neg_example`.
+
+**Limite connue** : un seul seed par palier ; layer confondu avec la taille
+du modèle (chaque palier utilise son propre layer "~2/3 profondeur", jamais
+isolé, cf. §82) ; MDE à $n=150$ non chiffré ici (voir audit externe reçu
+28/08, à traiter).
+
+## 113. Layer 41 — rejugé sous méthodologie finale (clôture du sweep layer)
+
+**Question** : l'ancien §90 (78,7%) reposait sur un cache de fragments
+incompatible avec le schéma actuel (`KeyError: 'raw_acts'`, répertoire
+`results_v33` purgé et relancé proprement). Complète le sweep layer à
+K5/25M sous Qwen : 12 (§96, 88,7%), 24 (§109, 80,7%), 31 (R0, 84,7%), 41.
+
+**Écart à la configuration de référence** : identique à R0 (§97) sauf
+`LAYER=41`, `SAE_ID=layer_41_width_16k_l0_medium`.
+
+**Méthode statistique** : `two_proportion_test` contre R0 (§97).
+
+**n** : 150 features.
+
+**Résultat** (job 45973, h100, COMPLETED,
+`results_v33_ablation_classic_setup_k5_25m_layer41/`, sidecar confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **81,3% (122/150)**. Contre R0 (84,7%, 127/150) :
+$z=0{,}77$, $p=0{,}442$, non significatif.
+
+**Conclusion** : le sweep layer est maintenant complet sous méthodologie
+finale (12/24/31/41, tous non significatifs contre 31) — le seul écart
+individuel jamais significatif du dépôt (§51, layer 31 vs 24 sous
+magnitude+auto-jugement) ne réplique sur aucun layer testé une fois la
+sélection stratifiée et le juge Qwen appliqués partout.
+
+**Limite connue** : un seul seed ; comparaison non appariée.
+
+## 114. Volume 50M tokens à 1B (interaction volume × taille de modèle)
+
+**Question** : R0/S1/S2 (25M tokens) ne montrent aucun effet de volume ni
+d'échelle détecté ; teste si un petit modèle (1B) bénéficie davantage de
+plus de tokens que le 12B (§23, aucun effet de volume détecté pour ce
+dernier). Contre le point 1B/25M (§95, 80,0%).
+
+**Écart à la configuration de référence** : identique au point 1B de §95
+sauf `N_TOKENS_EXTRA_TRAIN=50000000` (au lieu de 25M) --
+**ré-extraction complète** (le budget de tokens fait partie de la clé de
+cache).
+
+**Méthode statistique** : `two_proportion_test` contre le point 1B/25M
+(§95).
+
+**n** : 150 features.
+
+**Résultat** (job 46024, h100-bis, COMPLETED,
+`results_v43_ablation_volume50m_model_scale_1b/`, sidecar confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **76,0% (114/150)**. Contre 1B/25M (80,0%,
+120/150) : $z=0{,}84$, $p=0{,}403$, non significatif.
+
+**Conclusion** : doubler le volume de tokens à 1B ne produit aucun gain
+mesurable (76,0% contre 80,0%, écart dans le sens inverse de l'attendu
+mais non significatif, dans la fourchette du plancher de bruit V1/V2).
+Aucune interaction volume×taille détectée à cette puissance. Le point
+50M/270M n'a pas pu être mesuré (échec de chargement du tokenizer,
+`transformers`/format de checkpoint incompatible avec la version installée
+-- rabbit hole non poursuivi faute de temps).
+
+**Limite connue** : un seul seed ; puissance limitée ($n=150$, MDE ~13
+points) pour détecter un effet d'interaction probablement plus petit que
+l'effet principal déjà non détecté.
+
+## 115. ⚠️ Contamination critique du négatif odd-one-out : le juge peut résoudre la tâche par longueur de contexte, pas par concept
+
+**Question** (soulevée par inspection manuelle, confirmée empiriquement) :
+le protocole odd-one-out présente 9 exemples positifs (contexte gauche
+jusqu'à 60 tokens, `extract_causal_context`) et 1 négatif censé ne pas
+partager le concept. Le négatif est choisi par magnitude d'activation la
+plus faible (`build_feature_examples_with_control`), le contexte affiché
+étant centré sur l'argmax d'activation de la feature sur ce document —
+un argmax de bruit pur pour un document qui n'active pas la feature. Rien
+dans le protocole ne garantit que ce contexte soit visuellement comparable
+aux positifs.
+
+**Mesure** (R0, `results_v27_.../cache/p1_judge_labels_extended.json`,
+150 features ; A2/`results_v41_...`, même mesure) :
+
+| Statistique | R0 | A2 |
+|---|---|---|
+| `neg_example` à $\le$ 3 mots | 150/150 (100%) | 150/150 (100%) |
+| `neg_example` = `<<,>>` exactement | 60/150 (40%) | 62/150 (41%) |
+| `neg_example` = `<<,\n\nJe>>` exactement | 34/150 (23%) | 26/150 (17%) |
+| `neg_example` distincts sur 150 | 43 | 48 |
+| features où le négatif est plus court que LES 9 positifs | 147/150 (98%) | — |
+| longueur moyenne positifs vs négatif (mots) | 32,9 vs 1,4 | — |
+
+**Méthode statistique** : aucune (mesure descriptive directe sur le champ
+`neg_example`, pas de test d'hypothèse nécessaire face à un écart de cette
+taille).
+
+**Résultat** : sur R0, **147 features sur 150 (98%)** ont un négatif
+strictement plus court que chacun de leurs 9 positifs — souvent un unique
+mot de salutation ou de ponctuation (`<<,>>`, `<<Bonjour,>>`,
+`<<,\n\nJe>>`) sans aucun contexte gauche. Root cause tracée dans
+`src/sae/judge.py::build_feature_examples_with_control` : le négatif est
+choisi par magnitude d'activation minimale sur un pool de documents
+quasi-inactivants, mais le contexte affiché reste centré sur l'argmax
+*de cette feature sur ce document* — un signal de bruit pur pour un
+document qui n'active pas la feature, qui atterrit de façon disproportionnée
+près du début du document une fois les tokens spéciaux/sink masqués
+(`valid_token_mask`/`norm_outlier_mask`, `saev5.py:1240-1244`, correctement
+appliqués **avant** l'écriture des fragments — ce n'est donc pas une fuite
+de token BOS/sink brut, mais un effet résiduel de position sur les
+tokens juste après le masquage, plausible mais non pleinement isolé ici).
+
+**Conclusion** : **un juge (LLM ou humain) peut résoudre l'écrasante
+majorité des 150 tâches odd-one-out de ce dépôt en choisissant simplement
+le stimulus le plus court/le plus pauvre en contexte, sans lire le concept
+partagé par les 9 autres.** Ceci ne prouve pas que le taux d'interprétabilité
+mesuré (84,7% pour R0) est entièrement un artefact — les positifs doivent
+toujours partager un concept réel pour que le juge produise un label
+cohérent, et le taux d'interprétabilité repose aussi sur la qualité du
+label généré, pas seulement sur l'identification correcte de l'intrus —
+mais **la composante "identification de l'intrus" du score, telle que
+construite, ne teste pas ce qu'elle prétend tester** pour au moins 98% des
+features. Ce biais est probablement **présent de façon comparable dans
+TOUTES les mesures de ce dépôt utilisant `odd_one_out_judge`** (R0, S1,
+S2, C1, C1b, V1, V2, A1-A6, L1, M1, layer 41, 50M/1B, et tout l'historique
+antérieur) puisqu'aucune n'a jamais modifié cette construction du négatif.
+
+**Correctif appliqué** (`src/sae/judge.py`, B.6) : le négatif est
+maintenant retenu en priorité s'il offre un contexte gauche d'au moins
+`MIN_NEG_CONTEXT_TOKENS=20` tokens (pool de candidats élargi de 20 à 40
+pour donner à cette contrainte une chance réelle d'aboutir), avec repli
+explicite et loggé (`neg_context_truncated`, message `[WARN]`) sur
+l'ancien critère si aucun candidat du pool ne qualifie. R0 relancé avec ce
+correctif (job 46151, cache SAE/extraction réutilisé, seul le jugement est
+refait) pour mesurer l'ampleur réelle de la contamination sur le chiffre de
+référence du rapport avant toute décision de rejugement plus large.
+
+**Limite connue** : le correctif change le **choix** du négatif (candidat
+avec contexte suffisant) mais pas l'argmax lui-même — si le bruit de
+position affecte aussi les candidats à contexte riche de façon plus subtile,
+une partie de l'effet pourrait persister sous une forme moins visible.
+Root cause du biais positionnel (pourquoi l'argmax de bruit atterrit-il
+préférentiellement près du début du document même après masquage
+BOS/sink ?) non pleinement élucidée — hypothèse de travail : effet
+résiduel d'"attention sink" sur les tokens 2-4 (juste après le token masqué),
+non couvert par `sigma_clip=4.0`. À creuser si le temps le permet.

@@ -156,6 +156,15 @@ def extract_causal_context(
 # 3. COLLECTE EXEMPLES — positifs + contrôle négatif
 # ──────────────────────────────────────────────────────────────────────────────
 
+# B.6 (RESULTS_TESTS.md §115) : longueur minimale de contexte gauche (en tokens,
+# avant le mot-cible <<mot>>) exigée pour un neg_example -- sous ce seuil, le
+# juge distingue l'intrus par pauvreté visuelle du contexte, pas par absence de
+# concept. `_NEG_POOL_SCAN` élargi (20 -> 40) pour donner à la contrainte de
+# longueur une chance réelle de trouver un candidat sans épuiser le pool.
+MIN_NEG_CONTEXT_TOKENS = 20
+_NEG_POOL_SCAN = 40
+
+
 def build_feature_examples_with_control(
     f_idx: int,
     token_fragments_dir: str,
@@ -261,15 +270,30 @@ def build_feature_examples_with_control(
     # ce correctif. "Meilleur candidat trouvé" reste toujours une amélioration
     # sur l'ancien comportement (premier candidat du pool, sans égard à sa
     # magnitude réelle), sans reproduire l'échec total du seuil dur.
+    #
+    # B.6 (audit manuel, RESULTS_TESTS.md §115) : sans garde-fou de longueur,
+    # l'argmax d'une feature quasi-partout-nulle est du bruit qui atterrit de
+    # façon disproportionnée près du début du document (contexte gauche tronqué
+    # par `ctx_start = max(0, word_start - left_window)`) -- mesuré sur R0 (§97) :
+    # 100% des 150 neg_example à <=2 mots, `<<,>>` seul comptant pour 40% des
+    # features, et le négatif plus court que les 9 positifs dans 147/150 cas
+    # (98%). Le juge peut alors repérer l'intrus par simple longueur/richesse du
+    # contexte affiché, jamais par absence de concept -- exactement le biais que
+    # le commentaire B.3 ci-dessous anticipait sans le chiffrer. Un négatif est
+    # maintenant retenu en priorité s'il offre un contexte gauche d'au moins
+    # `MIN_NEG_CONTEXT_TOKENS` tokens (comparable, même si plus court, au
+    # contexte typique des positifs) ; à défaut sur tout le pool balayé, repli
+    # explicite sur l'ancien critère (magnitude seule) avec une marque
+    # `neg_context_truncated=True` pour que ce repli reste auditable plutôt que
+    # silencieux.
     best_example, best_magnitude = None, None
-    for d_idx in neg_pool[:20]:
+    best_rich_example, best_rich_magnitude = None, None
+    for d_idx in neg_pool[:_NEG_POOL_SCAN]:
         if not fragment_exists(token_fragments_dir, int(d_idx + offset)):
             continue
         doc_data = load_fragment(token_fragments_dir, int(d_idx + offset))
         token_acts = feature_column(doc_data, f_idx)
         candidate_magnitude = float(token_acts.max())
-        if best_magnitude is not None and candidate_magnitude >= best_magnitude:
-            continue
         toks = doc_data["token_strings"]
         # B.3 : argmax de CETTE feature sur ce document non-activant, pas le
         # milieu du document -- même construction que les positifs (contexte
@@ -278,13 +302,28 @@ def build_feature_examples_with_control(
         # saillance (explication mécanique plausible de l'instabilité à 31%
         # du protocole odd-one-out, RESULTS_TESTS.md §13.1).
         target_idx = int(token_acts.argmax())
-        best_example = extract_causal_context(toks, target_idx)
-        best_magnitude = candidate_magnitude
-        if best_magnitude <= threshold_pos:
-            break  # vrai négatif trouvé, inutile de continuer
+        word_start, _ = _word_span(toks, target_idx)
 
-    neg_example = best_example
-    neg_magnitude = best_magnitude if best_magnitude is not None else 0.0
+        if best_magnitude is None or candidate_magnitude < best_magnitude:
+            best_example = extract_causal_context(toks, target_idx)
+            best_magnitude = candidate_magnitude
+
+        if word_start >= MIN_NEG_CONTEXT_TOKENS and (
+            best_rich_magnitude is None or candidate_magnitude < best_rich_magnitude
+        ):
+            best_rich_example = extract_causal_context(toks, target_idx)
+            best_rich_magnitude = candidate_magnitude
+            if best_rich_magnitude <= threshold_pos:
+                break  # vrai négatif trouvé ET contexte suffisant, inutile de continuer
+
+    if best_rich_example is not None:
+        neg_example, neg_magnitude = best_rich_example, best_rich_magnitude
+    else:
+        neg_example, neg_magnitude = best_example, (best_magnitude if best_magnitude is not None else 0.0)
+        if best_example is not None:
+            print(f"  [WARN] Feature {f_idx} : aucun negatif >= {MIN_NEG_CONTEXT_TOKENS} tokens de "
+                  f"contexte trouvé sur {_NEG_POOL_SCAN} candidats -- repli sur magnitude seule "
+                  f"(neg_context_truncated=True).")
 
     if return_magnitudes:
         return pos_examples, neg_example, pos_magnitudes, neg_magnitude
