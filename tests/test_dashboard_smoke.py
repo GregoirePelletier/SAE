@@ -18,7 +18,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PAGES = [
     "Vue d'ensemble", "UMAP", "Features", "Diagnostics d'entraînement", "Diffing",
     "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
-    "Rapport consolidé", "Comparaison mail original / augmenté", "Audit 2026-08",
+    "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
+    "Comparaison mail original / augmenté", "Audit méthodologique (archive)",
 ]
 
 

@@ -23,6 +23,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from src.analysis.stats import proportion_with_ci, two_proportion_test
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -96,6 +98,43 @@ def _judge_label_sources(run_dir: str, prefix: str) -> dict[str, dict]:
     return out
 
 
+def _negative_bias_diagnostic(label_map: dict) -> dict | None:
+    """Fraction des négatifs odd-one-out trivialement pauvres en contexte (≤3
+    mots) -- signal direct de la contamination RESULTS_TESTS.md §115/§117 : un
+    négatif réduit à un mot de salutation/ponctuation permet au juge de
+    résoudre la tâche par longueur de contexte plutôt que par concept partagé.
+    None si `label_map` ne porte pas de champ `neg_example` exploitable (cache
+    antérieur à son ajout, ou dictionnaire sans construction de négatif
+    comparable)."""
+    lens = [len(str(v["neg_example"]).split()) for v in label_map.values()
+            if isinstance(v, dict) and v.get("neg_example")]
+    if not lens:
+        return None
+    n = len(lens)
+    n_short = sum(1 for length in lens if length <= 3)
+    return {"n": n, "n_le_3_words": n_short, "frac_le_3_words": n_short / n}
+
+
+def _negative_bias_caption(label_map: dict) -> None:
+    diag = _negative_bias_diagnostic(label_map)
+    if diag is None:
+        return
+    if diag["frac_le_3_words"] > 0.3:
+        st.warning(
+            f"⚠️ Négatif odd-one-out trivialement court (≤3 mots) pour "
+            f"{diag['n_le_3_words']}/{diag['n']} features ({100*diag['frac_le_3_words']:.0f}%) -- "
+            "le juge peut résoudre la tâche par longueur de contexte plutôt que par concept "
+            "partagé (RESULTS_TESTS.md §115/§117). Le taux ci-dessus est probablement surestimé "
+            "pour cette source."
+        )
+    else:
+        st.caption(
+            f"Diagnostic de contamination du négatif (RESULTS_TESTS.md §115/§117) : "
+            f"{diag['n_le_3_words']}/{diag['n']} négatifs ≤3 mots -- sous le seuil de contamination "
+            "critique observé sur la référence pré-correctif (98%)."
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pages
 # ─────────────────────────────────────────────────────────────────────────────
@@ -106,20 +145,38 @@ def page_overview(run_dir: str) -> None:
     if not results:
         st.warning("Pas de results.json dans ce run (run partiel ou script encore en cours).")
         return
+
+    st.subheader("Interprétabilité des features apprises (question métier centrale)")
+    cols = st.columns(2)
+    for col, prefix, title in [(cols[0], "p1", "Pipeline 1 — extension"),
+                                (cols[1], "p2", "Pipeline 2")]:
+        with col:
+            sources = _judge_label_sources(run_dir, prefix)
+            if not sources:
+                st.info(f"Aucun label {prefix.upper()} pour ce run.")
+                continue
+            chosen_key = next(iter(sources))
+            labels = sources[chosen_key]
+            n_interp = sum(1 for v in labels.values() if v.get("interp_score") == 1)
+            st.metric(f"{title} — taux d'interprétabilité", f"{100*n_interp/len(labels):.1f}%",
+                       help=f"{n_interp}/{len(labels)} — source : {chosen_key}")
+            diag = _negative_bias_diagnostic(labels)
+            if diag and diag["frac_le_3_words"] > 0.3:
+                st.caption("⚠️ négatif odd-one-out possiblement contaminé -- détail sur l'onglet Features.")
+
     for pipeline_key, title in [("P1_Gemma3_SAE", "Pipeline 1 — Gemma-3 + GemmaScope"),
                                  ("P2_F2LLM_PhSAE", "Pipeline 2 — F2LLM + PhraseLevelSAE")]:
         metrics = results.get(pipeline_key)
         if not metrics:
             continue
-        st.subheader(title)
-        # diff_hypothesis (texte libre généré par LLM) affiché séparément ci-dessous
-        # (st.caption) -- l'exclure ici évite une colonne à types mixtes (float/str)
-        # que pyarrow ne peut pas convertir proprement pour le rendu du tableau.
+        st.subheader(f"{title} — fidélité de reconstruction")
+        # diff_hypothesis (texte libre généré par LLM, non vérifié) vit désormais
+        # sur l'onglet Diffing, à côté du verification_rate qui le contextualise --
+        # l'exclure ici évite aussi une colonne à types mixtes (float/str) que
+        # pyarrow ne peut pas convertir proprement pour le rendu du tableau.
         display = {k: v for k, v in metrics.items()
                    if not isinstance(v, (dict, list)) and k != "diff_hypothesis"}
         st.dataframe(pd.DataFrame([display]).T.rename(columns={0: "valeur"}), width='stretch')
-        if metrics.get("diff_hypothesis"):
-            st.caption(f"Hypothèse LLM (diffing cross-domaine) : {metrics['diff_hypothesis']}")
 
 
 def page_umap(run_dir: str) -> None:
@@ -243,6 +300,7 @@ def page_features(run_dir: str) -> None:
             if len(sources) > 1:
                 st.caption(f"{len(sources)} sources de labels trouvées pour ce run (juges/sélections "
                            "différents coexistent depuis l'introduction du juge Qwen) — choisir ci-dessus.")
+            _negative_bias_caption(ext)
             _feature_search_box(ext, key="ext")
         else:
             st.info("Aucun cache de labels d'extension trouvé pour ce run.")
@@ -255,6 +313,15 @@ def page_features(run_dir: str) -> None:
             n_interp_p2 = sum(1 for v in p2.values() if v.get("interp_score") == 1)
             st.metric("Taux d'interprétabilité (odd-one-out)", f"{100*n_interp_p2/len(p2):.1f}%",
                        help=f"{n_interp_p2}/{len(p2)} features passent le test — source : {chosen_p2}")
+            p2_neg_diag = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "p2_negative_length_audit.json"))
+            if p2_neg_diag:
+                st.caption(
+                    "Diagnostic de contamination du négatif (RESULTS_TESTS.md §118) : longueur "
+                    f"moyenne négatif {p2_neg_diag['neg_len_words_mean']:.1f} mots contre "
+                    f"{p2_neg_diag['pos_len_words_mean_overall']:.1f} mots pour les positifs, "
+                    f"{100*p2_neg_diag['neg_le_3_words_frac']:.0f}% de négatifs ≤3 mots -- le biais "
+                    "de longueur identifié sur Pipeline 1 (§115) ne se réplique pas ici."
+                )
             _feature_search_box(p2, key="p2")
         else:
             st.info("Aucun cache de labels Pipeline 2 trouvé pour ce run.")
@@ -347,14 +414,63 @@ def page_diffing(run_dir: str) -> None:
     if not csv_files:
         st.info("Aucun diff_*.csv trouvé dans ce run (le diffing vit typiquement sous "
                 "cache_baseline*/ ou à la racine du run pour p1_diff_energy_sports.csv).")
-        return
-    rel_files = [os.path.relpath(f, REPO_ROOT) for f in csv_files]
-    chosen = st.selectbox("Fichier de diff", rel_files)
-    df = pd.read_csv(os.path.join(REPO_ROOT, chosen))
-    n_sig = int(df["significant"].sum()) if "significant" in df.columns else None
-    if n_sig is not None:
-        st.metric("Features significatives (q<0.05)", f"{n_sig}/{len(df)}")
-    st.dataframe(df.head(50), width='stretch')
+    else:
+        rel_files = [os.path.relpath(f, REPO_ROOT) for f in csv_files]
+        chosen = st.selectbox("Fichier de diff", rel_files)
+        df = pd.read_csv(os.path.join(REPO_ROOT, chosen))
+        n_sig = int(df["significant"].sum()) if "significant" in df.columns else None
+        if n_sig is not None:
+            st.metric("Features significatives (q<0.05)", f"{n_sig}/{len(df)}")
+        st.dataframe(df.head(50), width='stretch')
+
+    st.divider()
+    st.subheader("Vérification d'hypothèses (App K.1)")
+    st.caption(
+        "Un écart de fréquence Fisher/BH (tableau ci-dessus) ne dit pas si l'hypothèse sémantique "
+        "qui l'accompagne se vérifie sur un corpus frais -- `verification_rate` (fraction "
+        "d'hypothèses dont l'écart vérifié dépasse 1 point) et `coverage` (fraction des documents "
+        "cible couverts par au moins une hypothèse valide) répondent à ça (Figures 11/12 du papier "
+        "de référence)."
+    )
+    verif_files = {
+        "diffing_hypothesis_verification.json (labels archivés, top-q NPMI)": "diffing_hypothesis_verification.json",
+        "diffing_structured_hypotheses.json (génération structurée par LLM)": "diffing_structured_hypotheses.json",
+    }
+    verif_found = {}
+    for label, fname in verif_files.items():
+        data = load_json(os.path.join(REPO_ROOT, run_dir, "cache", fname))
+        if not data:
+            continue
+        verif = data if ("summary" in data and "per_hypothesis" in data) else data.get("verification")
+        if verif:
+            verif_found[label] = verif
+    if verif_found:
+        chosen_v = st.selectbox("Source des hypothèses", list(verif_found.keys()), key="diff_verif_source")
+        verif = verif_found[chosen_v]
+        s = verif["summary"]
+        vcol1, vcol2 = st.columns(2)
+        vcol1.metric("Taux de vérification", f"{100*s['verification_rate']:.1f}%",
+                      help=f"seuil {100*s['threshold']:.0f} point -- {s['n_hypotheses']} hypothèses testées")
+        vcol2.metric("Couverture", f"{100*s['coverage']:.1f}%",
+                      help=f"{s['n_documents_in_group']} documents cible")
+        st.dataframe(pd.DataFrame(verif["per_hypothesis"]), width='stretch')
+    else:
+        st.info("Aucune vérification d'hypothèse (App K.1) trouvée pour ce run.")
+
+    st.divider()
+    st.subheader("Hypothèse libre (diffing cross-domaine, non vérifiée)")
+    results = load_json(os.path.join(REPO_ROOT, run_dir, "results.json"))
+    diff_hyp = (results or {}).get("P1_Gemma3_SAE", {}).get("diff_hypothesis")
+    if diff_hyp:
+        st.caption(
+            "Génération libre par le juge LLM à partir des features les plus discriminantes du "
+            "diffing -- à distinguer du verification_rate ci-dessus, seule mesure quantifiée et "
+            "comparable au papier. Peut contenir du texte de raisonnement brut du modèle plutôt "
+            "qu'une hypothèse propre selon le juge/checkpoint utilisé."
+        )
+        st.text(diff_hyp)
+    else:
+        st.info("Pas d'hypothèse LLM libre pour ce run.")
 
 
 def page_search(run_dir: str) -> None:
@@ -374,18 +490,51 @@ def page_search(run_dir: str) -> None:
     query = st.text_input("Requête (ex. 'urgence', 'facturation', 'résiliation')")
     if not query:
         st.info("Entrer une requête pour lister les features dont le label/description matche.")
-        return
-    rows = []
-    for key, v in all_labels.items():
-        label = v.get("label", "") if isinstance(v, dict) else str(v)
-        desc = v.get("brief_description", "") if isinstance(v, dict) else ""
-        text = f"{label} {desc}".lower()
-        if query.lower() in text:
-            rows.append({"feature": key, "label": label, "description": desc})
-    if rows:
-        st.dataframe(pd.DataFrame(rows), width='stretch')
     else:
-        st.info("Aucune feature trouvée pour cette requête dans ce run.")
+        rows = []
+        for key, v in all_labels.items():
+            label = v.get("label", "") if isinstance(v, dict) else str(v)
+            desc = v.get("brief_description", "") if isinstance(v, dict) else ""
+            text = f"{label} {desc}".lower()
+            if query.lower() in text:
+                rows.append({"feature": key, "label": label, "description": desc})
+        if rows:
+            st.dataframe(pd.DataFrame(rows), width='stretch')
+        else:
+            st.info("Aucune feature trouvée pour cette requête dans ce run.")
+
+    st.divider()
+    st.subheader("Retrieval par requête métier (RRF + reranking LLM, App G)")
+    st.caption(
+        "Recherche de documents par intention client (pas par label de feature) -- fusion TF-IDF + "
+        "Latent Terms (RRF) puis reranking LLM, sur 4 requêtes paraphrasées, corpus complet. "
+        "cf. src/sae/retrieval/latent_terms.py, RESULTS_TESTS.md §80/§92."
+    )
+    retrieval = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "latent_retrieval_precision_results.json"))
+    if retrieval and retrieval.get("per_query"):
+        per_query_rows = [{
+            "intention": intent, "requête": q["query"], "taux de base": q["base_rate"],
+            "P@10 TF-IDF": q["precision_at_10_tfidf"], "P@10 Latent Terms": q["precision_at_10_latent_terms"],
+            "P@10 RRF": q["precision_at_10_rrf"], "P@10 RRF+rerank": q["precision_at_10_rrf_reranked"],
+            "RBO (TF-IDF vs Latent Terms)": q["rbo_tfidf_vs_latent_terms"],
+        } for intent, q in retrieval["per_query"].items()]
+        st.dataframe(pd.DataFrame(per_query_rows), width='stretch')
+
+        agg = retrieval.get("aggregate", {})
+        method_names = [("tfidf", "TF-IDF"), ("latent_terms", "Latent Terms"),
+                        ("rrf", "RRF"), ("rrf_reranked", "RRF + rerank LLM")]
+        agg_rows = [{"méthode": name, **agg[key]} for key, name in method_names if key in agg]
+        if agg_rows:
+            st.dataframe(pd.DataFrame(agg_rows), width='stretch')
+        st.caption(
+            f"RBO moyen TF-IDF vs Latent Terms : {agg.get('mean_rbo_tfidf_vs_latent_terms', float('nan')):.3f} "
+            "(très bas -- les deux méthodes remontent des documents largement différents, pas le même "
+            "ensemble réordonné). RRF+rerank domine ou égale les trois autres méthodes sur les 4 "
+            "intentions testées, jamais inférieur à RRF seul."
+        )
+    else:
+        st.info("latent_retrieval_precision_results.json absent de ce run (lancer "
+                "scripts/latent_retrieval_precision_eval.py).")
 
 
 def page_urgence_robustesse(run_dir: str) -> None:
@@ -395,11 +544,27 @@ def page_urgence_robustesse(run_dir: str) -> None:
         st.subheader("Sonde intention/urgence (mails originaux)")
         d = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "intent_urgency_probe_results.json"))
         if d:
-            rows = [{"intention": k, **v} for k, v in d.items()]
+            rows = []
+            for k, v in d.items():
+                row = {"intention": k, "baseline majoritaire": v["majority_baseline"],
+                       "acc SAE": v["acc_sae"], "delta vs baseline": v["acc_sae"] - v["majority_baseline"]}
+                if "acc_tfidf" in v:
+                    row["acc TF-IDF+LogReg"] = v["acc_tfidf"]
+                    row["SAE bat TF-IDF ?"] = v["acc_sae"] > v["acc_tfidf"]
+                    row["McNemar p (BH)"] = v.get("mcnemar_p_bh")
+                rows.append(row)
             df = pd.DataFrame(rows)
-            df["delta"] = df["acc_sae"] - df["majority_baseline"]
             st.dataframe(df, width='stretch')
-            st.caption("cf. scripts/intent_urgency_probe.py, RESULTS_TESTS.md §13.2")
+            if "acc TF-IDF+LogReg" in df.columns:
+                st.caption(
+                    "Comparaison à la baseline lexicale honnête TF-IDF+LogReg, mêmes plis de "
+                    "validation croisée (McNemar apparié, correction BH) -- les codes SAE battent "
+                    "ou égalent TF-IDF+LogReg sur les 5 intentions, jamais l'inverse. "
+                    "cf. RESULTS_TESTS.md §104."
+                )
+            else:
+                st.caption("cf. scripts/intent_urgency_probe.py, RESULTS_TESTS.md §13.2 "
+                           "(baseline TF-IDF pas encore calculée pour ce run).")
         else:
             st.info("intent_urgency_probe_results.json absent (lancer scripts/intent_urgency_probe.py).")
     with col2:
@@ -473,9 +638,22 @@ def page_diagnostics(run_dir: str) -> None:
         st.info("Pas de figure pour ce run (checkpoint/historique absent, ou script pas encore "
                 "lancé). Génère-les avec :\n\n`python scripts/generate_diagnostic_plots.py`")
 
-    st.subheader("Balayages d'hyperparamètres (toutes runs confondues)")
+    st.subheader("Balayages d'hyperparamètres (archive, sélection par magnitude + juge auto-référent)")
+    st.caption(
+        "Figures figées (sources supprimées par le nettoyage disque, non régénérables) sous "
+        "l'ancienne méthodologie -- sélection par magnitude, juge auto-référent, négatif odd-one-out "
+        "non corrigé. Le balayage échelle du modèle et le balayage layer sous méthodologie finale "
+        "(stratifié + Qwen3.8-27B + négatif corrigé) sont sur l'onglet Sweeps ; les autres "
+        "balayages ci-dessous (K_extra, D_extra, hook-point, volume) n'ont pas encore de "
+        "remesure homogène et restent à lire comme repères historiques, pas comme valeurs finales."
+    )
     sweep_dir = os.path.join(REPO_ROOT, "results_diagnostics", "plots")
-    sweep_files = sorted(glob.glob(os.path.join(sweep_dir, "*.html")))
+    # sweep_model_scale.html/sweep_layer.html retirés du sélecteur : directement supersédés par
+    # l'onglet Sweeps (méthodologie finale), garder les deux ici serait montrer côte à côte deux
+    # chiffres pour la même question sans dire lequel citer.
+    superseded = {"sweep_model_scale.html", "sweep_layer.html"}
+    sweep_files = sorted(f for f in glob.glob(os.path.join(sweep_dir, "*.html"))
+                          if os.path.basename(f) not in superseded)
     if sweep_files:
         chosen_sweep = st.selectbox("Balayage", [os.path.basename(f) for f in sweep_files], key="diag_sweep_plot")
         with open(os.path.join(sweep_dir, chosen_sweep), encoding="utf-8") as f:
@@ -501,12 +679,15 @@ def page_audit_2026_08() -> None:
     jusqu'ici dispersées sous docs/ et cache/, lisibles seulement en ouvrant chaque
     fichier à la main. Recherche par motif plutôt que liste en dur : reste à jour sans
     édition à chaque nouveau script d'audit."""
-    st.header("Audit méthodologique — validité des résultats")
-    st.caption("cf. `RESULTS_TESTS.md` §57-73. "
+    st.header("Audit méthodologique — archive (§57-96)")
+    st.caption("cf. `RESULTS_TESTS.md` §57-96. "
                "Indépendant du run sélectionné dans la barre latérale. "
-               "Onglet temporaire : voué à disparaître une fois les audits en cours clos "
-               "(AUDIT_SAE_2026-08.md) -- pas la peine d'étendre ses motifs de recherche "
-               "à chaque nouveau script d'audit produit d'ici là.")
+               "Archive figée des scripts qui ont établi les correctifs désormais actifs par défaut "
+               "(sélection stratifiée, juge Qwen3.8-27B découplé de l'extracteur, déduplication par "
+               "mail parent) -- ces items sont tranchés (AUDIT_SAE_2026-08.md §9). Pour la campagne "
+               "de mesure sous cette méthodologie (balayages échelle/layer, sanity checks, "
+               "diffing/clustering/retrieval vérifiés), voir les onglets Sweeps, Clustering & "
+               "Corrélations, Diffing et Recherche.")
 
     patterns = [
         os.path.join(REPO_ROOT, "docs", "audit_*_results.json"),
@@ -532,6 +713,264 @@ def page_audit_2026_08() -> None:
         st.json(data)
 
 
+def page_clustering_correlations(run_dir: str) -> None:
+    st.header("Clustering & corrélations (App F.1, E.1/E.3)")
+    st.caption(
+        "Regroupement de features autour d'une requête métier et paires de concepts qui "
+        "co-occurrent -- tous deux vérifiés par relabellisation LLM indépendante sur un corpus "
+        "frais plutôt que lus sur la seule structure SAE brute. "
+        "cf. src/analysis/clustering_llm.py, src/analysis/correlations_verified.py, "
+        "RESULTS_TESTS.md §85/§86."
+    )
+
+    st.subheader("Clustering ciblé (mots-clés LLM → union top-k → Jaccard → labels LLM)")
+    clustering = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "clustering_llm_verification.json"))
+    if clustering:
+        st.write(f"Requête : *{clustering['axis_query']}* — mots-clés générés : "
+                  + ", ".join(clustering["keywords"]))
+        rows = []
+        for cid, desc in clustering["cluster_descriptions"].items():
+            idx = int(cid)
+            rows.append({
+                "cluster": cid,
+                "taille": clustering["cluster_sizes"][idx] if idx < len(clustering["cluster_sizes"]) else None,
+                "description (LLM)": desc,
+                "accuracy": clustering["accuracy"].get(cid),
+                "z-conductance": clustering["conductance_zscore"].get(cid),
+            })
+        st.dataframe(pd.DataFrame(rows), width='stretch')
+        st.caption(
+            "Z-conductance négatif = cluster plus compact en espace d'embedding dense qu'un "
+            "échantillon aléatoire de même taille (structure réelle, pas un artefact de hasard). "
+            "L'accuracy varie fortement d'un cluster à l'autre -- comportement attendu (cohérent "
+            "avec le papier de référence), pas un signe de bug."
+        )
+    else:
+        st.info("clustering_llm_verification.json absent de ce run (lancer scripts/clustering_llm_test.py).")
+
+    st.divider()
+    st.subheader("Corrélations vérifiées (NPMI_verified)")
+    npmi = load_json(os.path.join(REPO_ROOT, run_dir, "cache", "npmi_verified.json"))
+    if npmi and npmi.get("pairs"):
+        rows = [{"feature i": p["label_i"], "feature j": p["label_j"], "NPMI (SAE)": p["npmi_sae"],
+                 "NPMI vérifié": p["npmi_verified"], "co-occurrence vérifiée": p["co_verified"],
+                 "documents testés": p["n_docs"]} for p in npmi["pairs"]]
+        st.dataframe(pd.DataFrame(rows), width='stretch')
+        st.warning(
+            "Effectif faible pour la plupart des paires (souvent 1-2 documents positifs sur "
+            f"{npmi.get('n_verify_docs', '?')}) -- un NPMI vérifié parfait à si peu d'exemples "
+            "n'est pas une preuve robuste, cf. RESULTS_TESTS.md §85."
+        )
+    else:
+        st.info("npmi_verified.json absent de ce run (lancer scripts/npmi_verified_test.py).")
+
+
+# Balayages échelle/layer -- méthodologie finale (sélection stratifiée + juge Qwen3.8-27B +
+# déduplication par mail parent), seuls points comparables entre eux à variable unique isolée.
+# (nom de répertoire, taille en Md de paramètres ou numéro de layer pour l'axe des graphes)
+_MODEL_SCALE_SWEEP = [
+    ("1B", "results_v29_ablation_classic_setup_k5_25m_model_scale_1b", 1),
+    ("4B", "results_v30_ablation_classic_setup_k5_25m_model_scale_4b", 4),
+    ("12B (référence)", "results_v27_ablation_classic_setup_k5_25m_layer31", 12),
+    ("27B", "results_v31_ablation_classic_setup_k5_25m_model_scale_27b", 27),
+]
+_LAYER_SWEEP = [
+    ("Layer 12", "results_v32_ablation_classic_setup_k5_25m_layer12", 12),
+    ("Layer 24", "results_v34_ablation_classic_setup_k5_25m_layer24", 24),
+    ("Layer 31 (référence)", "results_v27_ablation_classic_setup_k5_25m_layer31", 31),
+    ("Layer 41", "results_v33_ablation_classic_setup_k5_25m_layer41", 41),
+]
+
+
+def _load_flat_judge_rate(save_dir: str) -> dict | None:
+    """Charge le taux d'interprétabilité + diagnostics (juge, méthode, n, biais de négatif)
+    directement depuis le cache plat p1_judge_labels_extended.json -- PAS via
+    _judge_label_sources : ce balayage compare des points à variable unique isolée, mélanger
+    avec une source de comparaison (b1/b2/judge_separation) casserait l'appariement d'une
+    ablation à l'autre."""
+    path = os.path.join(REPO_ROOT, save_dir, "cache", "p1_judge_labels_extended.json")
+    labels = load_json(path)
+    if not labels:
+        return None
+    meta = load_json(path + ".meta.json") or {}
+    n = len(labels)
+    succ = sum(1 for v in labels.values() if v.get("interp_score") == 1)
+    diag = _negative_bias_diagnostic(labels)
+    return {
+        "n": n, "succ": succ, "rate": succ / n,
+        "judge": _judge_name(meta.get("judge_model_id", "?")),
+        "method": meta.get("feature_selection_method", "?"),
+        "neg_bias_frac": diag["frac_le_3_words"] if diag else None,
+    }
+
+
+def _sweep_table(sweep: list[tuple[str, str, int]], ref_idx: int) -> pd.DataFrame:
+    ref = _load_flat_judge_rate(sweep[ref_idx][1])
+    rows = []
+    for label, save_dir, _x in sweep:
+        r = _load_flat_judge_rate(save_dir)
+        if r is None:
+            rows.append({"point": label, "n": None, "taux": "en cours de rejugement / absent",
+                         "IC95%": None, "juge": None, "sélection": None,
+                         "négatifs ≤3 mots": None, "vs référence (p)": None})
+            continue
+        ci = proportion_with_ci(r["succ"], r["n"])
+        row = {
+            "point": label, "n": r["n"], "taux": f"{100*r['rate']:.1f}%",
+            "IC95%": f"[{100*ci.ci_low:.1f} ; {100*ci.ci_high:.1f}]",
+            "juge": r["judge"], "sélection": r["method"],
+            "négatifs ≤3 mots": f"{100*r['neg_bias_frac']:.0f}%" if r["neg_bias_frac"] is not None else "?",
+        }
+        if ref is not None and save_dir != sweep[ref_idx][1]:
+            t = two_proportion_test(r["succ"], r["n"], ref["succ"], ref["n"])
+            row["vs référence (p)"] = f"{t.p:.3f}" + (" *" if t.p < 0.05 else "")
+        else:
+            row["vs référence (p)"] = "—"
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def page_sweeps() -> None:
+    st.header("Balayages échelle du modèle & layer (méthodologie finale)")
+    st.caption(
+        "Sélection stratifiée par fréquence + juge Qwen3.8-27B + déduplication par mail parent -- "
+        "seule méthodologie retenue comme comparable d'un point à l'autre de ces balayages. "
+        "Indépendant du run sélectionné dans la barre latérale (compare directement les "
+        "répertoires de la campagne de mesure finale)."
+    )
+
+    ref = _load_flat_judge_rate("results_v27_ablation_classic_setup_k5_25m_layer31")
+    if ref is not None and ref["neg_bias_frac"] is not None and ref["neg_bias_frac"] > 0.3:
+        st.error(
+            "⚠️ Le négatif odd-one-out de la configuration de référence (12B/layer 31) est encore "
+            f"majoritairement trivial ({100*ref['neg_bias_frac']:.0f}% de négatifs ≤3 mots) -- le "
+            "juge peut résoudre une bonne partie des tâches par longueur de contexte plutôt que par "
+            "concept partagé (RESULTS_TESTS.md §115/§117). TOUS les taux de cette page en héritent "
+            "et sont probablement surestimés dans une proportion comparable ; ne pas les citer "
+            "comme valeur finale sans vérifier l'état du correctif sur le point concerné."
+        )
+
+    all_ns = {r["n"] for _, d, _ in _MODEL_SCALE_SWEEP + _LAYER_SWEEP
+              if (r := _load_flat_judge_rate(d)) is not None}
+    if len(all_ns) > 1:
+        st.warning(
+            f"Tailles d'échantillon hétérogènes entre points de ces balayages ({sorted(all_ns)}) -- "
+            "une campagne de rejugement est probablement encore en cours sur une partie des points ; "
+            "comparer les taux bruts avec prudence tant que n diffère."
+        )
+
+    st.subheader("Échelle du modèle extracteur/juge (1B → 27B)")
+    st.dataframe(_sweep_table(_MODEL_SCALE_SWEEP, ref_idx=2), width='stretch')
+    plot_points = []
+    for label, save_dir, x in _MODEL_SCALE_SWEEP:
+        r = _load_flat_judge_rate(save_dir)
+        if r is not None:
+            ci = proportion_with_ci(r["succ"], r["n"])
+            plot_points.append({"label": label, "x": x, "rate_pct": 100 * r["rate"],
+                                 "err_low": 100 * (r["rate"] - ci.ci_low),
+                                 "err_high": 100 * (ci.ci_high - r["rate"])})
+    if len(plot_points) >= 2:
+        pdf = pd.DataFrame(plot_points)
+        fig = px.scatter(pdf, x="x", y="rate_pct", error_y="err_high", error_y_minus="err_low",
+                          text="label", log_x=True, height=400,
+                          labels={"x": "Taille du modèle (Md de paramètres)",
+                                  "rate_pct": "Taux d'interprétabilité (%)"})
+        fig.update_traces(mode="lines+markers+text", textposition="top center")
+        st.plotly_chart(fig, width='stretch')
+    st.caption(
+        "Tendance de Cochran-Armitage sur les points sous méthodologie totalement homogène : non "
+        "significative (RESULTS_TESTS.md §97/§112) -- l'effet d'échelle historiquement cité (~33 "
+        "points d'écart 1B/12B) était pour bonne partie un artefact de sélection par magnitude + "
+        "auto-jugement, pas un effet réel de cette ampleur."
+    )
+
+    st.subheader("Layer d'extraction (12 → 41)")
+    st.dataframe(_sweep_table(_LAYER_SWEEP, ref_idx=2), width='stretch')
+    st.caption(
+        "Aucun des 4 layers testés ne se distingue significativement de layer 31 sous cette "
+        "méthodologie (RESULTS_TESTS.md §96/§109/§113) -- l'écart layer 31 vs 24 historiquement "
+        "cité (§51) ne réplique sur aucune paire une fois la sélection stratifiée et le juge Qwen "
+        "appliqués aux deux bras."
+    )
+
+    st.divider()
+    st.subheader("Plancher de bruit run-à-run (même configuration, seed différente)")
+    seed_runs = [("Référence (seed 42)", "results_v27_ablation_classic_setup_k5_25m_layer31"),
+                 ("V1 (seed 123)", "results_v38_ablation_v1_seed123_classic_setup_k5_25m_layer31"),
+                 ("V2 (seed 7)", "results_v39_ablation_v2_seed7_classic_setup_k5_25m_layer31")]
+    seed_rows = []
+    for label, save_dir in seed_runs:
+        r = _load_flat_judge_rate(save_dir)
+        if r is not None:
+            ci = proportion_with_ci(r["succ"], r["n"])
+            seed_rows.append({"run": label, "n": r["n"], "taux": f"{100*r['rate']:.1f}%",
+                               "IC95%": f"[{100*ci.ci_low:.1f} ; {100*ci.ci_high:.1f}]"})
+    if seed_rows:
+        st.dataframe(pd.DataFrame(seed_rows), width='stretch')
+        st.caption(
+            "Un écart isolé contre la référence ne peut être lu comme un effet d'hyperparamètre "
+            "que s'il dépasse cette fourchette de variabilité intrinsèque à l'entraînement du SAE "
+            "seul (init + ordre de mélange, aucun hyperparamètre changé), cf. RESULTS_TESTS.md §101."
+        )
+    else:
+        st.info("Runs de variabilité de seed (V1/V2) absents.")
+
+    st.divider()
+    st.subheader("Sanity checks — décodeur figé aléatoire (Korznikov et al. 2026)")
+    sanity_runs = [("R0 — décodeur entraîné", "results_v27_ablation_classic_setup_k5_25m_layer31"),
+                   ("C1b — décodeur figé, init cov", "results_v42_ablation_c1b_sanity_frozen_decoder_cov_init"),
+                   ("C1 — décodeur figé, init iso", "results_v37_ablation_c1_sanity_frozen_decoder_stratified_qwen")]
+    sanity_rows = []
+    for label, save_dir in sanity_runs:
+        res = load_json(os.path.join(REPO_ROOT, save_dir, "results.json"))
+        p1 = (res or {}).get("P1_Gemma3_SAE", {})
+        fve_pre, fve_ext = p1.get("fve_pretrained"), p1.get("fve_extended")
+        if p1 and fve_pre is not None and fve_ext is not None:
+            sanity_rows.append({
+                "configuration": label,
+                "dead_pct_extension": f"{p1.get('dead_pct_extension', float('nan')):.1f}%",
+                "ΔFVE": f"+{fve_ext - fve_pre:.4f}",
+            })
+    if sanity_rows:
+        st.dataframe(pd.DataFrame(sanity_rows), width='stretch')
+        st.caption(
+            "Le SAE entraîné explique nettement plus de variance supplémentaire qu'un décodeur "
+            "figé à une initialisation aléatoire, même sous le schéma d'initialisation le plus dur "
+            "à battre (cov, Korznikov et al.) -- ΔFVE est la métrique qui tranche ici, pas le taux "
+            "d'interprétabilité (n effectif réduit à 11-31 sous décodeur figé, la quasi-totalité de "
+            "l'extension restant morte). cf. RESULTS_TESTS.md §98/§105."
+        )
+    else:
+        st.info("Runs de sanity check décodeur figé (C1/C1b) absents.")
+
+    st.divider()
+    st.subheader("Pipeline 1 vs Pipeline 2 — taux d'interprétabilité, même méthodologie")
+    p1_ref = _load_flat_judge_rate("results_v27_ablation_classic_setup_k5_25m_layer31")
+    p2_sources = _judge_label_sources("results_v10_emails_main", "p2")
+    cols = st.columns(2)
+    with cols[0]:
+        if p1_ref is not None:
+            st.metric("Pipeline 1 (Gemma-3 + GemmaScope, référence)", f"{100*p1_ref['rate']:.1f}%",
+                       help=f"{p1_ref['succ']}/{p1_ref['n']} — juge {p1_ref['judge']}, "
+                            f"sélection {p1_ref['method']}")
+        else:
+            st.info("Référence Pipeline 1 absente.")
+    with cols[1]:
+        if p2_sources:
+            chosen_p2_key = next(iter(p2_sources))
+            p2_labels = p2_sources[chosen_p2_key]
+            n_p2 = len(p2_labels)
+            succ_p2 = sum(1 for v in p2_labels.values() if v.get("interp_score") == 1)
+            st.metric("Pipeline 2 (F2LLM + PhraseLevelSAE)", f"{100*succ_p2/n_p2:.1f}%",
+                       help=f"{succ_p2}/{n_p2} — source : {chosen_p2_key}")
+        else:
+            st.info("Labels Pipeline 2 absents.")
+    st.caption(
+        "Pipeline 2 n'a jamais montré le biais de négatif de §115/§117 (RESULTS_TESTS.md §118) -- "
+        "son chiffre n'est pas affecté par le correctif qui touche Pipeline 1 ci-dessus."
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -552,7 +991,8 @@ def main() -> None:
         "Page",
         ["Vue d'ensemble", "UMAP", "Features", "Diagnostics d'entraînement", "Diffing",
          "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
-         "Rapport consolidé", "Comparaison mail original / augmenté", "Audit 2026-08"],
+         "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
+         "Comparaison mail original / augmenté", "Audit méthodologique (archive)"],
     )
 
     if page == "Vue d'ensemble":
@@ -565,6 +1005,10 @@ def main() -> None:
         page_diagnostics(run_dir)
     elif page == "Explication (fidélité/plausibilité)":
         page_explanation_quality(run_dir)
+    elif page == "Clustering & Corrélations":
+        page_clustering_correlations(run_dir)
+    elif page == "Sweeps (échelle & layer)":
+        page_sweeps()
     elif page == "Rapport consolidé":
         page_consolidated_report(run_dir)
     elif page == "Diffing":
@@ -575,7 +1019,7 @@ def main() -> None:
         page_urgence_robustesse(run_dir)
     elif page == "Comparaison mail original / augmenté":
         page_email_comparison()
-    elif page == "Audit 2026-08":
+    elif page == "Audit méthodologique (archive)":
         page_audit_2026_08()
 
 
