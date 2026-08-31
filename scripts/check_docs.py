@@ -36,6 +36,26 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
     # URL d'API publique versionnée (v2.1), span de backticks multi-lignes non
     # détecté par la lecture ligne à ligne — pas un numéro de version interne.
     ("RESULTS_TESTS.md", "du schéma de l'export public (`data.economie.gouv.fr/api/explore/v2.1/catalog/"),
+    # SAELens (v6) : version d'un logiciel tiers, pas un numéro de version
+    # interne au projet. "Combiné v12" : label de ligne de table reprenant le
+    # nom d'un répertoire de run versionné (results_v12_*), exception assumée
+    # au même titre que les répertoires/scripts de run (cf. CLAUDE.md).
+    (
+        "report/RAPPORT_STAGE_UNIVERSITE.tex",
+        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
+    ),
+    (
+        "report/RAPPORT_STAGE_UNIVERSITE.tex",
+        r"Combiné v12 (65k+époques+capacité, tranche 1-150) & 44,0\% & 0,23 & non \\",
+    ),
+    (
+        "report/RAPPORT_STAGE_ENTREPRISE.tex",
+        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
+    ),
+    (
+        "report/RAPPORT_STAGE_ENTREPRISE.tex",
+        r"Combiné v12 (65k+époques+capacité, tranche 1-150) & 44,0\% & 0,23 & non \\",
+    ),
 }
 
 VERSION_RE = re.compile(r"\bv\d{1,2}\b")
@@ -77,7 +97,7 @@ def iter_target_files():
         for root, dirs, files in os.walk(full_dir):
             dirs[:] = [x for x in dirs if x not in EXCLUDE_DIRS]
             for f in files:
-                if f.endswith(".md"):
+                if f.endswith((".md", ".tex")):
                     path = os.path.join(root, f)
                     yield os.path.relpath(path, REPO_ROOT)
 
