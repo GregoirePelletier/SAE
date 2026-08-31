@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=SAE_core_vs_ext
-#SBATCH --partition=a100
+#SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=48G
