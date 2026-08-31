@@ -18,19 +18,18 @@ def _toks(n, marker_idx, marker="MARKER"):
     return [f"▁word{i}" if i != marker_idx else f"▁{marker}" for i in range(n)]
 
 
-def test_negative_uses_argmax_position_not_middle(tmp_path):
-    """B.3 : le négatif doit être construit via l'argmax de CETTE feature
-    (comme les positifs), pas via len(toks)//2. Un document réellement non-
-    activant (le cas normal une fois B.5 appliqué -- toute activation
-    résiduelle au-dessus de threshold_pos=1e-6 est de toute façon rejetée, et
-    1e-6 est aussi le seuil de sparsification du stockage CSR des fragments,
-    donc un "négatif" accepté a systématiquement une colonne de feature
-    entièrement nulle une fois rechargée) a un token_acts tout à zéro :
-    argmax() y résout à l'indice 0 par convention numpy/torch (premier
-    maximum ex-aequo) -- DIFFÉRENT de l'ancien comportement qui prenait
-    systématiquement le milieu du document. Vérifie ce changement de
-    comportement precisement (indice 0, pas len(toks)//2 = 10), pas une
-    hypothétique "vraie" position de pic qui n'existe pas dans ce cas."""
+def test_negative_uses_random_replay_stable_position_not_middle(tmp_path):
+    """B.3 puis correctif profond (RESULTS_TESTS.md §117) : pour un document
+    négatif réellement non-activant (le cas normal -- BatchTopK, la feature
+    est hard-zero hors de son top-k), np.argmax sur un vecteur constant
+    renvoie déterministiquement l'indice 0 (convention numpy sur les
+    ex-aequo) -- un artefact mécanique de argmax, pas une position de bruit
+    distribuée. Le code ne l'utilise donc plus dans ce cas : la position
+    surlignée est tirée aléatoirement (graine déterministe f_idx/d_idx,
+    replay-stable) parmi les débuts de mot du document. Vérifie l'invariant
+    qui compte réellement (réplication à l'identique d'un rejugement à
+    l'autre) plutôt qu'un indice figé, et confirme l'absence de régression
+    vers l'ancien comportement (milieu du document, len(toks)//2)."""
     frag_dir = str(tmp_path)
     d_sae = 2
     n_tok = 21
@@ -53,9 +52,16 @@ def test_negative_uses_argmax_position_not_middle(tmp_path):
     assert neg_example is not None
     assert "MARKER" not in neg_example  # pas le document positif
     # Ancien comportement (len(toks)//2) aurait marqué le token du milieu
-    # ("MIDDLE", à l'indice 10) -- le nouveau marque l'indice 0 ("word0").
+    # ("MIDDLE", à l'indice 10) -- ni l'ancien argmax dégénéré (toujours
+    # "word0") ni ce comportement ne doivent réapparaître.
     assert "<<MIDDLE>>" not in neg_example
-    assert "<<word0>>" in neg_example
+
+    # Replay-stable : même f_idx/d_idx -> même négatif, condition nécessaire
+    # pour comparer un score rejugé à un score en cache (commentaire B.28).
+    _, neg_example_replay = build_feature_examples_with_control(
+        f_idx=0, token_fragments_dir=frag_dir, acts=doc_level_acts, n_pos=5,
+    )
+    assert neg_example_replay == neg_example
 
 
 def test_negative_rejects_candidate_above_threshold_pos(tmp_path):
