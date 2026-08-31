@@ -71,6 +71,17 @@ malgré une passe de suppression explicite) — deux règles pour freiner ça :
    de partition, déjà la convention pour la course entre partitions) plutôt
    que dupliquer un fichier quasi identique.
 
+### Reprise après coupure (checkpoint, code de sortie 64)
+
+Chaque `.slurm` de `pipeline_runs/` déclare `--signal=B:USR1@600` : SLURM
+envoie `SIGUSR1` 600s avant la limite de temps (`--time`), `GracefulShutdown`
+(`src/storage/checkpoint.py`) l'intercepte et écrit un checkpoint atomique
+avant de sortir avec le code **64** (`EXIT_CODE_GRACEFUL_CHECKPOINT`), pas 0
+— distinct d'un run réellement terminé, pour qu'un `sacct`/
+`--dependency=afterok:<jobid>` en aval puisse le distinguer et ne pas
+enchaîner sur un résultat incomplet. Un resoumission du même `.slurm` sur le
+même `SAVE_DIR` reprend automatiquement depuis ce checkpoint.
+
 ### Disque
 
 Le disque partagé (`/home`) est souvent proche de la capacité — vérifier
