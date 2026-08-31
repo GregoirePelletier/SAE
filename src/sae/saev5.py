@@ -1390,7 +1390,8 @@ def run_llm_max_pool_pipeline(
     # Extraction RAW terminée (cache-hit ou fraîche) -- libère le verrou du
     # cache partagé (N2) avant d'entrer dans le ré-encodage (privé,
     # ext_fragments_dir, N1), qui n'en a plus besoin. Une sortie anticipée
-    # PENDANT l'extraction (sys.exit(0), reprise checkpointée) saute cette
+    # PENDANT l'extraction (sys.exit(EXIT_CODE_GRACEFUL_CHECKPOINT), reprise
+    # checkpointée) saute cette
     # libération -- acceptable, cf. docstring acquire_shared_cache_lock
     # (auto-guérison par expiration du heartbeat, pas de libération garantie
     # sur toute sortie).

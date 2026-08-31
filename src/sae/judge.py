@@ -53,7 +53,8 @@ def _batched_generate(model, tokenizer, list_of_messages: list[list[dict]],
     l'attention des tokens réels. `do_sample=False` (inchangé, appelants
     existants) : déterministe, un lot ou un prompt à la fois doit produire la
     MÊME sortie pour un prompt donné -- vérifié par
-    tests/test_judge_batched_generation.py (mock, CPU) plutôt que supposé.
+    tests/test_judge_batching_orchestration.py et
+    tests/test_batched_generate_length_sort.py (mock, CPU) plutôt que supposé.
 
     N'utilise PAS `apply_chat_template(..., tokenize=True, return_tensors="pt")`
     sur une LISTE de conversations (support inégal du padding batché selon les
