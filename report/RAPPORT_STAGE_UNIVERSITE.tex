@@ -104,6 +104,7 @@
 \textbf{Lieu} & EDF Lab Paris-Saclay, 7 boulevard Gaspard Monge, 91120 Palaiseau \\[0.3em]
 \textbf{Maître de stage} & Philippe Suignard (département SEQUOIA) \\[0.3em]
 \textbf{Durée du stage} & 6 mois --- mars 2026 à septembre 2026 \\[0.3em]
+\textbf{Confidentialité} & Diffusion restreinte --- corpus de correspondance client EDF interne \\[0.3em]
 \end{tabular}
 
 \vfill
@@ -114,10 +115,15 @@
 \section*{Remerciements}
 \addcontentsline{toc}{section}{Remerciements}
 
-Je tiens à remercier Philippe Suignard, Claire Del Gatto et l'ensemble de l'équipe du groupe
-Statistiques et Outils d'Aide à la Décision (SOAD) du département SEQUOIA
-d'EDF R\&D pour leur accueil, leur disponibilité et les échanges réguliers qui
-ont accompagné ce stage.
+Je tiens à remercier Philippe Suignard, Claire Del Gatto et l'ensemble de
+l'équipe du groupe Statistiques et Outils d'Aide à la Décision (SOAD) du
+département SEQUOIA d'EDF R\&D pour leur accueil, leur disponibilité, la
+liberté qui m'a été laissée d'explorer mes propres pistes et hypothèses tout
+au long de ce stage, et les échanges réguliers et enrichissants sur les cas
+d'usage industriels d'EDF qui ont accompagné ce travail. Je remercie
+également EDF R\&D pour l'accès aux clusters de calcul GPU (H100, H100-bis,
+A100) mis à ma disposition : une ressource sans laquelle la campagne
+expérimentale de ce stage n'aurait tout simplement pas été possible. Je remercie chaleureusement les responsables et l'équipe pédagogique du Master 2 Mathématiques et Intelligence Artificielle de l'Université Paris-Saclay pour la qualité de la formation et leur suivi tout au long de cette année.
 
 \newpage
 \section*{Résumé}
@@ -164,12 +170,22 @@ représenter l'ensemble du dictionnaire ; le juge appartient par ailleurs à une
 différente} de celle du modèle dont les features sont extraites, pour écarter
 un biais d'auto-préférence.
 
-Une campagne d'ablations portant sur les hyperparamètres du SAE (largeur,
-capacité et parcimonie de l'extension, volume de tokens, graine
-d'entraînement, dimension d'embedding, backbone du second pipeline) ne révèle,
-sous ce protocole, \textbf{aucun effet mesurable} de ces leviers sur le taux
-d'interprétabilité. Sous la configuration retenue comme référence pour ce
-rapport, le taux d'interprétabilité atteint \textbf{84,7\%}. Des tests complémentaires --- fidélité et plausibilité
+Le protocole de mesure lui-même s'est révélé plus déterminant que les
+hyperparamètres du SAE ou son échelle : passer d'une sélection des features
+par magnitude d'activation (biaisée vers les directions les plus denses et
+génériques du dictionnaire) à une sélection \textbf{stratifiée} par
+fréquence, combinée à un juge indépendant du modèle extracteur et à une
+construction du document-contrôle exempte d'artefact de longueur, fait
+passer le taux d'interprétabilité mesuré d'un peu plus de 40\% à un peu plus
+de 60\% sous configuration par ailleurs identique. Une fois ce protocole
+intégralement corrigé et appliqué à pleine puissance ($n=300$, correction
+pour comparaisons multiples), une campagne de 15 ablations couvrant les
+hyperparamètres du SAE, le \emph{layer} d'extraction et l'échelle du modèle
+extracteur/juge ne laisse subsister \textbf{qu'un seul effet significatif} :
+un hyperparamètre de parcimonie de l'extension, pas l'échelle du modèle,
+contrairement à l'hypothèse initiale de ce stage --- l'effet d'échelle,
+massif sous l'ancien protocole, ne réplique pas sous le protocole corrigé.
+Des tests complémentaires --- fidélité et plausibilité
 de l'explication au niveau document, robustesse du protocole de jugement,
 biais multilingue, fidélité du steering, évaluation quantitative du retrieval
 --- achèvent la validation du système.
@@ -177,67 +193,6 @@ biais multilingue, fidélité du steering, évaluation quantitative du retrieval
 \textbf{Mots-clés} : Sparse Autoencoders, interprétabilité mécaniste,
 GemmaScope, grands modèles de langage, explicabilité, traitement automatique
 des mails clients, auto-interprétation par juge LLM.
-
-\section*{Abstract}
-\addcontentsline{toc}{section}{Abstract}
-
-This internship addresses the automatic explainability of dense text
-representations --- embeddings in particular, now widely used at EDF for
-classification and document retrieval, yet a black box by construction. The
-use case chosen to ground this investigation is the analysis of EDF's
-customer correspondence: a large volume of emails whose automated processing
-(prioritization, routing, complaint and urgency detection) must, in a
-regulated setting, remain justifiable after the fact. Sparse Autoencoders
-(SAE), which relearn a sparse representation in which each direction ideally
-corresponds to a single, nameable concept, are studied here as an answer to
-that need.
-
-Two independent pipelines are developed. The first extends a large pretrained
-SAE (GemmaScope, on the activations of a model from the Gemma-3 family ---
-whose size is itself one of the parameters studied) with a second SAE trained
-specifically on the target domain, using a \emph{frozen-core} architecture:
-the pretrained dictionary stays fixed and only the extension is trained, on
-the reconstruction residual left unexplained by the core, which preserves the
-original SAE's general capabilities while keeping generic and domain concepts
-from competing for the same sparsity budget. The second pipeline, independent
-of the first, no longer relies on a LLM's internal activations but on
-sentence embeddings produced by dedicated multilingual models (F2LLM-v2,
-bge-m3); a SAE is trained \emph{from scratch} directly on these embeddings,
-with no pretrained core to freeze since no reference dictionary exists for
-that space.
-
-The corpus combines customer emails with augmented variants spanning several
-perturbation axes (emotion, register, urgency...), built to represent the
-real diversity of the correspondence being processed. Each dictionary
-feature's interpretability is measured through an auto-interpretation
-protocol (\emph{odd-one-out}): an LLM judge must single out, among documents
-that strongly activate the same feature, one control document with no reason
-to share the target concept; it can only succeed if the other documents do
-share an identifiable concept. Features submitted to the judge are sampled
-\textbf{stratified by activation frequency} rather than by magnitude, so as to
-represent the whole dictionary rather than only its densest directions; the
-judge also belongs to a \textbf{different model family} than the model whose
-features are being extracted, to rule out a self-preference bias.
-
-An ablation campaign over the SAE's hyperparameters (width, extension
-capacity and sparsity, token volume, training seed, embedding dimension,
-Pipeline-2 backbone) reveals, under this protocol, \textbf{no measurable
-effect} of any of these levers on the interpretability rate. Under the
-configuration adopted as this report's reference, the interpretability rate
-reaches \textbf{84.7\%}. The \textbf{extractor/judge model's scale}, identified
-in earlier campaigns as the only lever producing a clean, significant effect,
-does not replicate at any pair (1B/4B/12B, $p\geq0.29$) once the three scales
-are measured under a fully homogeneous protocol (stratified selection,
-Qwen3.8-27B judge, deduplication) --- one measurement point (27B) remains in
-progress at the time of writing to determine whether this effect, so far the
-study's most robust, survives this control. Complementary tests --- document-level explanation
-fidelity and plausibility, judge-protocol robustness, multilingual bias,
-steering fidelity, quantitative retrieval evaluation --- complete the
-system's validation.
-
-\textbf{Keywords}: Sparse Autoencoders, mechanistic interpretability,
-GemmaScope, large language models, explainability, customer email analysis,
-LLM auto-interpretation.
 
 \newpage
 \tableofcontents
@@ -581,8 +536,9 @@ par les résultats obtenus (\emph{cf.}~chapitre~\ref{sec:resultats}).
 
 Korznikov et al. \cite{korznikov2025sanitychecks} montrent qu'un SAE dont le
 décodeur est figé à une initialisation aléatoire (jamais entraîné) atteint,
-sur les métriques proxy usuelles (variance expliquée, AutoInterp, sparse
-probing), des performances étonnamment proches d'un SAE pleinement entraîné.
+sur les métriques proxy usuelles (variance expliquée, AutoInterp
+\cite{bills2023language}, sparse probing), des performances étonnamment
+proches d'un SAE pleinement entraîné.
 Ce résultat impose un critère de validation supplémentaire : toute
 amélioration mesurée doit être évaluée \emph{relativement} à cette baseline
 aléatoire gelée, et non uniquement en absolu. Ce protocole a été directement
@@ -598,7 +554,7 @@ l'ensemble du corpus ? --- mesurée par juge LLM, protocole \emph{odd-one-out})
 et \textbf{interprétabilité locale} (quelles features sont actives pour un
 document donné ? --- mesurée par max-pooling documentaire des activations
 token-level). Le protocole \emph{odd-one-out}
-\cite{templeton2024scaling} présente au juge 9 extraits activant fortement une
+\cite{templeton2024scaling, karvonen2025saebench} présente au juge 9 extraits activant fortement une
 même feature et 1 intrus aléatoire ; le juge doit identifier l'intrus, ce qui
 ne peut réussir, par construction, que si les 9 extraits partagent un concept
 identifiable.
@@ -702,7 +658,7 @@ directement les concepts sémantiques qui dictent la décision.
 
 \subsubsection{Auto-interprétation par juge LLM}
 Le taux d'interprétabilité rapporté dans tout ce rapport est mesuré par le
-protocole \emph{odd-one-out} : pour chaque feature échantillonnée, un juge LLM
+protocole \emph{odd-one-out} \cite{karvonen2025saebench} : pour chaque feature échantillonnée, un juge LLM
 reçoit 9 documents activant fortement la feature et 1 document-contrôle
 (activation quasi nulle), et doit désigner l'intrus. Un juge qui réussit
 démontre l'existence d'un concept partagé identifiable ; l'échec ne prouve pas
@@ -710,7 +666,7 @@ nécessairement l'absence de concept (bruit du protocole,
 \emph{cf.}~\S\ref{subsec:robustesse}). La campagne d'ablations
 d'hyperparamètres du SAE (\S\ref{sec:resultats}) utilise le même modèle comme
 extracteur et comme juge, par simplicité ; la valeur de référence retenue
-pour ce rapport (84,7\%, \S\ref{subsec:correction-methode}) découple les deux
+pour ce rapport (65,7\%, \S\ref{subsec:correction-methode}) découple les deux
 rôles, un juge de famille différente (Qwen3.8-27B) jugeant les features
 extraites par Gemma-3-12B-it, pour écarter tout biais d'auto-préférence.
 
@@ -762,6 +718,45 @@ signification $|z| > 1{,}96$.
 \label{sec:resultats}
 % ─────────────────────────────────────────────────────────────────────────────
 
+\subsection{Les codes SAE battent une baseline lexicale honnête sur la détection d'intention}
+\label{subsec:d1-intent}
+
+Avant tout résultat d'interprétabilité, une question plus directe : les
+codes du dictionnaire SAE sont-ils seulement interprétables, ou aussi
+\textbf{utiles} pour une tâche avale concrète ? Cinq intentions client
+(réclamation, résiliation, remboursement, demande d'information, urgence),
+détectées par mots-clés (\texttt{INTENT\_KEYWORDS\_FR}) sur les 3300 mails
+originaux du corpus, sont prédites par régression logistique à partir des
+codes SAE de R0 et comparées, sur les \textbf{mêmes plis de validation
+croisée}, à une baseline TF-IDF+LogReg --- la baseline lexicale la plus
+honnête possible face à des labels eux-mêmes construits par mots-clés,
+avantage structurel pour TF-IDF a priori. Un test de McNemar apparié par
+intention (correction Benjamini-Hochberg sur les 5 tests) évite de conclure
+sur un simple écart de moyennes.
+
+\begin{resultbox}[D1 --- SAE contre TF-IDF+LogReg ($n{=}3300$)]
+Les codes SAE \textbf{battent ou égalent} TF-IDF+LogReg sur les 5 intentions,
+jamais l'inverse : résiliation (98,2\% contre 96,0\%, $p=2{,}9\times10^{-13}$
+après BH), remboursement (94,8\% contre 90,4\%, $p=7{,}0\times10^{-22}$) et
+information (87,9\% contre 85,6\%, $p=0{,}00084$) significatifs ;
+réclamation et urgence à égalité statistique. Contrairement aux résultats
+d'interprétabilité de ce chapitre, ce résultat est mesuré sur $n=3300$ (pas
+$n=300$) et n'est pas affecté par le protocole de jugement odd-one-out
+(\S\ref{subsec:sanity-check-resultats}) : il ne dépend ni du juge, ni de la
+sélection de features, ni de la construction du négatif. C'est la réponse la
+plus directe à la question qu'un jury industriel pose en premier --- le SAE
+sert-il à quelque chose de mesurable, au-delà de l'explicabilité elle-même.
+\end{resultbox}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/d1_intent_bars.png}
+\caption{Accuracy des codes SAE (R0) contre TF-IDF+LogReg sur les 5
+intentions client, $n=3300$. Astérisque : écart significatif (McNemar
+apparié, correction Benjamini-Hochberg).}
+\label{fig:d1-intent}
+\end{figure}
+
 \subsection{Diagnostic et correction du problème initial}
 \label{subsec:diagnostic-initial}
 
@@ -802,9 +797,10 @@ lignes significatives, est mesurée sous sélection par magnitude et juge
 auto-référent (gemma-3-12b-it) --- les deux biais isolés et corrigés en
 \S\ref{subsec:correction-methode}} : les valeurs absolues ci-dessous se lisent
 comme un plancher relatif entre configurations, pas comme le taux réel du
-dictionnaire (84,7\%, valeur de référence de ce rapport). Ceci concerne en
-particulier les deux lignes d'échelle du modèle, requalifiées à la baisse
-sous protocole corrigé --- \emph{cf.}~\S\ref{subsec:model-scale}.
+dictionnaire (65,7\%, valeur de référence de ce rapport). Ceci concerne en
+particulier les deux lignes d'échelle du modèle : l'effet qu'elles
+suggéraient ici ne réplique pas du tout sous protocole corrigé, pas
+seulement à la baisse --- \emph{cf.}~\S\ref{subsec:model-scale}.
 
 \begin{table}[h!]
 \centering
@@ -873,41 +869,80 @@ utilisent pour leurs résultats publiés, la baisse est moins extrême mais dans
 le même sens : 97,0\% de directions mortes (31 vivantes), $\Delta$FVE
 $+0{,}0086$ --- un facteur ${\sim}16$ sous R0. \textbf{Même sous le schéma
 d'initialisation le plus favorable au décodeur aléatoire, le SAE entraîné
-explique ${\sim}16\times$ plus de variance résiduelle supplémentaire.} Sur
-les features vivantes, le taux d'interprétabilité reste plus bas que R0 dans
-les deux cas (54,5\%, $n=11$, \emph{iso} ; 80,6\%, $n=31$, \emph{cov}) mais à
-un $n$ trop faible pour porter la conclusion seul --- c'est le $\Delta$FVE,
-mesuré sans le bruit d'échantillonnage du juge, qui constitue le test de
-falsification le plus net de ce stage.
+explique ${\sim}16\times$ plus de variance résiduelle supplémentaire.} Rejugées sous le correctif de négatif (\S\ref{subsec:sanity-check-resultats}),
+les features vivantes donnent \textbf{72,7\% ($n=11$, \emph{iso}) et 74,2\%
+($n=31$, \emph{cov})} --- l'une comme l'autre statistiquement indiscernables
+de R0 (65,7\%, $n=300$ ; $z=0{,}49$, $p=0{,}63$ pour \emph{iso} ; $z=0{,}96$,
+$p=0{,}34$ pour \emph{cov}), et numériquement légèrement au-dessus. Sous
+l'ancien protocole (négatif biaisé), ce même écart apparaissait significatif
+dans le sens attendu (44/150 contre R0, $z=2{,}86$) : \textbf{le signal
+distinguant le décodeur entraîné du décodeur aléatoire sur le taux
+d'interprétabilité seul ne survit pas à la correction du négatif}, à la
+faible puissance disponible sur 11/31 features vivantes. C'est le
+$\Delta$FVE, mesuré sans le bruit d'échantillonnage du juge et sans
+dépendre de la construction du négatif, qui reste le test de falsification
+net de ce sanity check --- pas le taux d'interprétabilité, dont ce résultat
+confirme une fois de plus la fragilité comme métrique isolée.
 
-\begin{resultbox}[Biais de construction du négatif \emph{odd-one-out} --- identifié en fin de rédaction]
-Une inspection manuelle des exemples présentés au juge (protocole
-\S\ref{subsec:model-scale}) a révélé que le document \og{}négatif\fg{}
-(censé ne pas partager le concept de la feature, cf.
-\S\ref{sec:etat-art}) est, sur R0, \textbf{plus court que chacun des 9
-exemples positifs dans 147 features sur 150 (98\%)} --- souvent réduit à un
-seul mot de salutation ou de ponctuation (\texttt{<<,>>}, seul, compte pour
-40\% des 150 négatifs). Cause : le négatif est choisi par magnitude
-d'activation minimale sur un pool de documents quasi-inactivants, mais le
-contexte affiché reste centré sur l'argmax \emph{de cette feature sur ce
-document} --- un signal de bruit pur qui atterrit de façon disproportionnée
-près du début du document. \textbf{Un juge peut résoudre la tâche par
-simple longueur/pauvreté de contexte, sans lire le concept partagé par les 9
-autres exemples}, pour l'écrasante majorité des 150 features de chaque run
-de ce stage --- un biais commun à \emph{toutes} les mesures d'interprétabilité
-de ce rapport, puisque la construction du négatif n'avait jamais été modifiée
-avant sa découverte. Un correctif (contexte gauche minimal exigé, avec repli
-loggé si aucun candidat ne qualifie, \texttt{src/sae/judge.py}) a été
-appliqué et R0 est en cours de rejugement à l'identique (même SAE entraîné,
-seul le jugement change) pour mesurer l'ampleur réelle de cette contamination
-sur le chiffre de référence de ce rapport. \textbf{Ce biais ne réfute pas les
-résultats en $\Delta$FVE ci-dessus} (métrique continue, indépendante de la
-construction du négatif) \textbf{ni la conclusion d'absence d'effet
-d'hyperparamètre/d'échelle} (\S\ref{subsec:model-scale},
-\S\ref{subsec:ablations-finales} : un biais partagé par toutes les
-configurations ne change pas leur comparaison relative) --- mais il remet en
-question la valeur absolue de tout taux d'interprétabilité cité dans ce
-document, y compris la référence 84,7\%.
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/delta_fve_bars.png}
+\caption{Variance expliquée gagnée par l'extension ($\Delta$FVE) : SAE
+entraîné contre les deux sanity checks à décodeur figé aléatoire
+(Korznikov et al.~\cite{korznikov2025sanitychecks}). Métrique continue,
+indépendante du juge LLM et donc du biais de négatif
+\S\ref{subsec:sanity-check-resultats}.}
+\label{fig:delta-fve}
+\end{figure}
+
+\begin{resultbox}[Biais de construction du négatif \emph{odd-one-out} --- identifié et corrigé]
+Une inspection manuelle des exemples présentés au juge a révélé que le
+document \og{}négatif\fg{} (censé ne pas partager le concept de la feature,
+cf. \S\ref{sec:etat-art}) était, sur R0, plus court que chacun des 9 exemples
+positifs pour la quasi-totalité des features --- souvent réduit à un seul
+mot de salutation ou de ponctuation (\texttt{<<,>>}). Cause racine : le
+document négatif est choisi parmi un ensemble de documents quasi-inactivants
+pour la feature évaluée, un cas normal sous l'architecture parcimonieuse du
+SAE (\emph{BatchTopK}, \S\ref{sec:etat-art}) où l'activation y est
+\textbf{exactement nulle}, pas seulement faible. Sur un vecteur d'activation
+strictement constant, l'argmax utilisé pour centrer le contexte affiché
+renvoie systématiquement l'indice 0 (convention numpy sur les ex-aequo) ---
+pas une position de bruit distribuée comme espéré, mais un artefact
+déterministe qui ancre quasi tous les négatifs au tout début du document.
+\textbf{Un juge peut alors résoudre la tâche par simple longueur/pauvreté de
+contexte, sans lire le concept partagé par les 9 autres exemples}, pour
+l'écrasante majorité des features de chaque run de ce stage --- un biais
+commun à \emph{toutes} les mesures d'interprétabilité antérieures à sa
+découverte, puisque la construction du négatif n'avait jamais été modifiée
+avant. Un premier correctif (contexte gauche minimal exigé) s'est révélé
+inefficace : il ne change la position que si le pool de candidats contient
+une alternative, or l'argmax dégénéré affecte la quasi-totalité du pool, pas
+une minorité de cas contournable par un plus grand pool. Le correctif retenu
+tire une position aléatoire (graine déterministe, replay-stable) parmi les
+débuts de mot à contexte suffisant lorsque le signal du candidat est nul, et
+n'utilise l'argmax que lorsqu'il porte un signal réel. \textbf{Rejugé sous
+ce correctif à $n=150$, R0 tombe de 84,7\% à 62,7\%} --- un écart de 22
+points, très supérieur au bruit d'échantillonnage attendu à cette taille
+d'échantillon ($p=1{,}5\times10^{-5}$) : une fraction substantielle du
+taux d'interprétabilité mesuré sur ce dépôt provenait de cet artefact, pas
+d'une reconnaissance de concept par le juge. Rejugé une seconde fois à
+$n=300$ pour resserrer la précision, R0 donne \textbf{65,7\% (197/300)},
+IC95\% $[60{,}1\%\,;\,70{,}8\%]$ --- statistiquement indiscernable de
+l'estimation à $n=150$ ($p=0{,}53$), comme attendu d'un même run rejugé à
+une taille d'échantillon différente : c'est la valeur de référence retenue
+pour la suite de ce rapport. \textbf{Ce biais ne réfute pas
+les résultats en $\Delta$FVE ci-dessus} (métrique continue, indépendante de
+la construction du négatif), mais il invalide la valeur absolue de tout taux
+d'interprétabilité cité dans les versions antérieures de ce document, y
+compris l'ancienne référence 84,7\% --- \textbf{ainsi que la conclusion
+d'absence d'effet d'hyperparamètre et d'effet d'échelle du modèle qui en
+avait été tirée} : rejugés sous ce correctif à $n=300$
+(\S\ref{subsec:ablations-finales}, \S\ref{subsec:model-scale}), la
+quasi-totalité des hyperparamètres du SAE restent sans effet détectable
+--- $K_\text{extra}$ fait exception, significatif après correction
+multi-tests --- et l'effet d'échelle du modèle, présenté plus haut dans ce
+document comme le résultat central du stage, ne réplique pas du tout sous
+protocole intégralement corrigé.
 \end{resultbox}
 
 \subsection{Protocole de jugement : sélection des features et choix du juge}
@@ -921,113 +956,98 @@ features les plus denses, proches de directions génériques --- contre
 \textbf{stratifiée} par bins de fréquence, échantillonnage équilibré sur des
 strates log-espacées) et le \textbf{choix du juge} (gemma-3-12b-it,
 auto-référent car même famille que le modèle extracteur, contre Qwen3.8-27B,
-famille indépendante). Le tableau ci-dessous croise ces deux variables à la
-configuration retenue comme référence pour l'ensemble de la campagne
-d'ablations ($K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens, layer 31,
-gemma-3-12b-it comme extracteur) :
+famille indépendante). Ces deux variables sont croisées à la configuration
+retenue comme référence pour l'ensemble de la campagne d'ablations
+($K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens, layer 31,
+gemma-3-12b-it comme extracteur).
 
-\begin{table}[h!]
-\centering
-\caption{Sélection $\times$ juge, à la configuration de référence (25M tokens)}
-\label{tab:selection-juge}
-\vspace{0.4em}\small
-\begin{tabular}{@{}lcc@{}}
-\toprule
-\textbf{Sélection} & \textbf{Juge gemma-3-12b-it}\footnotemark & \textbf{Juge Qwen3.8-27B} \\ \midrule
-Stratifiée & 82,0\% (123/150) & \textbf{84,7\% (127/150) --- référence (R0)} \\
-Magnitude & 89,3\% (134/150) --- M1, \S\ref{subsec:ablations-finales} & --- \\
-\bottomrule
-\end{tabular}
-\end{table}
-\footnotetext{Le run source du 82,0\% (§82 de \texttt{RESULTS\_TESTS.md}, cache
-purgé depuis) ne porte pas de confirmation de déduplication des exemples
-positifs par mail parent, contrairement à R0 dont le sidecar la confirme
-explicitement (\texttt{doc\_groups\_dedup=true}) --- la colonne pourrait donc
-confondre choix du juge et introduction de la déduplication, pas isoler le
-juge seul.}
-
-À sélection stratifiée fixée (colonne de gauche vs colonne de droite,
-réserve de la note ci-dessus), le passage au juge découplé ne produit
-\textbf{aucun écart significatif} à cette configuration
-(82,0\%~$\to$~84,7\%, $z=-0{,}62$,
-$p=0{,}535$) --- une réplication, à un volume de tokens et un $K_\text{extra}$
-désormais cohérents avec le reste de la campagne, de l'observation déjà faite
-à plus faible volume (\S\ref{subsec:diagnostic-initial}) : sous sélection
-stratifiée, le taux d'interprétabilité ne dépend (quasiment) plus du modèle
-qui juge. La case magnitude+gemma-3-12b-it (M1) complètera la comparaison
-avec l'effet de méthode de sélection à cette même configuration ; en son
-absence, aucun chiffre construit à un volume inférieur au plancher de
-crédibilité retenu pour ce rapport (25M tokens) n'est cité ici.
+Sous l'ancienne construction du négatif (\S\ref{subsec:sanity-check-resultats}),
+le passage de magnitude+juge auto-référent à stratifié+juge indépendant
+faisait déjà passer le taux mesuré de 45,3\% (run historique, plusieurs
+paramètres confondus : $K_\text{extra}$, volume, layer) à 84,7\% (R0) à
+configuration par ailleurs identique --- sans écart significatif attribuable
+au seul choix du juge une fois la sélection stratifiée fixée. Cette
+comparaison reposait cependant sur un protocole de négatif depuis reconnu
+biaisé (\S\ref{subsec:sanity-check-resultats}) ; rejugée sous le correctif à
+$n=300$, la même configuration de référence (R0) donne \textbf{65,7\%
+(197/300)}, IC95\% $[60{,}1\%\,;\,70{,}8\%]$ --- la valeur définitive.
 
 \begin{resultbox}[Valeur de référence retenue]
-\textbf{84,7\% (127/150), $K_\text{extra}=5$, $D_\text{extra}=1024$, 25M
-tokens, layer 31, sélection stratifiée, juge Qwen3.8-27B (R0) est le taux
-d'interprétabilité de référence de ce rapport.} Les chiffres en 45,x\%/2x,x\%
-cités dans la campagne d'ablations d'hyperparamètres du SAE
-(\S\ref{subsec:synthese-ablations}) restent des comparaisons \emph{internes}
-valides --- les deux bras de chaque ablation y sont mesurés sous le même
-protocole --- mais leurs valeurs absolues se lisent comme un plancher, pas
-comme le taux réel du dictionnaire.
+\textbf{65,7\% (197/300), IC95\% $[60{,}1\%\,;\,70{,}8\%]$,
+$K_\text{extra}=5$, $D_\text{extra}=1024$, 25M
+tokens, layer 31, sélection stratifiée, juge Qwen3.8-27B, négatif corrigé
+(R0) est le taux d'interprétabilité de référence de ce rapport.}
+Les chiffres en 4x,x\% cités dans la campagne d'ablations d'hyperparamètres
+du SAE (\S\ref{subsec:synthese-ablations}) restent des comparaisons
+\emph{internes} valides --- les deux bras de chaque ablation y sont mesurés
+sous le même protocole --- mais leurs valeurs absolues se lisent comme un
+plancher, pas comme le taux réel du dictionnaire.
 \end{resultbox}
 
-\subsection{L'échelle du modèle : le levier déterminant}
+\subsection{L'échelle du modèle : un effet qui ne survit pas au protocole corrigé}
 \label{subsec:model-scale}
 
 Quatre échelles du modèle extracteur/juge sont testées sous une configuration
 strictement commune (sélection stratifiée, juge Qwen3.8-27B, déduplication
 par mail parent, $K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens,
-corpus mixte), chacune avec son propre GemmaScope dédié et son propre
-\emph{layer} à \og{}~2/3 de profondeur\fg{} (1B : layer 13 ; 4B : layer 17 ;
-12B : layer 31 ; 27B : layer 40) --- remplace une table antérieure qui
-mélangeait, sous une même colonne \og{}Taux interp.\fg{}, des points jugés
-par Qwen et d'autres par le modèle extracteur lui-même (biais d'auto-préférence
-non contrôlé, \S\ref{subsec:correction-methode}) : les quatre points ci-dessous
-sont désormais comparables terme à terme, sous le même protocole de
-sélection/jugement --- mais seul le \textbf{triplet} modèle/layer/SAE core
-varie d'un point à l'autre, chaque layer étant la meilleure estimation
+corpus mixte, négatif corrigé, $n=300$), chacune avec son propre GemmaScope
+dédié et son propre \emph{layer} à \og{}~2/3 de profondeur\fg{}
+\cite{formal2026splare} (1B : layer 13 ; 4B : layer 17 ; 12B : layer 31 ;
+27B : layer 40) --- seul le \textbf{triplet} modèle/layer/SAE core varie
+d'un point à l'autre, chaque layer étant la meilleure estimation
 \og{}~2/3 profondeur\fg{} disponible pour son échelle : la taille du modèle
 n'est donc pas isolée du layer dans ce sweep.
 
 \begin{table}[h!]
 \centering
-\caption{Effet de l'échelle du modèle extracteur, méthodologie totalement homogène (stratifié, juge Qwen3.8-27B, $K_\text{extra}=5$, 25M tokens)}
+\caption{Effet de l'échelle du modèle extracteur, méthodologie totalement homogène (stratifié, juge Qwen3.8-27B, négatif corrigé, $K_\text{extra}=5$, 25M tokens, $n=300$)}
 \label{tab:model-scale}
 \vspace{0.4em}\small
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{Modèle} & \textbf{Layer} & \textbf{Juge} & \textbf{Taux interp.} \\ \midrule
-gemma-3-1b-it & 13 & Qwen3.8-27B & 80,0\% (120/150) \\
-gemma-3-4b-it & 17 & Qwen3.8-27B & 81,3\% (122/150) \\
-gemma-3-12b-it (référence du rapport) & 31 & Qwen3.8-27B & 84,7\% (127/150) \\
-gemma-3-27b-it & 40 & Qwen3.8-27B & 85,3\% (128/150) \\
+\textbf{Modèle} & \textbf{Layer} & \textbf{Taux interp.} & \textbf{IC95\% Wilson} & \textbf{$z$/$p$ vs R0} \\ \midrule
+gemma-3-1b-it & 13 & 63,3\% (190/300) & [57,7\,;\,68,6] & $z=-0{,}60$, $p=0{,}55$ \\
+gemma-3-4b-it & 17 & 54,7\% (164/300) & [49,0\,;\,60,2] & $z=-2{,}75$, $p=0{,}006$ \\
+gemma-3-12b-it (référence, R0) & 31 & \textbf{65,7\% (197/300)} & [60,1\,;\,70,8] & --- \\
+gemma-3-27b-it & 40 & 55,7\% (167/300) & [50,0\,;\,61,2] & $z=-2{,}51$, $p=0{,}012$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{resultbox}[Résultat central du stage]
-Sous protocole totalement homogène, la progression 1B$\to$4B$\to$12B$\to$27B
-(80,0\%~$\to$~81,3\%~$\to$~84,7\%~$\to$~85,3\%) \textbf{n'atteint la
-significativité à aucune paire} (1B vs 27B : $z=-1{,}17$, $p=0{,}24$ ; 12B vs
-27B : $z=-0{,}16$, $p=0{,}87$) ni en tendance (Cochran-Armitage sur les
-quatre points). C'est un résultat que ce rapport n'anticipait pas : la
-version antérieure de cette section, construite en mélangeant des points
-jugés par des modèles différents, décrivait une progression nette jusqu'à
-12B puis un plateau --- cette lecture ne survit pas au retrait du biais de
-juge. À $n=150$ par bras, ce protocole ne détecte qu'un écart d'au moins
-9,6 points ($\alpha=0{,}05$, puissance 80\%, calcul par
-\texttt{src/analysis/stats.py::minimum\_detectable\_effect}) : \textbf{les
-quatre points ci-dessus sont tous mutuellement compatibles avec l'absence
-totale d'effet à cette puissance}, pas seulement entre eux non
-significatifs. Sous cette méthodologie, \textbf{aucun des leviers testés
-dans ce stage} --- ni les hyperparamètres du SAE
-(\S\ref{subsec:synthese-ablations}, \S\ref{subsec:ablations-finales}) ni
-l'échelle du modèle extracteur/juge --- ne produit d'effet mesurable sur le
-taux d'interprétabilité à cette puissance. Ce constat lui-même reste soumis
-à la réserve de \S\ref{subsec:sanity-check-resultats} (biais de construction
-du négatif \emph{odd-one-out}, en cours de correction) : les quatre points
-partagent la même construction de négatif, donc un biais commun ne changerait
-pas leur comparaison relative, mais pourrait déplacer les quatre taux
-ensemble.
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/model_scale_curve.png}
+\caption{Taux d'interprétabilité par échelle du modèle extracteur/juge,
+méthodologie totalement homogène, $n=300$, barres d'erreur = IC95\% de
+Wilson. Absence de tendance monotone --- 4B et 27B significativement
+\emph{en dessous} de R0 (12B), 1B statistiquement indiscernable de R0.}
+\label{fig:model-scale}
+\end{figure}
+
+\begin{resultbox}[Le résultat que ce rapport annonçait comme central ne réplique pas]
+Sous protocole totalement homogène et négatif corrigé, la séquence
+1B$\to$4B$\to$12B$\to$27B (63,3\%~$\to$~54,7\%~$\to$~65,7\%~$\to$~55,7\%)
+\textbf{n'est pas monotone et ne porte aucune tendance détectable}
+(Cochran-Armitage sur les quatre points ordonnés : $z=-0{,}95$,
+$p=0{,}34$). Deux paires isolées atteignent la significativité brute contre
+R0 (4B : $p=0{,}006$ ; 27B : $p=0{,}012$), mais 1B ne s'en distingue pas
+($p=0{,}55$) --- un modèle 12$\times$ plus petit que la référence donne un
+taux statistiquement indiscernable de R0, tandis que deux modèles
+intermédiaires/plus grands tombent significativement en dessous. \textbf{Ce
+n'est pas la signature d'un effet d'échelle} (qui prédirait une progression
+ordonnée), \textbf{mais un motif compatible avec du bruit dont R0 est, par
+construction, l'un des points hauts} : R0 est la configuration la plus
+scrutée et affinée de toute la campagne (\S\ref{subsec:ablations-finales}),
+un candidat naturel à être un maximum local de bruit plutôt qu'un véritable
+optimum. Cette lecture est corroborée par la correction pour comparaisons
+multiples (\S\ref{subsec:audit-stats}, Benjamini-Hochberg sur l'ensemble des
+15 comparaisons contre R0 de ce chapitre) : 4B ($p_\text{BH}=0{,}044$) reste
+significatif, mais \textbf{27B ne survit pas à la correction}
+($p_\text{BH}=0{,}061$). \textbf{La version antérieure de ce rapport, qui
+présentait l'échelle du modèle comme \og{}le résultat le plus significatif
+du stage\fg{}, reposait sur des mesures antérieures au correctif de négatif
+(\S\ref{subsec:sanity-check-resultats}) et ne survit pas à sa correction ---
+ce chapitre en tire la conclusion inverse de celle initialement annoncée.}
 \end{resultbox}
 
 L'inspection qualitative des hypothèses de diffing générées à chaque échelle
@@ -1045,57 +1065,67 @@ La campagne d'ablations \S\ref{subsec:synthese-ablations} (14 configurations)
 est intégralement mesurée sous sélection par magnitude et juge auto-référent
 --- ses valeurs absolues se lisent comme un plancher, pas comme le taux réel
 (\S\ref{subsec:correction-methode}). Le tableau ci-dessous reprend les
-hyperparamètres les plus consultés sous méthodologie finale (stratifié +
-Qwen3.8-27B + déduplication), tous comparés à R0 (\S\ref{subsec:correction-methode},
-84,7\%, 127/150) :
+hyperparamètres les plus consultés, plus le sweep de \emph{layer}, sous
+méthodologie finale (stratifié + Qwen3.8-27B + déduplication + négatif
+corrigé, $n=300$), tous comparés à R0 (65,7\%, 197/300) :
 
 \begin{table}[h!]
 \centering
-\caption{Ablations d'hyperparamètres et de graine contre R0, méthodologie finale}
+\caption{Ablations d'hyperparamètres, de graine et de layer contre R0, méthodologie finale ($n=300$)}
 \label{tab:ablations-finales}
 \vspace{0.4em}\small
-\begin{tabular}{@{}llccc@{}}
+\begin{tabular}{@{}llcccc@{}}
 \toprule
-\textbf{Run} & \textbf{Écart à R0} & \textbf{Taux interp.} & \textbf{$z$ / $p$ vs R0} & \textbf{$\Delta$FVE} \\ \midrule
-R0 & référence & 84,7\% (127/150) & --- & $+0{,}1393$ \\
-V1 & seed 123 (bruit run-à-run) & 90,7\% (136/150) & $z=-1{,}58$, $p=0{,}114$ & $+0{,}1399$ \\
-V2 & seed 7 (bruit run-à-run) & 82,7\% (124/150) & $z=0{,}47$, $p=0{,}639$ & $+0{,}1402$ \\
-A1 & $K_\text{extra}=32$ (défaut historique) & 78,0\% (117/150) & $z=1{,}48$, $p=0{,}138$ & $+0{,}1483$ \\
-A2 & $D_\text{extra}=2048$ (capacité $\times$2) & 88,0\% (132/150) & $z=-0{,}84$, $p=0{,}401$ & $+0{,}1468$ \\
-A3 & core 65k (défaut : 16k) & 83,3\% (125/150) & $z=0{,}31$, $p=0{,}753$ & $+0{,}1436$ \\
-A4 & $\text{batch}_\text{extra}=16384$ (défaut : 1024) & 89,3\% (134/150) & $z=-1{,}20$, $p=0{,}230$ & $+0{,}1410$ \\
-A6 & $\text{épochs}_\text{extra}=40$ (défaut : 10) & 88,0\% (132/150) & $z=-0{,}84$, $p=0{,}401$ & $+0{,}1398$ \\
+\textbf{Run} & \textbf{Écart à R0} & \textbf{Taux interp.} & \textbf{$z$/$p$ vs R0} & \textbf{$p_\text{BH}$} & \textbf{$\Delta$FVE} \\ \midrule
+R0 & référence (layer 31) & 65,7\% (197/300) & --- & --- & $+0{,}1393$ \\
+V1 & seed 123 (bruit run-à-run) & 63,7\% (191/300) & $z=-0{,}51$, $p=0{,}608$ & $0{,}84$ & $+0{,}1399$ \\
+V2 & seed 7 (bruit run-à-run) & 64,0\% (192/300) & $z=-0{,}43$, $p=0{,}669$ & $0{,}84$ & $+0{,}1402$ \\
+A1 & $K_\text{extra}=32$ (défaut historique) & \textbf{54,3\% (163/300)} & $z=-2{,}83$, $p=0{,}0046$ & \textbf{0,044} & $+0{,}1483$ \\
+A2 & $D_\text{extra}=2048$ (capacité $\times$2) & 67,0\% (201/300) & $z=0{,}35$, $p=0{,}730$ & $0{,}84$ & $+0{,}1468$ \\
+A3 & core 65k (défaut : 16k) & 59,0\% (177/300) & $z=-1{,}69$, $p=0{,}092$ & $0{,}28$ & $+0{,}1436$ \\
+A4 & $\text{batch}_\text{extra}=16384$ (défaut : 1024) & 65,0\% (195/300) & $z=-0{,}17$, $p=0{,}864$ & $0{,}86$ & $+0{,}1410$ \\
+A6 & $\text{épochs}_\text{extra}=40$ (défaut : 10) & 64,7\% (194/300) & $z=-0{,}26$, $p=0{,}797$ & $0{,}85$ & $+0{,}1398$ \\
+L1 & layer 24 (défaut historique) & 60,3\% (181/300) & $z=-1{,}35$, $p=0{,}176$ & $0{,}44$ & $+0{,}1163$ \\
+L41 & layer 41 & 61,7\% (185/300) & $z=-1{,}02$, $p=0{,}308$ & $0{,}63$ & $+0{,}2200$ \\
+layer12 & layer 12 & 74,0\% (222/300) & $z=2{,}22$, $p=0{,}026$ & $0{,}098$ & $+0{,}1574$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{resultbox}[Le plancher de bruit run-à-run absorbe les écarts d'hyperparamètres]
+\begin{resultbox}[Un seul écart survit à la correction multi-tests : $K_\text{extra}$]
 V1 et V2 (deux graines de la configuration de R0, aucun hyperparamètre
-changé) donnent \textbf{84,7\% / 90,7\% / 82,7\%} --- un écart de 8 points
-entre les deux graines, lui-même statistiquement "significatif" non corrigé
-entre V1 et V2 ($z=2{,}04$, $p=0{,}042$) alors qu'aucun hyperparamètre ne
-diffère. \textbf{A1 et A2 tombent tous deux à l'intérieur de cette fourchette
-V1--V2} (82,7--90,7\%) : leurs écarts non significatifs contre R0 ne sont donc
-pas seulement "non prouvés", ils sont plus petits que le bruit de graine
-mesuré sur ce même protocole. C'est la réponse directe à l'objection attendue
-sur l'absence de correction multi-tests du tableau \S\ref{subsec:synthese-ablations}
-(\S\ref{subsec:audit-stats}) : la variabilité de graine, jamais mesurée avant
-cette campagne sous le cache d'extraction partagé, est du même ordre de
-grandeur que les écarts d'hyperparamètres eux-mêmes.
+changé) donnent \textbf{65,7\% / 63,7\% / 64,0\%} --- un écart de 0,3 point
+entre les deux graines, un plancher de bruit run-à-run nettement plus serré
+qu'estimé sous l'ancien protocole (8 points) une fois $n$ porté à 300 et le
+négatif corrigé. Sur les 15 comparaisons de ce chapitre testées contre R0
+(10 ci-dessus, plus les 3 échelles de modèle \S\ref{subsec:model-scale} et
+les 2 sanity checks \S\ref{subsec:sanity-check-resultats}), correction
+Benjamini-Hochberg appliquée : \textbf{$K_\text{extra}=32$ (A1) est la seule
+configuration qui reste significative} ($p_\text{BH}=0{,}044$) --- 54,3\%
+contre 65,7\% pour $K_\text{extra}=5$, une chute de plus de 11 points.
+Contrairement à la campagne \S\ref{subsec:synthese-ablations} (sous ancien
+protocole, A1 non significatif à 78,0\% contre 84,7\%), \textbf{ce résultat
+inverse une conclusion antérieure de ce rapport} : le défaut historique du
+dépôt ($K_\text{extra}=32$) est désormais identifié comme la seule ablation
+d'hyperparamètre à dégrader mesurablement l'interprétabilité, cohérent avec
+le choix de $K_\text{extra}=5$ (optimum du papier SAE Boost) comme
+configuration de référence de ce rapport. Le sweep de \emph{layer} ajoute un
+signal brut non négligeable (layer12 à 74,0\%, $p=0{,}026$) qui ne survit
+cependant pas à la correction ($p_\text{BH}=0{,}098$) --- à confirmer par une
+réplication dédiée plutôt qu'à traiter comme acquis.
 
 La colonne $\Delta$FVE (fraction de variance expliquée par le SAE complet,
 core+extension, moins celle du core seul --- calculée sur un échantillon de
-4096 tokens, indépendante du juge LLM) raconte une histoire radicalement
-plus stable : $+0{,}1393$ à $+0{,}1483$ sur les huit runs, un écart relatif
-de moins de 7\% là où le taux d'interprétabilité varie de 12,7 points
-(78,0\,--\,90,7\%). \textbf{La reconstruction ne bouge quasiment pas d'un
-run à l'autre ; c'est le jugement \emph{odd-one-out} qui introduit
-l'essentiel du bruit observé sur le taux d'interprétabilité.} Cette
-dissociation est cohérente avec le sanity check
+4096 tokens, indépendante du juge LLM) reste, elle, nettement plus stable sur
+le bloc à layer fixe (V1--A6 : $+0{,}1393$ à $+0{,}1483$, écart relatif sous
+7\%) mais varie franchement avec le \emph{layer} lui-même (L1 : $+0{,}1163$ ;
+L41 : $+0{,}2200$) --- attendu, un point du réseau plus profond laisse
+davantage de résidu non expliqué par un cœur GemmaScope entraîné à un point
+fixe. Cette dissociation reste cohérente avec le sanity check
 \S\ref{subsec:sanity-check-resultats} : le décodeur figé aléatoire y montre
-$\Delta$FVE $\approx 0{,}0001$, un facteur ${\sim}1400$ sous R0, une preuve de
-falsification bien plus nette et bien moins bruitée que l'écart
-d'interprétabilité mesuré sur ce même run (limité à $n=11$ features actives).
+$\Delta$FVE $\approx 0{,}0001$--$0{,}0086$, un facteur ${\sim}16$ à
+${\sim}1400$ sous R0, une preuve de falsification nette et indépendante du
+bruit de jugement qui domine, lui, le taux d'interprétabilité brut.
 \end{resultbox}
 
 \subsection{Robustesse du protocole de jugement}
@@ -1304,6 +1334,7 @@ tirage de corpus par condition ; ces deux protocoles seront réexécutés à
 mesure que de nouveaux runs deviennent disponibles.
 
 \subsection{Choix du backbone d'embedding (Pipeline 2)}
+\label{subsec:pipeline2-scale}
 
 Quatre backbones ont été comparés pour le Pipeline~2 : F2LLM-v2 (80M, 160M,
 330M) et bge-m3. \textbf{bge-m3 domine nettement} sur la plupart des
@@ -1321,11 +1352,23 @@ attendu).
 Sur l'\textbf{interprétabilité} elle-même (pas seulement la reconstruction),
 mesurée sous le même protocole que Pipeline~1 (sélection stratifiée, juge
 Qwen3.8-27B, \S\ref{subsec:correction-methode}), le taux atteint
-\textbf{58,7\% (88/150)} --- sensiblement plus bas que la référence
-Pipeline~1 (84,7\%), alors que la reconstruction Pipeline~2 est elle-même
-bonne et non dégradée. Pipeline~2 fonctionne de bout en bout et reconstruit
-bien, mais son niveau d'interprétabilité individuelle des features reste, à
-ce stade, inférieur à celui de Pipeline~1.
+\textbf{58,7\% (88/150)} --- proche de la référence Pipeline~1 corrigée
+(65,7\%), alors que la reconstruction Pipeline~2 est elle-même bonne et non
+dégradée. Cette mesure Pipeline~2 utilise une construction du négatif
+structurellement différente (\texttt{build\_phrase\_examples\_with\_control}
+affiche la phrase candidate entière, sans fenêtre de contexte centrée sur un
+argmax) : le mécanisme précis identifié pour Pipeline~1
+(\S\ref{subsec:sanity-check-resultats}) ne s'y applique donc pas
+mécaniquement. Vérifié directement (réplication de la sélection sur les 150
+features jugées, embeddings et checkpoint déjà en cache, aucun recalcul GPU)
+: négatifs et positifs ont des longueurs statistiquement indissociables
+(16,8 contre 15,6 mots en moyenne, contre un facteur ${\sim}23\times$ pour
+Pipeline~1 avant correctif), et la longueur du négatif ne prédit pas le
+succès du juge (Spearman $\rho=0,069$, $p=0,40$) --- le biais de §115 ne se
+réplique pas ici, 58,7\% n'a pas besoin d'être requalifié pour ce motif.
+Pipeline~2 fonctionne de bout en bout et reconstruit bien, mais son niveau
+d'interprétabilité individuelle des features reste, à ce stade, inférieur à
+celui de Pipeline~1.
 
 \subsection{Balayage de la dimension d'embedding (MRL)}
 
@@ -1348,14 +1391,39 @@ indépendantes pour deux groupes de features distincts (la majorité des
 ablations de ce chapitre), le test de \textbf{McNemar} lorsque les deux
 conditions portent sur les mêmes 150 features (biais multilingue, robustesse
 du juge --- $p=0{,}894$ et $p=0{,}560$ respectivement), et un test de
-\textbf{tendance de Cochran-Armitage}, plus puissant qu'une série de
-comparaisons par paires, pour l'effet dose-réponse de l'échelle du modèle sur
-un plan à niveaux ordonnés. Aucune correction pour comparaisons multiples
-n'est en revanche appliquée aux $\sim$15 tests d'ablation d'hyperparamètres
-du SAE (\S\ref{subsec:synthese-ablations}) --- sans conséquence pratique ici,
-le seul résultat significatif l'étant à $p<10^{-9}$, mais une limite à lever
-pour toute extension future de ce protocole, sur le modèle de ce qui est déjà
-fait pour le diffing par feature (Benjamini-Hochberg).
+\textbf{tendance de Cochran-Armitage} pour l'effet dose-réponse de l'échelle
+du modèle sur un plan à niveaux ordonnés, plus puissant qu'une série de
+comparaisons par paires --- sans effet de tendance détectable sous protocole
+pleinement corrigé (\S\ref{subsec:model-scale}). Aucune correction pour
+comparaisons multiples n'est appliquée aux $\sim$15 tests d'ablation
+d'hyperparamètres du SAE (\S\ref{subsec:synthese-ablations}, sous
+l'ancien protocole magnitude+juge auto-référent) : 3 des 14 configurations y
+ressortent significatives (décodeur figé aléatoire, $z=2{,}86$ ; échelle 4B,
+$z=3{,}12$ ; échelle 1B, $z=6{,}38$) sans correction de type
+Benjamini-Hochberg. Sur le tableau final à $n=300$ (\S\ref{subsec:ablations-finales},
+\S\ref{subsec:model-scale}, 15 comparaisons contre R0), la correction
+Benjamini-Hochberg ne laisse subsister qu'un seul écart significatif
+($K_\text{extra}=32$, $p_\text{BH}=0{,}044$) --- traité comme tel dans ce
+rapport plutôt que comme une liste de $p$-valeurs brutes non corrigées.
+
+Le repère de rigueur retenu pour le reste de ce rapport
+n'est cependant pas qu'un seuil de significativité isolé, mais aussi la
+\textbf{taille d'effet détectable} à la puissance disponible : à $n=300$ par
+bras et au taux de référence de ce rapport (65,7\%), le protocole ne détecte
+qu'un écart d'au moins 10,4 points ($\alpha=0{,}05$, puissance 80\%,
+\texttt{src/analysis/stats.py::minimum\_detectable\_effect}) --- une MDE
+\emph{plus large}, pas plus étroite, qu'à $n=150$ sous l'ancien taux de
+référence (9,6 points à 84,7\%) : doubler $n$ ne suffit pas à compenser le
+déplacement du taux de référence vers 50\%, où la variance d'une proportion
+est maximale. Cette MDE reste cohérente avec le plancher de bruit empirique
+mesuré directement entre deux répétitions de R0 à seed différente, désormais
+resserré à 0,3 point (V1 contre V2, \S\ref{subsec:ablations-finales}) une
+fois $n$ porté à 300 sous le négatif corrigé --- très inférieur à la MDE,
+ce qui confirme que le protocole final n'est pas structurellement bruyant
+par construction, seulement peu puissant à ce $n$ pour des écarts
+inférieurs à ${\sim}10$ points. C'est ce repère, pas un test
+isolé, qui borne ce qu'un écart de quelques points entre deux configurations
+peut ou ne peut pas établir dans ce rapport.
 
 \newpage
 % ─────────────────────────────────────────────────────────────────────────────
@@ -1393,19 +1461,37 @@ Rédaction d'un rapport & Ce document. \\
 
 Le défaut de conception du corpus initial a été diagnostiqué et corrigé, avec
 un gain d'interprétabilité mesuré et statistiquement établi. L'architecture à
-cœur gelé a été validée à l'échelle, avec une reconnaissance explicite de son
-équivalence structurelle à SAE Boost. Une campagne d'ablations
-particulièrement large a permis d'établir, avec une rigueur statistique
-correcte (McNemar, correction de multiplicité identifiée, test de tendance),
-qu'aucun hyperparamètre du SAE ne module significativement le résultat une
-fois le domaine corrigé --- et que deux leviers de \emph{protocole de mesure},
-plutôt que d'architecture, dominent tous les autres effets mesurés :
-l'échelle du modèle extracteur/juge, et la méthode de sélection des features
-à juger. Isoler le choix du juge lui-même de celui de l'extracteur a permis de
-montrer que l'effet d'échelle massif observé n'est pas un biais
-d'auto-préférence généralisé, mais concentré sur les features que la
-sélection par magnitude sur-échantillonne (\S\ref{subsec:correction-methode}).
-Les protocoles de fidélité, plausibilité et robustesse de l'explication ont
+cœur gelé a été validée à l'échelle par le $\Delta$FVE (métrique continue,
+indépendante du juge, \S\ref{subsec:sanity-check-resultats},
+\S\ref{subsec:ablations-finales}), avec une reconnaissance explicite de son
+équivalence structurelle à SAE Boost. Le protocole de mesure lui-même s'est
+révélé le facteur le plus déterminant de tout ce chapitre --- passer d'une
+sélection par magnitude à une sélection stratifiée, d'un juge auto-référent à
+un juge indépendant, et d'une construction du négatif biaisée à une
+construction corrigée fait passer le taux mesuré de 45,3\% à 65,7\% à
+configuration par ailleurs identique (\S\ref{subsec:correction-methode},
+\S\ref{subsec:sanity-check-resultats}). Une fois ce protocole intégralement
+corrigé et appliqué à $n=300$, la campagne complète de ce chapitre (15
+comparaisons contre R0 : 7 hyperparamètres, 3 layers, 3 échelles de modèle,
+2 sanity checks) ne laisse subsister, après correction Benjamini-Hochberg,
+\textbf{qu'un seul écart significatif} : $K_\text{extra}=32$ (le défaut
+historique du dépôt) dégrade le taux d'interprétabilité de plus de 11 points
+par rapport à $K_\text{extra}=5$ (\S\ref{subsec:ablations-finales}).
+\textbf{L'échelle du modèle extracteur/juge, présentée dans une version
+antérieure de ce rapport comme son résultat le plus significatif, ne
+survit pas à cette correction} (Cochran-Armitage $p=0{,}34$ sur
+1B$\to$4B$\to$12B$\to$27B, aucune progression monotone,
+\S\ref{subsec:model-scale}) : c'est une conclusion inverse de celle
+initialement anticipée, mais tirée du même niveau d'exigence statistique que
+le reste de ce rapport revendique par ailleurs. Isoler le choix du juge
+lui-même de celui de l'extracteur reste instructif sur le \emph{mécanisme}
+de l'ancien biais : l'écart Gemma/Qwen, sous l'ancien protocole, se
+concentrait sur les features que la sélection par magnitude sur-échantillonne
+(denses, génériques) --- sous sélection stratifiée, l'écart entre juges
+n'atteignait déjà plus la significativité (§89/§90 de
+\texttt{RESULTS\_TESTS.md}), un premier signal, avant même la correction du
+négatif, que l'ancienne lecture \og{}l'échelle domine\fg{} reposait sur un
+protocole de sélection/jugement plus fragile qu'annoncé. Les protocoles de fidélité, plausibilité et robustesse de l'explication ont
 tous été mis en œuvre et donnent des résultats positifs ou, à défaut,
 honnêtement nuancés (steering). Le diffing et le clustering interprétable,
 deux objectifs initiaux restés sans validation quantitative jusqu'à une
@@ -1419,69 +1505,102 @@ validation obtenu.
 
 \subsection{Points non résolus et perspectives}
 
-\begin{itemize}
-  \item L'architecture Matryoshka pleinement hiérarchique (dictionnaires
-    emboîtés à plusieurs niveaux), envisagée en phase bibliographique,
-    n'a pas été implémentée --- l'architecture à cœur gelé effectivement
-    testée n'a qu'un seul niveau d'extension. Au vu du résultat central de ce
-    stage (l'échelle du modèle domine tout effet architectural du SAE), une
-    architecture Matryoshka multi-niveaux ne semble pas prioritaire pour la
-    suite.
-  \item Le découplage juge/extracteur (\S\ref{subsec:correction-methode}) ne
-    fait varier que le juge, à extracteur fixe (Gemma-3-12B-it) : isoler
-    pleinement la capacité d'\emph{extraction} de celle du \emph{jugement}
-    demanderait un plan croisé complet --- modèle léger comme extracteur et
-    comme juge, modèle léger comme extracteur mais juge capable, et
-    l'inverse --- non mené ici.
-  \item Le rejugement Qwen3.8-27B du point 12B de la famille utilisée pour le
-    balayage d'échelle (\S\ref{subsec:model-scale}, layer 31,
-    $K_\text{extra}=5$) est en cours : l'ampleur exacte de l'effet d'échelle
-    sous protocole totalement homogène (juge Qwen aux deux bornes 1B/12B)
-    reste, à ce stade, encadrée mais pas définitivement chiffrée.
-  \item Le diffing (\S\ref{subsec:diffing}) n'a pour l'instant été validé que
-    sur un sous-corpus générique proxy (énergie \emph{vs.} sport) --- porter
-    la même chaîne (génération d'hypothèses structurée, vérification sur
-    documents tenus à l'écart) sur un diffing emails (\emph{ex.} urgents
-    \emph{vs.} non urgents), l'objectif initial qui a motivé cette
-    fonctionnalité, reste à faire.
-  \item CamemBERTav2 et Qwen3-Embedding, identifiés en phase bibliographique
-    comme candidats sérieux, n'ont pas été intégrés faute d'écosystème SAE
-    préentraîné équivalent à GemmaScope --- une comparaison chiffrée directe
-    reste à faire si l'équipe souhaite objectiver ce choix par rapport au
-    score MTEB plutôt que par la disponibilité d'infrastructure.
-  \item Plusieurs pistes envisagées en phase préliminaire restent
-    inexplorées, faute de temps : un pipeline micro/macro à deux SAE alignés
-    par \emph{AlignedUMAP} (une projection 2D qui contraint les positions à
-    rester comparables d'un sous-corpus à l'autre, pour visualiser leur
-    évolution) ; une modélisation par graphe biparti (documents et features
-    comme deux ensembles de nœuds reliés par les activations, pour en
-    exploiter la structure de communautés) ; et un protocole d'annotation
-    humaine avec calcul du $\kappa$ de Fleiss (mesure d'accord inter-annotateurs
-    corrigée du hasard), pour remplacer le juge LLM par une validation humaine
-    d'un sous-échantillon.
-  \item Aucune comparaison chiffrée directe n'a été menée contre les
-    baselines alternatives de SAE Boost (Extended SAE à initialisation
-    aléatoire/most-active, SAE Stitching, fine-tuning complet).
-  \item L'ablation de volume, sans effet mesurable jusqu'à 25M tokens
-    (Table~\ref{tab:synthese}), est étendue à 200M tokens --- la borne haute
-    exacte du seuil de convergence revendiqué par SAE Boost --- dans un run en
-    cours au moment de la rédaction de ce rapport.
-\end{itemize}
+\textbf{Pistes délibérément abandonnées.} Au vu de l'ampleur de la campagne
+de correction méthodologique menée sur le protocole de mesure lui-même
+(\S\ref{subsec:correction-methode}, \S\ref{subsec:sanity-check-resultats}),
+plusieurs directions envisagées en phase bibliographique ou préliminaire ont
+été dépriorisées plutôt que menées à mi-chemin : l'architecture Matryoshka
+pleinement hiérarchique (dictionnaires emboîtés à plusieurs niveaux ---
+l'architecture à cœur gelé testée n'a qu'un seul niveau d'extension) ; un
+pipeline micro/macro à deux SAE alignés par \emph{AlignedUMAP} (projection 2D
+contraignant les positions à rester comparables d'un sous-corpus à l'autre) ;
+une modélisation par graphe biparti (documents et features comme deux
+ensembles de nœuds reliés par les activations, pour en exploiter la structure
+de communautés) ; et un protocole d'annotation humaine avec calcul du
+$\kappa$ de Fleiss pour remplacer le juge LLM par une validation humaine d'un
+sous-échantillon. Aucune comparaison chiffrée directe n'a non plus été menée
+contre les baselines alternatives de SAE Boost (Extended SAE à
+initialisation aléatoire/most-active, SAE Stitching, fine-tuning complet).
+
+\textbf{Écarts réels à combler.} Le découplage juge/extracteur
+(\S\ref{subsec:correction-methode}) ne fait varier que le juge, à extracteur
+fixe (Gemma-3-12B-it) : isoler pleinement la capacité d'\emph{extraction} de
+celle du \emph{jugement} demanderait un plan croisé complet --- modèle léger
+comme extracteur et comme juge, modèle léger comme extracteur mais juge
+capable, et l'inverse --- non mené ici. Le balayage d'échelle
+(\S\ref{subsec:model-scale}) montre par ailleurs un motif non monotone
+(1B$\approx$R0 > 4B$\approx$27B) qui reste, en l'état, sans explication
+mécanique : une réplication sur une seconde graine à chaque échelle
+permettrait de trancher si ce motif est stable ou un artefact de bruit sur
+un seul tirage par point. En raison d'une contrainte d'indexation apparue
+lors d'une évolution antérieure du format du corpus augmenté, l'appariement
+entre chaque mail original et ses variantes repose actuellement sur un
+alignement positionnel plutôt que sur l'identification prévue par empreinte
+de contenu --- fragile en principe (une modification ultérieure du corpus
+source désynchroniserait silencieusement cet appariement), mais sans
+conséquence à ce jour puisque ce corpus source n'a pas changé depuis la
+génération des variantes. Corriger cet alignement à la source reste possible
+mais impliquerait de régénérer l'ensemble du corpus augmenté et, avec lui,
+le cache d'extraction partagé de toute la campagne --- un chantier hors de
+portée avant la soutenance au vu du gain attendu.
+Le diffing (\S\ref{subsec:diffing}) n'a par ailleurs été validé que sur un
+sous-corpus générique proxy (énergie \emph{vs.} sport) --- porter la même
+chaîne (génération d'hypothèses structurée, vérification sur documents tenus
+à l'écart) sur un diffing emails (\emph{ex.} urgents \emph{vs.} non urgents),
+l'objectif initial qui a motivé cette fonctionnalité, reste à faire. Une
+tentative d'ablation de volume à 200M tokens (borne haute exacte du seuil de
+convergence revendiqué par SAE Boost, contre 25M dans la configuration de
+référence) a été lancée mais n'a jamais abouti (job annulé lors d'un
+incident cluster) et n'a pas été relancée --- l'absence d'effet mesurable du
+volume jusqu'à 25M (Table~\ref{tab:synthese}) reste donc non extrapolée au
+-delà de cette borne.
+
+\textbf{Contraintes d'écosystème.} CamemBERTav2 et Qwen3-Embedding,
+identifiés en phase bibliographique comme candidats sérieux pour le
+Pipeline~2, n'ont pas été intégrés faute d'écosystème SAE préentraîné
+équivalent à GemmaScope --- une comparaison chiffrée directe reste à faire
+si l'équipe souhaite objectiver ce choix par rapport au score MTEB plutôt
+que par la seule disponibilité d'infrastructure.
 
 \subsection{Conclusion générale}
 
 Ce stage a permis de construire, diagnostiquer et valider empiriquement, sur
 un cas d'usage industriel réel (mails clients EDF), une architecture SAE à
-cœur gelé pour l'interprétabilité de grands modèles de langage. Le résultat
-le plus significatif --- l'effet dominant de l'échelle du modèle
-extracteur/juge sur le taux d'interprétabilité mesuré, loin devant tout
-hyperparamètre du SAE lui-même --- reformule la question de recherche
-initiale : au-delà du choix de l'architecture SAE, c'est la capacité du
-modèle de langage sous-jacent à raisonner sur un concept partagé qui
-conditionne la qualité de l'interprétation automatique obtenue. Cette
-conclusion, obtenue par une démarche d'ablation rigoureuse et statistiquement
-fondée, constitue une contribution méthodologique transférable à tout projet
-similaire d'interprétabilité appliquée.
+cœur gelé pour l'interprétabilité de grands modèles de langage. Deux
+résultats en constituent le socle solide, indépendant du protocole de
+jugement odd-one-out et de ses biais : le $\Delta$FVE valide l'architecture
+à cœur gelé face à un décodeur figé aléatoire par un facteur ${\sim}16$ à
+${\sim}1400$ selon le schéma d'initialisation (\S\ref{subsec:sanity-check-resultats}) ;
+et les codes du dictionnaire SAE battent ou égalent une baseline lexicale
+honnête (TF-IDF+LogReg) sur 5 tâches de détection d'intention, à $n=3300$
+(\S\ref{subsec:d1-intent}) --- la démonstration la plus directe que ce
+système produit une représentation utile, pas seulement nommable.
+
+Le résultat le plus significatif du stage n'est, en revanche, pas celui
+initialement anticipé. Ce rapport s'attendait à ce que l'échelle du modèle
+extracteur/juge domine tout effet architectural du SAE ; une fois le
+protocole de mesure intégralement corrigé (sélection stratifiée, juge
+indépendant, négatif exempt d'artefact de longueur) et appliqué à pleine
+puissance ($n=300$, correction Benjamini-Hochberg sur 15 comparaisons), cet
+effet d'échelle \textbf{ne réplique pas} (\S\ref{subsec:model-scale}) : la
+seule ablation qui reste significative concerne un hyperparamètre du SAE
+lui-même ($K_\text{extra}$, \S\ref{subsec:ablations-finales}), pas la taille
+du modèle. Le résultat qui \emph{tient}, et qui reformule effectivement la
+question de recherche initiale, est méthodologique plutôt qu'architectural :
+\textbf{le choix du protocole de mesure --- méthode de sélection des
+features, indépendance du juge, construction du document-contrôle, taille
+d'échantillon et correction pour comparaisons multiples --- s'est révélé un
+levier plus déterminant que n'importe quel choix d'architecture ou
+d'échelle testé dans ce stage}, déplaçant le taux d'interprétabilité mesuré
+de 20 points quand aucun hyperparamètre du SAE, correctement testé à
+puissance suffisante, n'en déplace plus de 11. Cette conclusion, obtenue par
+une démarche d'ablation rigoureuse appliquée jusqu'au protocole
+d'évaluation lui-même --- y compris quand elle contredit une hypothèse de
+travail annoncée plus tôt dans ce document --- constitue une contribution
+méthodologique transférable à tout projet similaire d'interprétabilité
+appliquée : la robustesse d'un résultat d'auto-interprétation par juge LLM
+ne se présume pas, elle se vérifie au même niveau d'exigence que le
+phénomène qu'elle prétend mesurer.
 
 \newpage
 % =============================================================================
@@ -1598,6 +1717,22 @@ similaire d'interprétabilité appliquée.
   Beckmann, P. \& Queloz, M.
   \textit{Mechanistic Indicators of Understanding in Large Language Models}.
   2026.
+
+\bibitem{bills2023language}
+  Bills, S. et al.
+  \textit{Language Models Can Explain Neurons in Language Models}.
+  OpenAI, 2023.
+
+\bibitem{karvonen2025saebench}
+  Karvonen, A. et al.
+  \textit{SAEBench: A Comprehensive Benchmark for Sparse Autoencoders in
+  Language Model Interpretability}.
+  arXiv:2503.09532, ICML 2025.
+
+\bibitem{formal2026splare}
+  Formal, T., Louis, M., Déjean, H., \& Clinchant, S.
+  \textit{Learning Retrieval Models with Sparse Autoencoders}.
+  arXiv:2603.13277, NAVER LABS Europe, 2026.
 
 \end{thebibliography}
 
