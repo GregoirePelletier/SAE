@@ -5941,16 +5941,206 @@ authentiquement courts). Quand un candidat porte un signal réel non nul
 (rare dans neg_pool mais possible, cf. B.5), l'argmax reste utilisé --- il
 est alors légitimement informatif.
 
-**Méthode statistique** : identique à §116, sur un nouveau rejugement
-(job 46152) contre le pré-correctif de §115
-(`.bak_pre_neg_context_fix`) et contre le rejugement B.6 de §116
-(`.bak_pre_random_position_fix`).
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`) sur
+le même jeu de 150 features, entre le pré-correctif de §115
+(`.bak_pre_neg_context_fix`) et le rejugement sous ce correctif (job 46152
+a échoué sur une `TypeError`, cf. commit `4dc198c` ; relancé job 46153,
+`p1_judge_labels_extended.json`) ; mesure descriptive répliquant le tableau
+de §115/§116 sur le fichier post-correctif.
 
 **n** : 150 features.
 
-**Résultat** : *en attente — job 46152 en cours au moment de la rédaction.*
-Tests `judge` (10/10) verts après ce correctif.
+**Résultat** (job 46153, COMPLETED, 1h32) :
 
-**Conclusion** : *à compléter une fois le job 46152 terminé.*
+| Statistique | §115 pré-correctif | §116 (B.6) | §117 (correctif profond) |
+|---|---|---|---|
+| `interp_score` | 127/150 = 84,7% | 127/150 = 84,7% | **94/150 = 62,7%** |
+| `neg_example` à $\le$ 3 mots | 150/150 (100%) | 148/150 (98,7%) | **0/150 (0%)** |
+| `neg_example` = `<<,>>` exactement | 60/150 (40%) | 59/150 (39%) | **0/150 (0%)** |
+| `neg_example` distincts sur 150 | 43 | 45 | **150 (tous distincts)** |
+| négatif plus court que LES 9 positifs | 147/150 (98%) | 145/150 (96,7%) | **25/150 (16,7%)** |
 
-**Limite connue** : *à compléter.*
+`two_proportion_test(127, 150, 94, 150)` (pré-correctif vs. correctif
+profond, et B.6 vs. correctif profond — identique, B.6 n'avait rien changé
+au fond) : diff = **−22,0 points**, z = 4,33, **p = 1,5×10⁻⁵**, h de Cohen =
+0,51 (effet moyen-large). 45/150 features changent de score
+(`interp_score`) entre le pré-correctif et le correctif profond.
+
+**Conclusion — le correctif profond engage réellement (0/150 négatifs
+courts, contre 148/150 sous B.6) et fait chuter le taux d'interprétabilité
+de référence de 84,7% à 62,7%, un écart massif et hautement significatif.**
+Contrairement à B.6 (§116), qui ne changeait presque rien parce que le
+garde-fou de longueur ne pouvait jamais être satisfait par un argmax
+dégénéré, ce correctif change la construction du négatif pour la quasi-
+totalité des features et fait donc un test réel de l'hypothèse de §115 :
+une fraction substantielle du taux de 84,7% mesurait la capacité du juge à
+repérer un négatif trivialement pauvre en contexte, pas un concept partagé
+absent. **84,7% cesse d'être défendable comme taux d'interprétabilité de
+référence de ce rapport** ; 62,7% (job 46153, correctif profond, même SAE
+entraîné que R0) en est la meilleure estimation actuelle sous ce protocole
+corrigé. Cet écart dépasse de loin le MDE de 9,6 points (n=150, puissance
+80%, `src/analysis/stats.py::minimum_detectable_effect`) et le plancher de
+bruit empirique de 8 points (V1 vs V2) : ce n'est pas dans le bruit
+méthodologique déjà caractérisé ailleurs dans ce dépôt.
+
+**Limite connue** : mesuré uniquement sur R0 (12B, layer 31, $K_\text{extra}=5$,
+25M tokens) à ce stade. Par construction (§115 : aucune mesure historique de
+ce dépôt n'a jamais découplé le contexte du négatif de l'argmax de la
+feature cible), le même écart est attendu, mais non mesuré, sur S1, S2, C1,
+C1b, V1, V2, A1-A6, L1, M1, layer 41, 50M/1B — toute comparaison relative
+entre ces runs (ablations d'hyperparamètres, sweep de layer, sweep d'échelle
+du modèle) reste valide en tant que comparaison relative sous un protocole
+partagé (mêmes deux biais des deux côtés de chaque ablation), mais leurs
+valeurs absolues de taux d'interprétabilité surestiment très probablement le
+taux réel dans la même proportion que R0. Le sweep d'échelle du modèle
+(1B/4B/12B/27B, `subsec:model-scale`) est le plus exposé : ses points
+extrêmes (1B à 80,0%, §95 ; 27B à 85,3%, §112) sont mesurés sous l'ancien
+protocole non corrigé et ne peuvent pas être comparés en valeur absolue au
+62,7% de R0 sous le protocole corrigé sans rejugement équivalent des autres
+échelles.
+
+## 118. Pipeline 2 : le biais de négatif de §115 ne s'y réplique pas
+
+**Question** : `build_phrase_examples_with_control` (Pipeline 2) partage-t-il
+le biais de construction du négatif identifié pour Pipeline 1 (§115) ? La
+construction est structurellement différente (pas d'argmax token-level ni de
+fenêtre de contexte -- la phrase candidate entière est affichée), donc le
+mécanisme précis ne s'y applique pas mécaniquement, mais un biais analogue
+(phrases à faible activation systématiquement plus courtes/génériques) restait
+non vérifié.
+
+**Écart à la configuration de référence** : aucun calcul GPU -- réplique
+`build_phrase_examples_with_control` en rechargeant les embeddings F2LLM-v2
+déjà en cache et le checkpoint `PhraseLevelSAE` déjà entraîné
+(`results_v10_emails_main/p2_sae_dim320_d8192_k16.pt`), sur les 150 features
+exactement jugées pour le chiffre 58,7% de §93 (`scripts/p2_negative_length_audit.py`,
+job 46190, `a100`, CPU-only, aucun modèle chargé).
+
+**Méthode statistique** : descriptive (longueurs moyennes/médianes, taux de
+négatifs plus courts que tous les positifs) + corrélation de Spearman entre
+longueur du négatif et `interp_score`.
+
+**n** : 150 features.
+
+**Résultat** (`results_v10_emails_main/cache/p2_negative_length_audit.json`) :
+
+| Statistique | Pipeline 1 pré-correctif (§115) | Pipeline 2 |
+|---|---|---|
+| longueur négatif (mots), moyenne | 1,4 | **16,8** |
+| longueur positifs (mots), moyenne | 32,9 | **15,6** |
+| négatif plus court que TOUS les positifs | 147/150 (98%) | **36/150 (24,0%)** |
+| négatif $\le$ 3 mots | 150/150 (100%) | **3/150 (2,0%)** |
+| négatifs distincts sur 150 | 43 | **149/150** |
+
+Spearman(longueur du négatif, `interp_score`) = **0,069 (p=0,40)** :
+aucune corrélation détectable entre la longueur du négatif affiché et le
+succès du juge.
+
+**Conclusion** : **le biais de §115 ne se réplique pas sur Pipeline 2.**
+Les négatifs et les positifs ont des distributions de longueur
+statistiquement indissociables (16,8 contre 15,6 mots en moyenne, contre un
+facteur ${\sim}23\times$ pour Pipeline 1 avant correctif), le taux de
+négatifs plus courts que tous les positifs est proche de ce qu'on
+attendrait par simple variabilité (24,0%, pas 98%), et la longueur du
+négatif ne prédit pas le succès du juge. Le chiffre 58,7% (§93) n'a donc pas
+besoin d'être requalifié pour ce motif -- l'hypothèse d'un artefact
+analogue, non testée au moment de la rédaction du rapport, est falsifiée.
+
+**Limite connue** : ne couvre que le biais de LONGUEUR spécifiquement ; ne
+teste pas d'autres formes possibles de "tell" (registre, ponctuation
+caractéristique d'un négatif générique/passe-partout) que le juge pourrait
+exploiter sans que la longueur seule les capture.
+
+## 119. Campagne de rejugement n=300 sous le correctif profond : R0 final et clôture complète (ablations, layers, échelle de modèle)
+
+**Question** : §117 mesure le correctif profond à $n=150$ sur R0 seul
+(84,7%→62,7%). Cette campagne rejuge R0 et ses ablations à $n=300$ (précision
+resserrée) sous ce même correctif, sur toutes les configurations de la
+"campagne finale" (§97-114) -- cache d'extraction et checkpoints réutilisés,
+seul le jugement est refait (jobs 46191-46207, `h100`/`h100-bis`, 17/17
+terminés).
+
+**Écart à la configuration de référence** : aucun -- rejugement à l'identique,
+$N\_FEATURES\_TO\_LABEL=300$ au lieu de 150.
+
+**Méthode statistique** : `two_proportion_test`/`proportion_with_ci`
+(`src/analysis/stats.py`).
+
+**n** : 300 par run (11/31 pour C1/C1b -- cf. limite structurelle du décodeur
+figé aléatoire, §97 et ci-dessous).
+
+**Résultat (campagne complète, 17/17 jobs terminés)** :
+
+| Run | $n$ | Résultat | $z$/$p$ vs R0 | $p_\text{BH}$ |
+|---|---|---|---|---|
+| **R0** (job 46191, layer 31) | 300 | **65,7% (197/300)**, IC95% [60,1% ; 70,8%] | référence | --- |
+| V1 seed123 (46193) | 300 | 63,7% (191/300) | $z=-0{,}51$, $p=0{,}608$ | 0,84 |
+| V2 seed7 (46195) | 300 | 64,0% (192/300) | $z=-0{,}43$, $p=0{,}669$ | 0,84 |
+| A1 $K_\text{extra}=32$ (46196) | 300 | **54,3% (163/300)** | $z=-2{,}83$, $p=0{,}0046$ | **0,044** |
+| A2 $D_\text{extra}=2048$ (46197) | 300 | 67,0% (201/300) | $z=0{,}35$, $p=0{,}730$ | 0,84 |
+| A3 core 65k (46199) | 300 | 59,0% (177/300) | $z=-1{,}69$, $p=0{,}092$ | 0,28 |
+| A4 batch\_extra=16384 (46200) | 300 | 65,0% (195/300) | $z=-0{,}17$, $p=0{,}864$ | 0,86 |
+| A6 epochs\_extra=40 (46201) | 300 | 64,7% (194/300) | $z=-0{,}26$, $p=0{,}797$ | 0,85 |
+| L1 layer24 (46202) | 300 | 60,3% (181/300) | $z=-1{,}35$, $p=0{,}176$ | 0,44 |
+| L41 layer41 (46204) | 300 | 61,7% (185/300) | $z=-1{,}02$, $p=0{,}308$ | 0,63 |
+| layer12 (46207) | 300 | 74,0% (222/300) | $z=2{,}22$, $p=0{,}026$ | 0,098 |
+| 1B (46206) | 300 | 63,3% (190/300) | $z=-0{,}60$, $p=0{,}550$ | 0,84 |
+| 4B (46194) | 300 | **54,7% (164/300)** | $z=-2{,}75$, $p=0{,}0059$ | **0,044** |
+| 27B (46203) | 300 | 55,7% (167/300) | $z=-2{,}51$, $p=0{,}012$ | 0,061 |
+| C1 sanity iso (46192) | 11 | 72,7% (8/11) | $z=0{,}49$, $p=0{,}627$ | 0,84 |
+| C1b sanity cov (46198) | 31 | 74,2% (23/31) | $z=0{,}96$, $p=0{,}338$ | 0,63 |
+| V50M\_1B volume 50M @1B (46205) | 300 | 55,3% (166/300) | vs R0 : n.s. ; **vs 1B (63,3%) : $z=-1{,}99$, $p=0{,}046$** | non incluse dans la famille BH ci-dessus |
+
+$p_\text{BH}$ : correction Benjamini-Hochberg (`fdr_bh`) sur les 15
+comparaisons contre R0 (hors V50M\_1B, comparé à 1B, pas à R0). **Seuls A1
+et 4B survivent** ($p_\text{BH}<0{,}05$) ; 27B et layer12, significatifs en
+brut, ne survivent pas à la correction.
+
+R0 à $n=300$ (65,7%) contre l'estimation à $n=150$ de §117 (62,7%) :
+$z=-0{,}63$, $p=0{,}53$ -- statistiquement indiscernables, comme attendu
+d'un même run rejugé à une taille d'échantillon différente. **65,7%
+(197/300) devient la valeur de référence définitive de ce rapport.**
+
+**Résultat (sweep d'échelle du modèle, 1B/4B/12B/27B)** : Cochran-Armitage
+sur les 4 points ordonnés (`cochran_armitage_trend_test`) : $z=-0{,}95$,
+$p=0{,}34$ -- **aucune tendance monotone détectable.** Séquence observée :
+63,3%→54,7%→65,7%→55,7%, un motif non ordonné (1B$\approx$R0 > 4B$\approx$27B),
+pas la progression 80,0%→81,3%→84,7%→85,3% mesurée sous l'ancien protocole
+(négatif biaisé, §113 zone). **L'effet d'échelle du modèle, présenté dans
+les versions précédentes de ce rapport comme le résultat central du stage,
+ne réplique pas sous protocole intégralement corrigé.** Seul un
+hyperparamètre du SAE ($K_\text{extra}$, A1) reste significatif après
+correction BH -- pas l'échelle du modèle extracteur/juge.
+
+**Conclusion (C1/C1b)** : sous l'ancien protocole (négatif biaisé), le
+décodeur figé aléatoire était mesuré significativement en dessous du SAE
+entraîné sur le taux d'interprétabilité seul (29,3%, $n=150$ magnitude+
+auto-jugement, $z=2{,}86$ vs 45,3%). Rejugées sous le correctif de négatif
+et sous méthodologie stratifiée+Qwen, les features vivantes des deux sanity
+checks (72,7% $n=11$ iso ; 74,2% $n=31$ cov) sont statistiquement
+indiscernables de R0, et numériquement légèrement au-dessus. **Le taux
+d'interprétabilité seul ne distingue plus le décodeur entraîné du décodeur
+aléatoire à la puissance disponible sur ces échantillons (11/31 features)**
+-- cohérent avec Korznikov et al. (les métriques proxy usuelles, dont
+l'auto-interprétation, peuvent être trompées par un décodeur non entraîné).
+Le $\Delta$FVE ($+0{,}1393$ R0 contre $+0{,}0001$/$+0{,}0086$) reste, lui,
+inchangé par ce correctif (métrique continue, indépendante du juge et de la
+construction du négatif) et demeure le test de falsification net de ce
+sanity check.
+
+**Limite connue** : $n=11$/$31$ reste structurellement faible (contrainte du
+nombre de directions vivantes d'un décodeur non entraîné, pas un choix de
+protocole) -- l'absence de significativité ne prouve pas l'absence d'écart,
+seulement qu'il n'est pas détectable à cette puissance ; le $\Delta$FVE reste
+la mesure porteuse de cette conclusion. Le sweep d'échelle (1B/4B/12B/27B)
+n'a qu'une seule graine par point -- le motif non monotone observé
+(1B$\approx$R0 > 4B$\approx$27B) n'a pas de mécanisme identifié ; une
+réplication à seconde graine par échelle trancherait si ce motif est stable
+ou un artefact de bruit sur un tirage unique. V50M\_1B (volume 50M à
+l'échelle 1B) n'a été comparé qu'à 1B (25M, même échelle) et à R0 (12B,
+échelle différente) -- pas de bras 50M à l'échelle 12B pour isoler
+pleinement l'effet volume de l'effet échelle à ce point de la courbe.
+M1 (magnitude+juge auto-référent, §110) n'a délibérément pas été inclus dans
+cette campagne (comparaison intentionnellement non corrigée, cf. politique
+juge Qwen-partout). Campagne complète (17/17 jobs), aucune section restante
+à compléter pour ce rejugement.
