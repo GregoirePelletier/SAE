@@ -37,7 +37,7 @@ export LAYER=17
 export SAE_ID="layer_17_width_16k_l0_medium"
 export PIPELINES=p1
 
-export N_FEATURES_TO_LABEL=150
+export N_FEATURES_TO_LABEL=300
 export EPOCHS_EXTRA=10
 export D_EXTRA=1024
 export K_EXTRA=5
