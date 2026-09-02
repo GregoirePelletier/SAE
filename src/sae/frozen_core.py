@@ -187,12 +187,30 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
     classification) distinguent réellement un apprentissage de features
     significatif d'un simple ajustement de l'encodeur à des directions
     arbitraires. Volontairement PAS de sous-classe de SAEBoostResidualSAE : ce dernier
-    initialise le décodeur par PCA sur le résidu (des directions déjà
-    informées par les données), ce qui affaiblirait le test — la baseline de
-    référence doit partir d'un décodeur ALÉATOIRE, pas data-informed."""
+    initialise le décodeur par PCA sur le résidu (des directions ALIGNÉES sur
+    les axes de plus forte variance, optimales pour la reconstruction), ce qui
+    affaiblirait le test — la baseline de référence doit partir d'un décodeur
+    ALÉATOIRE, pas data-informed.
 
-    def __init__(self, core_sae, d_extra: int = 1024, k_extra: int = 32, domain_inputs=None):
+    `cov_init` (défaut False -> schéma `iso` du papier : Gaussien isotrope
+    normalisé, uniforme sur la sphère) : si True, reproduit leur schéma `cov`
+    (Annexe E) — Gaussien de covariance égale à celle des activations réelles,
+    puis normalisé. `cov` n'est PAS data-informed au sens de la PCA : les
+    directions tirées restent aléatoires (pas alignées sur les axes propres),
+    seule leur distribution d'ensemble épouse la forme (anisotropie) du nuage
+    de points réel — Korznikov et al. l'utilisent comme baseline Frozen
+    Decoder PRINCIPALE dans tout leur papier (Fig. 1, Tables 2-4) car elle est
+    empiriquement PLUS DIFFICILE À BATTRE que `iso` (ex. Explained Variance
+    0,570 contre 0,430 sur BatchTopK/Gemma-2-2B layer 12) — un décodeur `iso`
+    sous-estime donc la sévérité réelle de leur sanity check."""
+
+    def __init__(self, core_sae, d_extra: int = 1024, k_extra: int = 32,
+                 domain_inputs=None, cov_init: bool = False):
         super().__init__(core_sae, d_extra, k_extra)
+        if cov_init:
+            if domain_inputs is None:
+                raise ValueError("cov_init=True requiert domain_inputs pour estimer la covariance réelle.")
+            self._reinit_decoder_cov(domain_inputs)
         self.W_dec_extra.requires_grad_(False)
         # Calibre uniquement encoder_input_scale (un scalaire, pas des
         # directions) sur la médiane des normes de x -- reste cohérent avec le
@@ -203,6 +221,26 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
         # reste entraîné normalement dans cette baseline).
         if domain_inputs is not None:
             self._calibrate_encoder_scale(domain_inputs)
+
+    @torch.no_grad()
+    def _reinit_decoder_cov(self, domain_inputs: torch.Tensor) -> None:
+        """Remplace l'init `iso` du parent par le schéma `cov` de Korznikov
+        et al. (Annexe E) : tire `d_extra` vecteurs d'une Gaussienne N(0, Σ),
+        Σ = covariance empirique de `domain_inputs` (x, PAS le résidu — même
+        distribution que celle lue par l'encodeur), puis normalise chaque
+        vecteur à norme 1 (seule la DIRECTION du décodeur compte, `input_scale`
+        porte l'échelle séparément). Régularisation ridge sur Σ : l'estimateur
+        empirique sur un échantillon de 8192 vecteurs en dimension d_in peut
+        être mal conditionné, la décomposition de Cholesky diverge sinon."""
+        sample = domain_inputs[:min(8192, len(domain_inputs))].float()
+        centered = sample - sample.mean(dim=0)
+        cov = (centered.T @ centered) / (len(centered) - 1)
+        cov = cov + 1e-4 * cov.diagonal().mean() * torch.eye(cov.shape[0], device=cov.device)
+        L = torch.linalg.cholesky(cov)
+        z = torch.randn(self.d_extra, self.d_in, device=cov.device)
+        W_cov = z @ L.T
+        self.W_dec_extra.data.copy_(F.normalize(W_cov, dim=1))
+        self.W_enc_extra.data.copy_(self.W_dec_extra.data.T.clone())
 
     @torch.no_grad()
     def normalize_decoder(self):

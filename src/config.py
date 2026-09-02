@@ -104,6 +104,11 @@ EXTRACTION_CHECKPOINT_INTERVAL = int(os.environ.get("EXTRACTION_CHECKPOINT_INTER
 # métriques (juge odd-one-out, sondes de classification) distinguent un apprentissage de
 # features significatif d'un simple ajustement de l'encodeur à des directions arbitraires.
 SANITY_CHECK_FROZEN_DECODER = os.environ.get("SANITY_CHECK_FROZEN_DECODER", "0").strip() in ("1", "true", "True")
+# "iso" (défaut, Gaussien isotrope normalisé -- uniforme sur la sphère) ou "cov"
+# (Gaussien de covariance réelle, puis normalisé -- schéma PRINCIPAL de Korznikov
+# et al., utilisé pour tous leurs résultats Frozen Decoder publiés car plus
+# difficile à battre que iso, cf. frozen_core.py::FrozenDecoderExtendedSAE).
+SANITY_CHECK_FROZEN_DECODER_INIT = os.environ.get("SANITY_CHECK_FROZEN_DECODER_INIT", "iso").strip().lower()
 N_FEATURES_TO_LABEL  = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
 
 # ─── Modèle Gemma-3 / GemmaScope ───
