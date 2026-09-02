@@ -18,14 +18,23 @@ from __future__ import annotations
 import glob
 import json
 import os
+import sys
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.analysis.stats import proportion_with_ci, two_proportion_test
-
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# `streamlit run src/visualization/dashboard.py` exécute ce fichier comme script
+# top-level -- Streamlit met le dossier du script (src/visualization/) sur
+# sys.path, PAS la racine du dépôt, donc `import src.*` échoue
+# (ModuleNotFoundError: No module named 'src') sauf sous pytest, qui a
+# `pythonpath = ["."]` dans pyproject.toml. Ajouté ici pour marcher dans les
+# deux cas.
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from src.analysis.stats import proportion_with_ci, two_proportion_test  # noqa: E402
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +75,12 @@ def _judge_label_sources(run_dir: str, prefix: str) -> dict[str, dict]:
     plat d'origine sans dire de quel juge il vient -- silencieusement
     trompeur maintenant que Gemma et Qwen coexistent dans le même SAVE_DIR."""
     cache_dir = os.path.join(REPO_ROOT, run_dir, "cache")
-    out: dict[str, dict] = {}
+    # (clé, dict de features, contaminé ?) -- contaminé = négatif odd-one-out trivialement
+    # court (§115/§117) ; trié en fin de fonction pour que le sélecteur ne mette JAMAIS un
+    # taux non comparable au chiffre de référence du rapport en premier (résultat par
+    # défaut) sans pour autant le faire disparaître (R6/CLAUDE.md : jamais choisir
+    # silencieusement entre deux caches coexistants).
+    candidates: list[tuple[str, dict, bool]] = []
 
     flat_name = f"{prefix}_judge_labels_extended.json" if prefix == "p1" else "p2_feature_labels.json"
     flat_path = os.path.join(cache_dir, flat_name)
@@ -75,26 +89,44 @@ def _judge_label_sources(run_dir: str, prefix: str) -> dict[str, dict]:
         meta = load_json(flat_path + ".meta.json")
         judge = _judge_name(meta["judge_model_id"]) if meta else "non enregistré (cache antérieur au sidecar de métadonnées)"
         method = meta.get("feature_selection_method") if meta else "inconnue"
-        out[f"{flat_name} — juge : {judge}, sélection : {method}"] = flat
+        candidates.append((f"{flat_name} — juge : {judge}, sélection : {method}", flat, False))
 
     if prefix == "p1":
         for path in sorted(glob.glob(os.path.join(cache_dir, "p1_judge_model_separation_*.json"))):
             data = load_json(path)
             if data and "alt_per_feature" in data:
                 judge = _judge_name(data.get("summary", {}).get("judge_alternative", "?"))
-                out[f"{os.path.basename(path)} — juge : {judge} (comparaison, mêmes exemples que la référence)"] = data["alt_per_feature"]
+                candidates.append((f"{os.path.basename(path)} — juge : {judge} (comparaison, mêmes exemples que la référence)",
+                                    data["alt_per_feature"], False))
 
         for path in sorted(glob.glob(os.path.join(cache_dir, "b1_stratified_mixte_qwen_rejudge_*.json"))):
             data = load_json(path)
             if data and "alt_per_feature" in data:
                 judge = _judge_name(data.get("summary", {}).get("judge_alternative", "?"))
-                out[f"{os.path.basename(path)} — juge : {judge} (arme mixte stratifiée, N4)"] = data["alt_per_feature"]
+                candidates.append((f"{os.path.basename(path)} — juge : {judge} (arme mixte stratifiée, N4)",
+                                    data["alt_per_feature"], False))
 
         b2_path = os.path.join(cache_dir, "b2_stratified_selection_rejudge.json")
         data = load_json(b2_path)
         if data and "results" in data:
-            out["b2_stratified_selection_rejudge.json — juge : gemma-3-12b-it (isole la méthode de sélection, pas le juge — §79)"] = data["results"]
+            candidates.append(("b2_stratified_selection_rejudge.json — juge : gemma-3-12b-it (isole la méthode de sélection, pas le juge — §79)",
+                                data["results"], False))
 
+    # Marque contaminé toute source dont le négatif odd-one-out est majoritairement
+    # trivial (>30% de négatifs ≤3 mots) -- ces caches prédatent le correctif profond
+    # (§115-117) et donnent des taux nettement plus hauts que le chiffre de référence du
+    # rapport (65,7%, R0/§119), non comparables tels quels.
+    tagged: list[tuple[str, dict, bool]] = []
+    for label, data, _ in candidates:
+        diag = _negative_bias_diagnostic(data)
+        contaminated = diag is not None and diag["frac_le_3_words"] > 0.3
+        if contaminated:
+            label = f"{label} — ⚠ négatif non corrigé (pré-§115/117), taux non comparable au rapport"
+        tagged.append((label, data, contaminated))
+
+    out: dict[str, dict] = {}
+    for label, data, _ in sorted(tagged, key=lambda t: t[2]):  # False (propre) avant True (contaminé)
+        out[label] = data
     return out
 
 
@@ -141,6 +173,17 @@ def _negative_bias_caption(label_map: dict) -> None:
 
 def page_overview(run_dir: str) -> None:
     st.header("Vue d'ensemble du run")
+
+    ref = _load_flat_judge_rate(_REFERENCE_RUN)
+    if ref is not None:
+        st.info(
+            f"**Chiffre de référence du rapport de stage : {100*ref['rate']:.1f}% "
+            f"({ref['succ']}/{ref['n']})**, run R0 ({_REFERENCE_RUN}) -- sélection "
+            f"stratifiée, juge {ref['judge']}, négatif corrigé. Indépendant du run "
+            "choisi ci-contre : les métriques ci-dessous reflètent le run sélectionné, "
+            "pas nécessairement R0."
+        )
+
     results = load_json(os.path.join(REPO_ROOT, run_dir, "results.json"))
     if not results:
         st.warning("Pas de results.json dans ce run (run partiel ou script encore en cours).")
@@ -765,19 +808,25 @@ def page_clustering_correlations(run_dir: str) -> None:
         st.info("npmi_verified.json absent de ce run (lancer scripts/npmi_verified_test.py).")
 
 
+# Run de référence du rapport de stage (R0 -- RESULTS_TESTS.md §97/§119) : 12B, layer 31,
+# K_extra=5, D_extra=1024, 25M tokens, sélection stratifiée, juge Qwen3.8-27B, négatif
+# corrigé (§115-117), n=300. C'est le SEUL chiffre à citer comme taux d'interprétabilité
+# final du dépôt -- 65,7% (197/300) au moment de la campagne de rejugement §119.
+_REFERENCE_RUN = "results_v27_ablation_classic_setup_k5_25m_layer31"
+
 # Balayages échelle/layer -- méthodologie finale (sélection stratifiée + juge Qwen3.8-27B +
 # déduplication par mail parent), seuls points comparables entre eux à variable unique isolée.
 # (nom de répertoire, taille en Md de paramètres ou numéro de layer pour l'axe des graphes)
 _MODEL_SCALE_SWEEP = [
     ("1B", "results_v29_ablation_classic_setup_k5_25m_model_scale_1b", 1),
     ("4B", "results_v30_ablation_classic_setup_k5_25m_model_scale_4b", 4),
-    ("12B (référence)", "results_v27_ablation_classic_setup_k5_25m_layer31", 12),
+    ("12B (référence)", _REFERENCE_RUN, 12),
     ("27B", "results_v31_ablation_classic_setup_k5_25m_model_scale_27b", 27),
 ]
 _LAYER_SWEEP = [
     ("Layer 12", "results_v32_ablation_classic_setup_k5_25m_layer12", 12),
     ("Layer 24", "results_v34_ablation_classic_setup_k5_25m_layer24", 24),
-    ("Layer 31 (référence)", "results_v27_ablation_classic_setup_k5_25m_layer31", 31),
+    ("Layer 31 (référence)", _REFERENCE_RUN, 31),
     ("Layer 41", "results_v33_ablation_classic_setup_k5_25m_layer41", 41),
 ]
 
@@ -839,7 +888,7 @@ def page_sweeps() -> None:
         "répertoires de la campagne de mesure finale)."
     )
 
-    ref = _load_flat_judge_rate("results_v27_ablation_classic_setup_k5_25m_layer31")
+    ref = _load_flat_judge_rate(_REFERENCE_RUN)
     if ref is not None and ref["neg_bias_frac"] is not None and ref["neg_bias_frac"] > 0.3:
         st.error(
             "⚠️ Le négatif odd-one-out de la configuration de référence (12B/layer 31) est encore "
@@ -895,7 +944,7 @@ def page_sweeps() -> None:
 
     st.divider()
     st.subheader("Plancher de bruit run-à-run (même configuration, seed différente)")
-    seed_runs = [("Référence (seed 42)", "results_v27_ablation_classic_setup_k5_25m_layer31"),
+    seed_runs = [("Référence (seed 42)", _REFERENCE_RUN),
                  ("V1 (seed 123)", "results_v38_ablation_v1_seed123_classic_setup_k5_25m_layer31"),
                  ("V2 (seed 7)", "results_v39_ablation_v2_seed7_classic_setup_k5_25m_layer31")]
     seed_rows = []
@@ -917,7 +966,7 @@ def page_sweeps() -> None:
 
     st.divider()
     st.subheader("Sanity checks — décodeur figé aléatoire (Korznikov et al. 2026)")
-    sanity_runs = [("R0 — décodeur entraîné", "results_v27_ablation_classic_setup_k5_25m_layer31"),
+    sanity_runs = [("R0 — décodeur entraîné", _REFERENCE_RUN),
                    ("C1b — décodeur figé, init cov", "results_v42_ablation_c1b_sanity_frozen_decoder_cov_init"),
                    ("C1 — décodeur figé, init iso", "results_v37_ablation_c1_sanity_frozen_decoder_stratified_qwen")]
     sanity_rows = []
@@ -945,7 +994,7 @@ def page_sweeps() -> None:
 
     st.divider()
     st.subheader("Pipeline 1 vs Pipeline 2 — taux d'interprétabilité, même méthodologie")
-    p1_ref = _load_flat_judge_rate("results_v27_ablation_classic_setup_k5_25m_layer31")
+    p1_ref = _load_flat_judge_rate(_REFERENCE_RUN)
     p2_sources = _judge_label_sources("results_v10_emails_main", "p2")
     cols = st.columns(2)
     with cols[0]:

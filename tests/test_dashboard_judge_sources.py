@@ -103,3 +103,32 @@ def test_no_cache_files_returns_empty(tmp_path):
     (run_dir / "cache").mkdir(parents=True)
     assert _judge_label_sources(str(run_dir), "p1") == {}
     assert _judge_label_sources(str(run_dir), "p2") == {}
+
+
+def test_contaminated_negative_source_tagged_and_sorted_last(tmp_path):
+    """RESULTS_TESTS.md §115/§117 : un cache dont le négatif odd-one-out est
+    majoritairement trivial (≤3 mots) prédate le correctif profond et donne un taux non
+    comparable au chiffre de référence du rapport (65,7%, R0/§119) -- il ne doit ni
+    apparaître en premier (sélection par défaut du dashboard) ni se présenter comme un
+    taux ordinaire dans le sélecteur."""
+    run_dir = tmp_path / "results_test_run"
+    cache_dir = run_dir / "cache"
+    cache_dir.mkdir(parents=True)
+    # Cache plat propre (négatifs riches en contexte, post-correctif).
+    _write(cache_dir, "p1_judge_labels_extended.json", {
+        str(i): {"interp_score": 1, "neg_example": "un négatif avec largement assez de mots de contexte gauche pour ne pas être trivial"}
+        for i in range(10)
+    })
+    # Source alternative contaminée (négatifs à 1-2 mots, comme R0 avant §117).
+    _write(cache_dir, "p1_judge_model_separation_Qwen3.8-27B_seed42.json", {
+        "summary": {"judge_alternative": "Qwen3.8-27B"},
+        "alt_per_feature": {str(i): {"interp_score": 1, "neg_example": "Bonjour,"} for i in range(10)},
+    })
+
+    sources = _judge_label_sources(str(run_dir), "p1")
+    keys = list(sources.keys())
+    assert len(keys) == 2
+    assert "p1_judge_labels_extended.json" in keys[0]
+    assert "⚠" not in keys[0]
+    assert "p1_judge_model_separation" in keys[1]
+    assert "⚠ négatif non corrigé" in keys[1]
