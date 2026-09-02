@@ -881,10 +881,12 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
   z-scores tous négatifs et non dégénérés, accuracy variable mais cohérente
   qualitativement avec le papier. Rien à refaire.
 - **Diffing structuré (App D.2, job 45750)** et **Retrieval RRF/rerank/RBO
-  (job 45745)** : toujours en file (PENDING) au moment de cet audit —
-  **non vérifiables tant qu'ils n'ont pas tourné**, priorité de vérification
-  dès qu'ils terminent (voir liste de jobs ci-dessous, ce sont des
-  vérifications, pas des lancements).
+  (job 45745)** : terminés et vérifiés (`RESULTS_TESTS.md` §91 et §92) —
+  verification_rate=80% (diffing, contre 40% pour la sélection non
+  structurée du run archivé, §84) ; RRF+rerank domine uniformément TF-IDF et
+  Latent Terms seuls (§92). Les deux résultats sont désormais dans
+  `RAPPORT_STAGE_UNIVERSITE.tex` (diffing/clustering en nouvelles
+  sous-sections Résultats ; retrieval déjà présent).
 - **App I (F1 lecteur 12B/27B)** : calcul prêt, aucune orchestration écrite,
   aucun run — nécessite une extraction fraîche par-document sur un domaine
   entier pour 12B ET 27B (les fragments légers gardés par le nettoyage
@@ -968,23 +970,24 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
 
 ### 3. Verdict et liste de jobs
 
-**Mise à jour post-campagne : 1, 2a, 3 (partiel) faits — résultats écrits
-`RESULTS_TESTS.md` §89-93.** Un vrai bug de planification attrapé au passage
+**Mise à jour post-campagne : 1, 2a, 3, 6 faits — résultats écrits
+`RESULTS_TESTS.md` §89-96.** Un vrai bug de planification attrapé au passage
 (pas anticipé dans la liste ci-dessous à l'origine) : le job 1B (45724,
 `a100`) a tourné 2h23 d'extraction complète puis OOM au chargement du juge
 — `a100` (39,49 Go) n'a plus la marge pour Qwen3.8-27B bf16 (~52 Go)
 depuis que c'est devenu le défaut. Script corrigé (`--partition=h100`),
 resoumis (45874, réutilise l'extraction déjà en cache). Documenté en
-détail : `docs/ops.md`. `layer12` (45803→45725 nettoyé, cf. plus haut)
-tourne toujours au moment de cette mise à jour.
+détail : `docs/ops.md`. `layer12` (45803→45725 nettoyé, cf. plus haut) a
+terminé : §96, 88,7% (133/150), non significatif contre le 82,0% de layer 31
+(même famille, encore Gemma auto-référent).
 
 | # | Job | Statut | Résultat |
 |---|---|---|---|
 | 1 | 45735 (b1 mixte Qwen)/45745 (retrieval)/45750 (diffing D.2) | ✅ **fait** | §89 (94,7% vs 89,3%, p=0,057) / §92 (RRF+rerank domine, RBO=0,051) / §91 (verification_rate=80%) |
 | 2a | Rejugement Qwen layer41 | ✅ **fait** | §90 (78,7% vs 82,7%, p=0,429, non significatif) |
 | 2b | Relance complète layer31/4B/27B sous Qwen | **pas fait** | coût réévalué ~1-2h GPU/palier, pas prioritaire tant que §89/§90 suffisent à établir le pattern (écart Qwen/Gemma non significatif sous stratifié) |
-| 3 | 45874 (1B, resoumis h100)/45803 (layer12) | ✅ **1B fait** ; ⏳ **layer12 en cours** (~5h, surveillé) | §95 (1B=80,0% sous méthodologie pleinement corrigée, contre 12,0% historique — effet d'échelle réel mais deux fois plus modeste que rapporté) ; layer12 à écrire dès la fin |
-| 4 | Vérification rédactionnelle 45,3%/§83 | ✅ **fait (partiel)** | `report/FRONT_MATTER.md`, `01_etat_de_lart.md`, `03_experiences_et_resultats.md`, `04_limites_et_perspectives.md`, `06_conclusion.md`, `RAPPORT_STAGE_UNIVERSITE.tex` mis à jour avec 94,7%/94,0% comme référence — **§95 (effet d'échelle atténué) pas encore propagé**, à faire |
+| 3 | 45874 (1B, resoumis h100)/45803 (layer12) | ✅ **fait** | §95 (1B=80,0% sous méthodologie pleinement corrigée, contre 82,0% pour le 12B de la même famille, encore Gemma — comparaison à finir de nettoyer, cf. #2b) ; §96 (layer12=88,7%, non significatif contre layer31) |
+| 4 | Vérification rédactionnelle 45,3%/§83 | ✅ **fait pour `RAPPORT_STAGE_UNIVERSITE.tex`** | 94,0\% (§94, stratifié+Qwen+dédoublonnage) comme référence unique du rapport ; §95/§96 (effet d'échelle atténué, layer sweep) propagés ; diffing (§84/§91) et clustering (§86) ajoutés comme nouvelles sous-sections Résultats, jusqu'ici absentes. **Les fichiers `.md` sources (`FRONT_MATTER.md`, `01_etat_de_lart.md`, `03_experiences_et_resultats.md`, `04_limites_et_perspectives.md`, `06_conclusion.md`) n'ont PAS reçu cette passe** — toujours au chiffre 94,7\%/45,3\% et à l'ancienne narration ("correctifs" chronologiques), désormais **en avance/retard l'un sur l'autre avec le `.tex`** ; à re-synchroniser ou à traiter comme obsolètes (`report/dist/RAPPORT_DE_STAGE.md` n'est de toute façon qu'un artefact de travail, pas le livrable, cf. `report/README.md`) |
 | 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen | ✅ **fait pour les .md et le .tex université** | reste `RAPPORT_STAGE_ENTREPRISE.tex` (explicitement reporté à après l'université, décision utilisateur) |
 | 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (bin_info natif) | ✅ **fait** | §94 (N3 résolu : 94,0% brut, 93,85% repondéré, écart négligeable) |
 | 7 | App I | **pas fait** | toujours aucune mention dans `report/*.md` — confirmé non prioritaire |
@@ -1004,18 +1007,30 @@ Dashboard mis à jour pour afficher explicitement quelle source/juge produit
 chaque taux affiché (avant : toujours le cache Gemma historique, sans le
 dire).
 
-**Reste avant remise finale, priorité haute — §95 pas encore propagé au
-rapport** : le sweep 1B sous méthodologie pleinement corrigée (stratifié +
-Qwen + déduplication, tout en un seul passage) donne 80,0% contre 12,0%
-historique — l'écart 1B/12B (le "résultat central du stage" dans les deux
-rapports) passe de 33,3 points ($h=-0{,}77$, effet large) à 14,0 points
-($h=-0{,}43$, effet moyen) une fois la méthode corrigée. L'effet reste réel
-et significatif ($p=0{,}0003$), mais **le chiffre qui l'illustre dans
-`FRONT_MATTER.md`/`03_experiences_et_resultats.md`/`RAPPORT_STAGE_
-UNIVERSITE.tex` (12,0\%/28,0\%/45,3\%, "effet dose-réponse... p≈1,6×10⁻¹⁰")
-n'est plus la version la plus défendable du résultat central** — à
-requalifier avant remise, pas seulement documenter dans `RESULTS_TESTS.md`.
-4B et 27B restent à remesurer sous méthodologie complète (#2b) pour tracer
-la courbe corrigée en entier ; en l'absence de ce rerun, la nuance
-"significatif mais deux fois plus modeste" peut déjà être ajoutée sans
-attendre. Écrire la section layer 12 dès que 45803 termine (surveillé).
+**§95/§96 propagés dans `RAPPORT_STAGE_UNIVERSITE.tex` (fait)** : le sweep
+1B sous méthodologie pleinement corrigée (stratifié + Qwen + déduplication)
+donne 80,0% ; la table d'échelle du rapport cite désormais ce chiffre contre
+le 12B **de la même famille de run** (layer 31, $K_\text{extra}=5$, encore
+jugé Gemma auto-référent : 82,0%, §82) plutôt que contre le 94,0% de §94
+(famille `results_v10_emails_main`, layer 24, $K_\text{extra}=32$) —
+**un confond de famille de run (layer + $K_\text{extra}$, pas seulement la
+taille du modèle) avait été introduit lors d'une première propagation, puis
+corrigé dans la même session** ; ne pas réintroduire cette comparaison
+croisée en réutilisant le 94,0% comme point "12B" d'un tableau d'échelle
+layer-scalé. layer 12 (§96) écrit également : ni layer 12 ni layer 41 ne se
+distinguent de layer 31 une fois la sélection stratifiée appliquée (cf.
+CLAUDE.md, point 5 des diagnostics, mis à jour en conséquence).
+
+**Reste avant remise finale** :
+- **#2b (4B/27B/12B-layer31 rejugés Qwen)** : toujours pas fait — sans ce
+  rerun, le tableau d'échelle du rapport mélange nécessairement un point
+  Qwen (1B) et trois points Gemma auto-référent (4B/12B/27B), déjà signalé
+  explicitement dans le rapport et en \og{}points non résolus\fg{} plutôt que
+  masqué.
+- **Fichiers `.md` sources non resynchronisés** avec les corrections
+  ci-dessus ni avec les ajouts diffing/clustering (cf. item #4 du tableau) —
+  décision à prendre : les mettre à jour pour qu'ils reflètent le `.tex`, ou
+  les déclarer legacy/gelés puisque `report/README.md` désigne déjà les deux
+  `.tex` comme les seuls livrables.
+- **`RAPPORT_STAGE_ENTREPRISE.tex`** : toujours pas repassé (décision
+  utilisateur de le traiter après la version université, item #5).
