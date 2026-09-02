@@ -9,8 +9,10 @@ bout en bout sans erreur, mais produisait un taux de succès faible au test
 d'auto-interprétation odd-one-out des features d'extension (celles qui ne sont pas
 couvertes par Neuronpedia et dépendent donc entièrement du juge LLM local pour être
 labellisées). Sur le dernier run complet disponible avant cette investigation
-(`results_v9_full`, Gemma-3-12B-it, 10 features jugées) : seules 2 features sur 10
-(20%) passaient le test.
+(`results_v9_full`, Gemma-3-12B-it), jugé sur un échantillon initial d'une
+dizaine de features seulement — bien trop restreint pour être statistiquement
+exploitable, mais suffisant pour alerter — le test échouait dans la grande
+majorité des cas.
 
 Question posée : **ce taux faible est-il dû à un budget d'entraînement (nombre de
 tokens) insuffisant pour l'extension SAE, ou à un autre facteur ?**
@@ -218,10 +220,11 @@ Sparse Autoencoders*), le taux mesuré sur le même SAE de référence passe de
 45,3% (68/150) à 89,3% (134/150), écart hautement significatif (z=-8,12,
 p=4,5×10⁻¹⁶) — `FEATURE_SELECTION_METHOD=stratified` est le défaut du dépôt
 depuis. Le juge auto-référent a ensuite été mis en cause (biais
-d'auto-préférence potentiel) : rejugé par Qwen3.8-27B (famille différente) sur
-les mêmes 150 features stratifiées, le taux monte à **94,7% (142/150)**, écart
-non significatif à cette échelle (p=0,057, `RESULTS_TESTS.md` §89) — **94,7%
-(stratifié, Qwen) est le taux de référence actuel du projet.** Les
+d'auto-préférence potentiel) : rejugé par Qwen3.8-27B (famille différente),
+avec déduplication des exemples par mail d'origine, sur les mêmes features
+stratifiées, le taux monte à **94,0% (141/150)**
+(`RESULTS_TESTS.md` §94) — **94,0% (stratifié, Qwen, dédoublonné) est le taux
+de référence actuel du projet.** Les
 comparaisons *au sein* d'une même section (les deux bras d'une ablation,
 mesurés sous la même méthode et le même juge) restent des conclusions
 valides ; les pourcentages absolus cités (45,x%/2x,x%) ne sont plus
@@ -572,7 +575,7 @@ auto-référent ; pas de déduplication des exemples positifs par mail d'origine
 rapport. Premier chiffre sous protocole comparable à la référence P1 actuelle
 (sélection stratifiée, juge Qwen3.8-27B) : **58,7% (88/150, IC95%
 [50,7% ; 66,3%])** — sensiblement plus bas que la référence Pipeline 1
-(94,7%), alors que la reconstruction Pipeline 2 elle-même est bonne (NMSE
+(94,0%), alors que la reconstruction Pipeline 2 elle-même est bonne (NMSE
 0,0671, ρ_SAE 0,9614) et non dégradée. Les trois changements de protocole ne
 sont pas isolés dans ce run, donc la baisse par rapport au 74,7% historique
 ne peut pas être attribuée à un facteur précis (`RESULTS_TESTS.md` §93).
@@ -671,24 +674,31 @@ plus. Doubler la taille du modèle extracteur/juge au-delà de 12B n'apporte
 donc plus de gain mesurable à cette échelle de mesure (n=150). Détail
 complet : `RESULTS_TESTS.md` §82.
 
-**L'écart 1B/12B lui-même, requalifié sous méthodologie pleinement corrigée**
-— le point 1B du sweep, jamais mesuré sous sélection stratifiée jusqu'ici,
-aboutit sous le code actuel (stratifié + juge Qwen + déduplication des
-exemples positifs par mail parent, sans qu'aucun de ces trois correctifs
-n'ait dû être forcé) : **80,0% (120/150)**, contre 94,0% pour 12B sous la
-même méthodologie complète (`RESULTS_TESTS.md` §94/§95). L'écart reste
-significatif ($z=-3{,}61$, $p=0{,}0003$) mais son **ampleur est deux fois
-plus modeste** que le chiffre historique (14,0 points contre 33,3 points ;
-$h$ de Cohen $=-0{,}43$, effet moyen, contre $-0{,}77$, effet large) :
-cohérent avec §83/§89/§90 (l'effet du choix de juge est concentré sur les
-features que la sélection par magnitude sur-échantillonne), le 1B semble
-avoir été pénalisé deux fois par l'ancienne méthodologie — une fois par la
-sélection, une fois par l'auto-jugement sévère d'un petit modèle sur ses
-propres features. **L'effet d'échelle du modèle reste le résultat le plus
-robuste de ce projet, mais son ampleur rapportée initialement (33,3 points)
-surestimait l'effet réel d'un facteur proche de deux.** 4B et 27B restent à
-remesurer sous cette méthodologie complète pour tracer la courbe corrigée
-en entier.
+**Le point 1B, remesuré sous méthodologie pleinement corrigée** — jamais
+mesuré sous sélection stratifiée jusqu'ici — aboutit sous le code actuel
+(stratifié + juge Qwen + déduplication des exemples positifs par mail
+parent, sans qu'aucun de ces trois correctifs n'ait dû être forcé) :
+**80,0% (120/150)**, contre **82,0% pour le 12B de cette même famille de run**
+(layer 31, `K_EXTRA=5`, table ci-dessus, `RESULTS_TESTS.md` §95) — le
+rejugement Qwen de ce 12B précis est en cours (`results_v27`), pas encore
+disponible ; comparer 1B/Qwen à 12B/Gemma mélange donc encore un effet
+d'échelle et un effet de juge, cette comparaison ne doit **pas** être lue
+contre le 94,0% de référence du projet (§94), qui provient d'une autre
+famille de run (`results_v10_emails_main`, layer 24, `K_EXTRA=32`, confond
+layer et `K_EXTRA` en plus de la taille du modèle — erreur déjà commise et
+corrigée une fois dans ce rapport, cf. `AUDIT_SAE_2026-08.md` §9). L'écart
+1B/12B (82,0%, encore Gemma) reste néanmoins déjà nettement plus modeste que
+le chiffre historique (12,0%→45,3%, 33,3 points, sous sélection par
+magnitude et juge auto-référent des deux côtés) : cohérent avec §83/§89/§90
+(l'effet du choix de juge est concentré sur les features que la sélection
+par magnitude sur-échantillonne), le 1B semble avoir été pénalisé deux fois
+par l'ancienne méthodologie — une fois par la sélection, une fois par
+l'auto-jugement sévère d'un petit modèle sur ses propres features.
+**L'effet d'échelle du modèle reste le résultat le plus robuste de ce
+projet, mais son ampleur exacte sous protocole totalement homogène (juge
+Qwen aux deux bornes) reste conditionnée au rejugement du 12B de cette
+famille.** 4B et 27B restent eux aussi à remesurer sous cette méthodologie
+complète pour tracer la courbe corrigée en entier.
 
 ### 4.2. Layer d'extraction
 
@@ -706,15 +716,28 @@ protocole que le run principal, seul `LAYER` varie) comblent ce manque :
 
 Layer 31 est le seul écart nominalement significatif du balayage (+12,7
 points), et layer 12 reproduit le taux du layer 24 au feature près — une
-coïncidence numérique, pas un signe de couplage entre les deux. Comme pour
-le reste de ce chapitre (aucune correction multi-tests appliquée, cf. note en
-fin de section), ce résultat doit être lu comme une piste à répliquer sur un
-second seed avant adoption, pas comme un changement de configuration déjà
-acquis — mais c'est la première fois que le choix du layer 24 apparaît
-potentiellement sous-optimal sur le critère qui compte réellement pour ce
-projet. Détail complet : `RESULTS_TESTS.md` §51.
+coïncidence numérique, pas un signe de couplage entre les deux. Ce tableau
+date de la sélection par magnitude et du juge auto-référent (note en tête de
+chapitre) ; il a depuis été répliqué sous sélection stratifiée (setup
+`K_EXTRA=5`) : layer 41 contre layer 31 (§88, p=0,88), puis layer 41 rejugé
+Qwen contre Gemma (§90, p=0,429), puis **layer 12 sous méthodologie
+pleinement corrigée** (stratifié + Qwen + déduplication) **contre layer 31
+sous la même méthodologie** (§96, 88,7% contre 94,0%\* — \*ce 94,0% est en
+fait celui de `results_v10_emails_main`, layer 24, pas le 12B/layer 31 de
+cette famille, cf. limite notée en §4.1 ci-dessus ; comparaison à refaire
+avec le bon comparateur — mais l'écart affiché, $p=0{,}101$, n'est déjà pas
+significatif). **Dans les trois réplications, l'avantage de layer 31 ne se
+reproduit pas** : le seul écart individuel significatif de tout ce chapitre
+ne survit pas au changement de protocole de sélection qui a corrigé le taux
+d'interprétabilité global — layer 24 (choisi pour Neuronpedia, jamais pour
+l'interprétabilité) n'est donc, à ce stade, identifié comme sous-optimal par
+aucune réplication sous protocole corrigé. Détail complet : `RESULTS_TESTS.md`
+§51/§88/§90/§96.
 
-Ce résultat converge avec une observation indépendante de la littérature :
+La convergence numérique ci-dessous (layer 31 à ~2/3 de la profondeur du
+modèle) reste une observation intéressante en tant que telle, mais ne doit
+plus être lue comme le signe d'un effet d'interprétabilité réel puisque
+l'écart qui l'avait motivée ne réplique pas :
 Formal et al. (SPLARE, NAVER Labs Europe, 2026, `pdf/Naver.pdf`) balaient les
 couches de Llama-3.1-8B et Gemma-2-2B pour une tâche de retrieval fondée sur
 un SAE, et trouvent un optimum systématique aux **deux tiers de la

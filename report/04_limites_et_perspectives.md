@@ -10,13 +10,13 @@ ce chapitre) favorise systématiquement les features les plus denses,
 non représentative du dictionnaire. Remplacée par une sélection stratifiée par
 bins de fréquence (App. J, *Interpretable Embeddings with Sparse Autoencoders*,
 `RESULTS_TESTS.md` §79), le taux mesuré sur le même SAE et le même corpus passe
-de 45,3% (68/150) à 89,3% (134/150). Second correctif, plus tardif : gemma-3-12b-it
+de 45,3% (68/150) à 89,3% (134/150). Second correctif : gemma-3-12b-it
 jugeait jusqu'ici ses propres features (même checkpoint que l'extracteur) — un
-juge de famille différente (Qwen3.8-27B) rejugeant les mêmes 150 features
-stratifiées donne **94,7% (142/150)**, écart non significatif à cette échelle
-(McNemar exact, p=0,057, `RESULTS_TESTS.md` §89). **94,7% (stratifié, Qwen) est
-le taux de référence retenu pour ce rapport** — le résidu non interprété tombe à
-~5% plutôt que ~55%. Contrairement à la sélection par magnitude (où le choix du
+juge de famille différente (Qwen3.8-27B), avec déduplication des exemples par
+mail d'origine, rejugeant les mêmes features stratifiées donne **94,0%
+(141/150)** (`RESULTS_TESTS.md` §94). **94,0% (stratifié, Qwen, dédoublonné)
+est le taux de référence retenu pour ce rapport** — le résidu non interprété
+tombe à ~6% plutôt que ~55%. Contrairement à la sélection par magnitude (où le choix du
 juge produisait un écart massif — 45,3% gemma-3-12b-it contre 78,7% Qwen sur les
 mêmes 150 features, McNemar apparié p=1,9×10⁻⁸, `RESULTS_TESTS.md` §83),
 l'écart de juge sous sélection stratifiée reste dans le bruit à n=150 (confirmé
@@ -82,7 +82,7 @@ feature quasi-morte (freq=0%) reçoit malgré tout un label confiant — le
 "100% de récupération" apparent est un artefact de complaisance du juge, pas
 un signal de qualité. Le protocole odd-one-out reste la référence retenue
 dans ce rapport ; la labellisation contrastive directe n'est pas intégrée au
-pipeline de production (changerait le chiffre central du rapport, 45,3%,
+pipeline de production (changerait le chiffre central du rapport, 94,0%,
 sans validation à l'échelle comparable).
 
 ### Rigueur statistique des comparaisons d'ablation
@@ -261,7 +261,7 @@ correctement puis répliquée à pleine puissance (n=150, sélection stratifiée
 côté juge, la contamination du corpus d'entraînement par le style du modèle
 générateur n'explique pas le taux d'interprétabilité mesuré.** Comparaison
 faite sous gemma-3-12b-it (Gemma) sur les deux bras — le bras "corpus mixte"
-a depuis été rejugé Qwen (94,7%, ci-dessus) mais pas le bras "originaux
+a depuis été rejugé Qwen (94,0%, ci-dessus) mais pas le bras "originaux
 seuls" (fragments token-level supprimés par un nettoyage disque, extraction
 fraîche nécessaire pour le rejuger) : la comparaison B.1 complète sous un
 même juge Qwen reste hors de portée sans ce rerun, limite à garder explicite

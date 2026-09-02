@@ -37,8 +37,10 @@ sur les activations de Gemma-3-12B-it) étendu par un second SAE entraîné
 spécifiquement sur le domaine — architecture à cœur gelé identifiée en cours de
 stage comme structurellement équivalente à SAE Boost (Koriagin et al., COLM 2025)
 — et un second pipeline indépendant fondé sur des embeddings de phrase (F2LLM-v2,
-bge-m3). Le pipeline initial, fonctionnel de bout en bout, présentait un taux de
-succès faible (20%) au test d'auto-interprétation des features propres au domaine.
+bge-m3). Le pipeline initial, fonctionnel de bout en bout, échouait le test
+d'auto-interprétation des features propres au domaine sur la grande majorité d'un
+échantillon initial trop restreint pour être statistiquement exploitable (10
+features jugées).
 Une démarche de diagnostic par ablation contrôlée a établi que ce taux n'était pas
 limité par le volume d'entraînement, mais par le domaine du corpus
 d'entraînement (uniquement générique, sans texte du domaine cible) : une fois
@@ -56,14 +58,18 @@ test de tendance de Cochran-Armitage, p≈1,6×10⁻¹⁰) qui **plafonne** ensu
 palier à 27 milliards, testé ultérieurement sous la méthode de sélection
 corrigée ci-dessous, n'apporte plus de gain significatif par rapport à 12
 milliards (83,3% contre 82,0%, p=0,76 ; comparé à 72,0% à 4 milliards, p=0,04).
-**Cet écart 1B/12B, mesuré à nouveau sous méthodologie pleinement corrigée
-(sélection stratifiée, juge Qwen, déduplication des exemples par mail
-d'origine — 80,0% à 1B contre 94,0% à 12B), reste significatif (p=0,0003)
-mais deux fois plus modeste que le chiffre historique** (h de Cohen −0,43,
-effet moyen, contre −0,77, effet large, sous magnitude/juge auto-référent) :
-une partie substantielle de l'écart 1B/12B initialement rapporté était un
-artefact des biais de sélection et de juge décrits ci-dessous, pas un effet
-d'échelle pur.
+**Le point 1B, remesuré sous méthodologie pleinement corrigée (sélection
+stratifiée, juge Qwen, déduplication des exemples par mail d'origine),
+donne 80,0% — contre 82,0% pour le 12B de la même famille de run (layer 31,
+$K_\text{extra}=5$, encore jugé par le modèle extracteur lui-même à ce
+jour, rejugement Qwen en cours) — reste nettement en dessous, mais un écart
+déjà bien plus modeste que celui suggéré par le chiffre historique (12,0% à
+1B contre 45,3% à 12B, 33,3 points, sous sélection par magnitude et juge
+auto-référent des deux côtés)** : une partie substantielle de l'écart 1B/12B
+initialement rapporté était un artefact des biais de sélection et de juge
+décrits ci-dessous, pas un effet d'échelle pur. La valeur exacte de cet écart
+sous protocole totalement homogène (juge Qwen aux deux bornes) reste
+conditionnée au rejugement du 12B de cette famille.
 **La méthode de sélection des features à juger** s'est révélée être le second
 levier, plus important encore que l'échelle du modèle : la sélection par
 magnitude d'activation (utilisée pour tous les chiffres ci-dessus) favorise
@@ -72,16 +78,15 @@ du dictionnaire — remplacée par une sélection stratifiée par bins de fréqu
 (App. J, *Interpretable Embeddings with Sparse Autoencoders*), le taux
 d'interprétabilité mesuré sur le même SAE et le même corpus passe de 45,3%
 (68/150) à 89,3% (134/150), écart hautement significatif (z=−8,12,
-p=4,5×10⁻¹⁶). **Troisième correctif** : gemma-3-12b-it jugeait jusqu'ici ses
-propres features (même checkpoint que l'extracteur) — un juge de famille
-différente (Qwen3.8-27B) donne 94,7% (142/150) sur les mêmes 150 features
-stratifiées, écart non significatif à cette échelle (p=0,057) mais dans le
-sens attendu si un biais d'auto-préférence existait (Gemma plus sévère avec
-lui-même). **94,7% (stratifié, Qwen) est la valeur de référence actuelle du
-projet** ; les chiffres en 45,x%/2x,x% cités dans les chapitres d'ablation de
-ce rapport datent tous de la méthode de sélection par magnitude et du juge
-auto-référent, et se lisent comme un plancher, pas comme le taux réel du
-dictionnaire. Un sanity check contre un décodeur figé aléatoire (Korznikov et
+p=4,5×10⁻¹⁶). gemma-3-12b-it jugeait jusqu'ici ses propres features (même
+checkpoint que l'extracteur) — un juge de famille différente (Qwen3.8-27B),
+avec déduplication des exemples par mail d'origine, donne **94,0% (141/150)**
+sur les mêmes features stratifiées. **94,0% (sélection stratifiée, juge
+Qwen3.8-27B, déduplication par mail parent) est la valeur de référence
+actuelle du projet** ; les chiffres en 45,x%/2x,x% cités dans les chapitres
+d'ablation de ce rapport datent tous de la méthode de sélection par magnitude
+et du juge auto-référent, et se lisent comme un plancher, pas comme le taux
+réel du dictionnaire. Un sanity check contre un décodeur figé aléatoire (Korznikov et
 al., 2026) confirme que l'entraînement de l'extension apprend une structure
 réelle (45,3% contre 29,3% sous sélection par magnitude, écart significatif)
 tout en révélant qu'une classification en aval résiste beaucoup mieux à cette
@@ -92,8 +97,10 @@ puissance statistique (n=150) comme explication du taux mesuré. Des tests
 complémentaires (fidélité et plausibilité de l'explication document-level,
 robustesse du protocole de jugement, biais multilingue, fidélité du steering,
 évaluation quantitative du retrieval — RRF + reranking LLM, qui domine
-uniformément TF-IDF et Latent Terms seuls) complètent la validation du
-système, avec un audit rétroactif de la méthodologie statistique employée.
+uniformément TF-IDF et Latent Terms seuls — diffing et clustering
+interprétable sur le corpus emails) complètent la validation du système, avec
+un choix de test statistique adapté à la structure de chaque comparaison
+(proportions indépendantes, McNemar apparié, tendance de Cochran-Armitage).
 
 **Mots-clés** : Sparse Autoencoders, interprétabilité mécaniste, GemmaScope,
 grands modèles de langage, explicabilité, traitement automatique des mails clients,
@@ -109,8 +116,9 @@ Gemma-3-12B-it activations) extended by a second SAE trained specifically for th
 target domain — a frozen-core architecture identified during the internship as
 structurally equivalent to SAE Boost (Koriagin et al., COLM 2025) — alongside an
 independent sentence-embedding-based pipeline (F2LLM-v2, bge-m3). The initial
-end-to-end pipeline showed a low success rate (20%) on the domain-specific feature
-auto-interpretation test. A controlled-ablation diagnostic established that this
+end-to-end pipeline failed the domain-specific feature auto-interpretation test
+on the large majority of an initial sample too small to be statistically
+usable (10 judged features). A controlled-ablation diagnostic established that this
 was not a training-volume limitation but a training-corpus domain issue (generic
 text only, no domain-specific text) — once corrected, the interpretability rate
 rose to 45.3%.
@@ -123,27 +131,31 @@ extractor/judge model** produces a clean, highly significant dose-response
 effect (12.0% at 1B parameters, 28.0% at 4B, 45.3% at 12B; Cochran-Armitage trend
 test, p≈1.6×10⁻¹⁰) that then **plateaus**: a 27B tier, tested later under the
 corrected selection method below, brings no further significant gain over 12B
-(83.3% vs 82.0%, p=0.76). **This 1B/12B gap, remeasured under fully corrected
+(83.3% vs 82.0%, p=0.76). **The 1B point, remeasured under fully corrected
 methodology** (stratified selection, Qwen judge, positive-example
-deduplication by source email — 80.0% at 1B vs 94.0% at 12B) **stays
-significant (p=0.0003) but is half as large as the historical figure**
-(Cohen's h −0.43, a medium effect, vs −0.77, a large effect, under
-magnitude/self-referential judging): a substantial share of the originally
-reported 1B/12B gap was an artifact of the selection and judge biases
-described below, not a pure scale effect. **The feature-selection method
+deduplication by source email), **gives 80.0% — against 82.0% for the 12B
+point of the same run family (layer 31, $K_\text{extra}=5$, still judged by
+the extractor model itself, Qwen rejudge in progress)** — still clearly
+lower, but an already much more modest gap than the historical figure
+suggested (12.0% at 1B vs 45.3% at 12B, a 33.3-point gap, under magnitude
+selection and self-referential judging on both sides): a substantial share
+of the originally reported 1B/12B gap was an artifact of the selection and
+judge biases described below, not a pure scale effect. The exact size of
+this gap under a fully homogeneous protocol (Qwen judge at both ends) is
+still pending that same family's 12B rejudge. **The feature-selection method
 used for judging** turned
 out to be the second, even larger lever: selection by activation magnitude
 (used for every figure above) systematically favors the densest features, an
 unrepresentative sample of the dictionary — replaced by frequency-stratified
 sampling (App. J, *Interpretable Embeddings with Sparse Autoencoders*), the rate
 measured on the same SAE and corpus rises from 45.3% (68/150) to 89.3%
-(134/150), a highly significant gap (z=−8.12, p=4.5×10⁻¹⁶). **Third correction**:
-gemma-3-12b-it had until then judged its own features (same checkpoint as the
-extractor) — a judge from a different model family (Qwen3.8-27B) gives 94.7%
-(142/150) on the same 150 stratified features, a gap that is not significant at
-this scale (p=0.057) but points in the direction expected if a self-preference
-bias existed. **94.7% (stratified, Qwen) is this project's current reference
-value**; the 45.x%/2x.x% figures cited in the ablation chapters all predate the
+(134/150), a highly significant gap (z=−8.12, p=4.5×10⁻¹⁶). gemma-3-12b-it had
+until then judged its own features (same checkpoint as the extractor) — a
+judge from a different model family (Qwen3.8-27B), with deduplication of
+positive examples by source email, gives **94.0% (141/150)** on the same
+stratified features. **94.0% (stratified selection, Qwen3.8-27B judge,
+deduplication by source email) is this project's current reference value**;
+the 45.x%/2x.x% figures cited in the ablation chapters all predate the
 selection-method and judge corrections and should be read as a floor, not the
 dictionary's true rate. A sanity check against a randomly frozen decoder
 (Korznikov et al., 2026) confirms that the extension's training learns genuine
@@ -152,8 +164,10 @@ classification survives this degradation far better than qualitative
 interpretation does. Complementary tests (document-level explanation fidelity
 and plausibility, judge-protocol robustness, multilingual bias, steering
 fidelity, quantitative retrieval evaluation — RRF plus LLM reranking, which
-uniformly beats TF-IDF and Latent Terms alone) complete the system's validation,
-together with a retroactive audit of the statistical methodology used.
+uniformly beats TF-IDF and Latent Terms alone — diffing and interpretable
+clustering on the email corpus) complete the system's validation, together
+with a statistical test chosen to match each comparison's design (independent
+proportions, paired McNemar, Cochran-Armitage trend).
 
 **Keywords**: Sparse Autoencoders, mechanistic interpretability, GemmaScope, large
 language models, explainability, customer email analysis, LLM auto-interpretation,

@@ -9,7 +9,7 @@ en bout sur le corpus original, avec des résultats quantifiés et reproductible
 sur l'ensemble des capacités visées par l'énoncé initial — à la nuance près que
 Pipeline 2, s'il reconstruit bien et classe bien en aval, a un niveau
 d'interprétabilité individuelle des features sensiblement plus bas que Pipeline 1
-sous protocole comparable (58,7% contre 94,7%, `03_experiences_et_resultats.md`
+sous protocole comparable (58,7% contre 94,0%, `03_experiences_et_resultats.md`
 §3.6) :
 
 - **Détection d'urgence et d'intention** : séparabilité linéaire forte sur les axes

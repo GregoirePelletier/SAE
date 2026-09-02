@@ -125,9 +125,9 @@ de l'encodeur à des directions arbitraires.
 Ce résultat interroge directement le protocole d'auto-interprétation odd-one-out
 utilisé dans ce projet (ci-dessus) et les sondes de classification en aval
 (`clf_acc_sae`, `03_experiences_et_resultats.md` §5.4) : nos taux mesurés
-(45,3% d'interprétabilité sous l'ancienne sélection par magnitude, 94,7% sous
+(45,3% d'interprétabilité sous l'ancienne sélection par magnitude, 94,0% sous
 la sélection stratifiée et le juge retenus depuis comme défaut, `RESULTS_TESTS.md`
-§79/§89 — >90% de classification) sont-ils réellement dus à un apprentissage de features
+§79/§94 — >90% de classification) sont-ils réellement dus à un apprentissage de features
 significatives, ou un décodeur figé à l'initialisation obtiendrait-il des
 scores comparables ? Ce projet reproduit leur protocole de sanity check sur
 l'extension du Pipeline 1 (`FrozenDecoderExtendedSAE`, `src/sae/frozen_core.py`,

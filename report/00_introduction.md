@@ -52,9 +52,10 @@ Le rapport suit quatre axes, développés dans le chapitre 3 :
    modèle réduit (Gemma-3-270M-it) avant tout passage à l'échelle sur
    Gemma-3-12B-it.
 2. **Diagnostic** : le taux de succès du protocole d'auto-interprétation des
-   features apprises spécifiquement sur le domaine, initialement très faible
-   (20%), n'est pas limité par le volume d'entraînement mais par le domaine du
-   corpus d'entraînement — établi par une démarche d'ablation contrôlée.
+   features apprises spécifiquement sur le domaine, initialement très faible sur
+   un échantillon trop restreint pour être exploitable, n'est pas limité par le
+   volume d'entraînement mais par le domaine du corpus d'entraînement — établi
+   par une démarche d'ablation contrôlée.
 3. **Validité du protocole** : relecture critique face à la littérature de
    référence (en particulier Jiang, Sun et al. 2025, *Interpretable Embeddings
    with Sparse Autoencoders*) pour identifier les écarts méthodologiques
