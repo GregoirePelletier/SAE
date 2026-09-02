@@ -209,13 +209,31 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    sur n≥150 est informatif.
 5. **Significativité statistique** (`src/analysis/stats.py`, jamais une
    lecture à l'œil de deux pourcentages) : layer 31 vs layer 24 (référence)
-   est le seul écart individuel qui atteint `|z|>1,96` contre la configuration
-   de référence à ce jour (`RESULTS_TESTS.md` §51, sans correction
-   multi-tests, à répliquer avant adoption) ; `mlp_out` vs `attn_out` (§53) est
+   sous sélection par magnitude et juge auto-référent (`RESULTS_TESTS.md`
+   §51, sans correction multi-tests) était le seul écart individuel à
+   `|z|>1,96` contre la config de référence — **ne réplique PAS** une fois la
+   sélection stratifiée appliquée aux deux (§88 : layer 41 vs layer 31,
+   p=0,88 ; §96 : layer 12 vs layer 31 sous méthodologie pleinement corrigée
+   stratifié+Qwen+déduplication, p=0,101) : aucun layer testé (12, 31, 41) ne
+   se distingue plus des autres une fois le protocole de sélection corrigé.
+   `mlp_out` vs `attn_out` (§53, jamais répliqué sous stratifié) est
    significatif entre eux mais ni l'un ni l'autre ne l'est contre `resid_post`
-   isolément. Tout le reste (`K_EXTRA`, `D_EXTRA`, volume, seed) reste dans le
-   bruit à n=150 — seul le choix de taille du modèle extracteur/juge produit
-   un effet massif et répliqué à chaque palier. Le chiffre "seed" ci-dessus
+   isolément. Tout le reste (`K_EXTRA`, `D_EXTRA`, volume, seed, layer une
+   fois stratifié) reste dans le bruit à n=150 — seul le choix de taille du
+   modèle extracteur/juge produit un effet massif et répliqué à chaque
+   palier, et son ampleur elle-même doit être lue sous protocole de sélection
+   et de juge homogènes : §95 (1B pleinement corrigé, 80,0%) contre le 12B de
+   la même famille layer-scalée ($K_\text{extra}=5$, layer 31, encore jugé
+   Gemma auto-référent à ce jour, 82,0%, §82) — écart réel mais nettement
+   plus modeste que le chiffre historique (12,0%→45,3%, 33,3 points, sous
+   magnitude+auto-jugement) ; **ne pas comparer §95/§96 au 94,0% de §94
+   ("12B" de la config de référence `results_v10_emails_main`, layer 24,
+   $K_\text{extra}=32$, 500k tokens) : ce sont deux familles de run
+   différentes (layer et $K_\text{extra}$ confondus, pas seulement la taille
+   du modèle), erreur déjà commise et corrigée une fois dans
+   `RAPPORT_STAGE_UNIVERSITE.tex` (§9 de AUDIT_SAE_2026-08.md) — le vrai "12B"
+   de la famille layer-scalée n'a pas encore été rejugé Qwen
+   (`results_v27`, rerun en cours/à lancer)**. Le chiffre "seed" ci-dessus
    date d'avant le cache d'extraction partagé — cf. section Seeds plus haut
    (N9, AUDIT_SAE_2026-08.md §8) : une nouvelle ablation de seed sous le cache
    partagé mesure un effet plus étroit (init/shuffle SAE seuls, plus le

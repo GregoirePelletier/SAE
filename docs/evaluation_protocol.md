@@ -72,16 +72,21 @@ ne sont valables que dans ce régime réduit, jusqu'à confirmation à plus gran
 - **§33** — un seul jeu de labels connus (14 axes), un seul corpus, un seul SAE :
   conclusion non généralisée au-delà de cette configuration précise.
 - **§51** — le balayage de couche qui trouve la couche 31 meilleure que la couche 24
-  (configuration actuelle, cf. tableau ci-dessus) n'a pas été suivi d'un rerun de
-  référence à la couche 31 pour vérifier si l'écart tient à plus grande échelle.
+  (configuration actuelle, cf. tableau ci-dessus) a depuis été répliqué sous
+  sélection stratifiée (§88, §90, §96) : dans les trois réplications, l'avantage
+  de la couche 31 **ne se reproduit pas** (p=0,88 contre layer 41 ; p=0,429 layer
+  41 rejugé Qwen ; p=0,101 layer 12 sous méthodologie pleinement corrigée). Le
+  seul écart individuel significatif de tout le dépôt (hors effet d'échelle du
+  modèle) ne survit donc pas à la correction du protocole de sélection —
+  `CLAUDE.md`, point 5 des diagnostics, mis à jour en conséquence.
 
 Prioriser un rerun à plus grande échelle sur la chaîne §12→§18.3→§23 (c'est la
 décision la plus citée ailleurs dans le projet) avant §28 ou §33.
 
 ## Décalage avec `RESULTS_TESTS.md`
 
-Ce document n'a pas été mis à jour en substance depuis sa création (liée à §16) — un
-seul commit ultérieur, purement rédactionnel. Tout `RESULTS_TESTS.md` §17 à §73 est
+Ce document n'a pas été mis à jour en substance depuis sa création (liée à §16),
+hormis la note sur §51 ci-dessus. Tout `RESULTS_TESTS.md` §17 à §96 (et suivants) est
 donc absent d'ici, y compris des résultats qui contredisent ou nuancent des lignes
 déjà présentes dans les tableaux
 ci-dessus : le balayage de couche (§51, ci-dessus), le point de hook mlp_out > attn_out
