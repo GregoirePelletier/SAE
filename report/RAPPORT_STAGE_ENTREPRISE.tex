@@ -145,7 +145,8 @@ Le travail expérimental met surtout en évidence quatre enseignements. Premièr
 la validité de l'architecture ne peut pas être déduite du seul taux d'auto-interprétation :
 le gain de variance expliquée de l'extension est fortement supérieur à celui de
 décodeurs figés aléatoires, et une mesure complémentaire de fidélité causale par
-cross-entropy confirme cette supériorité. Deuxièmement, le score d'interprétabilité est
+cross-entropy confirme que cette information est fonctionnellement exploitée par le
+modèle, pas seulement présente géométriquement. Deuxièmement, le score d'interprétabilité est
 très sensible au protocole expérimental : la sélection des features par magnitude et
 la sélection stratifiée ne sondent pas la même population de features, tandis que le
 choix du juge et la construction du négatif peuvent modifier substantiellement la
@@ -647,14 +648,10 @@ Un dashboard interactif (Streamlit) donne accès aux artefacts produits par
 ces deux pipelines sans recalcul : vue d'ensemble des métriques par run,
 projection UMAP interactive des documents, exploration des features (labels
 Neuronpedia et juge LLM, exemples positifs/négatifs), résultats de diffing,
-recherche par mot-clé sur les labels, et diagnostics d'entraînement.
-
-\begin{figure}[h!]
-\centering
-\IfFileExists{figures/dashboard_overview.png}{\includegraphics[width=0.85\textwidth]{figures/dashboard_overview.png}}{\fbox{\parbox[c][5cm][c]{0.8\textwidth}{\centering \small Capture d'écran à insérer --- \texttt{figures/dashboard\_overview.png}\\(page \og{}Vue d'ensemble\fg{} ou \og{}Features\fg{} du dashboard Streamlit, \texttt{src/visualization/dashboard.py})}}}
-\caption{Dashboard interactif d'exploration des résultats (Streamlit).}
-\label{fig:dashboard}
-\end{figure}
+recherche par mot-clé sur les labels, et diagnostics d'entraînement ---
+capture d'écran \S\ref{sec:contribution}, page \pageref{fig:dashboard} (page
+\og{}Features\fg{}, feature 17342, en regard de l'exemple commenté juste
+après).
 
 \subsection{Architecture \texorpdfstring{$\textit{FrozenCoreResidualSAE}$}{FrozenCoreResidualSAE}}
 \label{subsec:frozencore}
@@ -740,6 +737,7 @@ rôles, un juge de famille différente (Qwen3.8-27B) jugeant les features
 extraites par Gemma-3-12B-it, pour écarter tout biais d'auto-préférence.
 
 \begin{resourcebox}[Exemple réel --- feature 17342 jugée sous le protocole final (R0)]
+\label{box:feature17342}
 Le juge reçoit 9 extraits dont l'activation de la feature 17342 est forte, et
 1 extrait-contrôle dont l'activation est quasi nulle (adresses et coordonnées
 anonymisées ci-dessous, comme pour tout le corpus --- \emph{cf.}~encadré
@@ -780,6 +778,18 @@ au signalement d'un incident (\og{}victime\fg{}, \og{}coupure\fg{}), pas sur
 un artefact de position. \emph{6 autres extraits positifs, omis ici pour la
 lisibilité, ont été présentés au juge dans le run réel.}
 \end{resourcebox}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.95\textwidth]{Streamlit_feature17342.png}
+\caption{Page \og{}Features\fg{} du dashboard interactif, run de référence R0
+(\texttt{results\_v27\_ablation\_classic\_setup\_k5\_25m\_layer31}) : les
+mêmes exemples positifs et le même contrôle négatif que l'encadré
+ci-dessus, avec le token d'activation maximale entre chevrons pour chaque
+extrait --- l'outil réel produisant l'exemple que le texte vient de
+discuter, pas une reconstruction.}
+\label{fig:dashboard}
+\end{figure}
 
 \subsection{Construction du corpus}
 
@@ -840,24 +850,40 @@ constitué \textbf{exclusivement} de texte générique (Wikipédia filtré par
 mots-clés) --- les mails du domaine cible n'entraient jamais dans les données
 d'entraînement de l'extension, seulement dans une visualisation post-hoc, d'où ces premiers résultats négatifs.
 
-\begin{resultbox}[Correction et validation]
 Une fois le corpus principal reconstruit (mails + variantes augmentées,
-\S\ref{sec:contribution}) et le nombre de features jugées porté à 150 pour une
-puissance statistique correcte, le taux d'interprétabilité passe à
-\textbf{45,3\% (68/150)}, à volume de
-tokens comparable. Faire varier ce volume d'un facteur 20 (100k à 2M tokens),
-à domaine fixé, ne produisait \textbf{aucun effet mesurable} (40,7\% / 45,3\% /
-44,7\%, écarts non significatifs). Le contraste initial (8/10 échecs contre
-45,3\%) reposait sur un échantillon de 10 features, trop réduit pour être
-concluant seul ; rejoué à effectif apparié ($n=150$ sur chaque bras, même
-protocole), le corpus générique donne \textbf{30,0\% (45/150)} contre
-\textbf{45,3\% (68/150)} pour le corpus emails --- écart de 15,3 points,
-$z=2{,}74$, $p=0{,}006$, significatif. \textbf{L'effet de domaine, contrairement
-au déficit de volume, est donc confirmé à puissance statistique suffisante} :
-pour ce projet, le facteur qui a déterminé l'interprétabilité était la nature
-du corpus d'entraînement, pas sa taille --- une conclusion directement
-transférable à tout dimensionnement de données pour un cas d'usage similaire
-chez EDF.
+\S\ref{sec:contribution}), le taux d'interprétabilité mesuré sous protocole
+R0 (sélection stratifiée, juge Qwen3.8-27B, négatif corrigé, déduplication
+par mail parent) atteint \textbf{65,7\% (197/300)} sur le corpus emails
+(\emph{cf.}~\S\ref{subsec:correction-methode}). Faire varier le volume de
+tokens d'entraînement de l'extension d'un facteur 20 (100k à 2M tokens), à
+domaine fixé, ne produit \textbf{aucun effet mesurable} (résultat obtenu sous
+sélection par magnitude, non repris depuis sous R0 --- \emph{cf.}~
+Table~\ref{tab:synthese} en annexe, rangs \og{}Volume\fg{}). Le contraste
+initial (8/10 échecs sur un échantillon non exploitable de 10 features)
+reposait sur un déficit de puissance statistique, pas sur une mesure fiable.
+
+\begin{resultbox}[L'effet domaine ne se distingue pas sous R0]
+Corpus générique (energy/sports/support) et corpus emails, comparés à
+effectif apparié ($n=300$ chacun) sous protocole R0 intégral ($K_\text{extra}=5$,
+$D_\text{extra}=1024$, 25M tokens, layer 31 --- extraction et entraînement
+complets pour le corpus générique, aucun checkpoint sous ces hyperparamètres
+n'existant au préalable) : \textbf{67,7\% (203/300)} pour le corpus générique
+contre \textbf{65,7\% (197/300)} pour le corpus emails (R0) --- $z=0{,}52$,
+$p=0{,}60$, \textbf{non significatif}, le point estimé s'inversant même très
+légèrement (générique au-dessus). \textbf{Ni le domaine ni le volume du
+corpus d'entraînement ne montrent d'effet détectable} sur le taux
+d'interprétabilité une fois la sélection stratifiée et le juge indépendant
+appliqués. Cette conclusion rejoint celles déjà tirées pour l'effet d'échelle
+du modèle (\S\ref{subsec:model-scale}) : un effet mesuré comme significatif
+sous sélection par magnitude et juge auto-référent lors d'une campagne
+antérieure de ce stage (Table~\ref{tab:synthese} en annexe) qui ne survit pas
+à la correction complète du protocole. Deux domaines aussi éloignés que
+possible (mails clients \emph{vs.} Wikipédia/web générique) donnant un
+résultat statistiquement indiscernable est en soi l'argument le plus fort
+disponible contre un effet domaine détectable à ce protocole et à ce $n$ ; la
+taille d'effet minimale détectable ici reste ${\sim}10$ points
+(\S\ref{subsec:ablations-finales}), un effet réel mais plus modeste
+resterait indétectable.
 \end{resultbox}
 
 \subsection{Sanity check : le SAE bat-il un décodeur figé aléatoire ?}
@@ -919,19 +945,30 @@ une mesure de fidélité causale fondée sur la \textbf{cross-entropy patchée} 
 dégradation produite lorsque la contribution de l'extension est supprimée à celle
 observée avec un décodeur aléatoire.
 
-Sur la configuration de référence, la suppression des composantes pertinentes de
-l'extension réduit de façon nettement plus importante la performance mesurée par
-cross-entropy que dans le témoin aléatoire : la dégradation causale apportée par
-l'extension est réduite de \textbf{69\%} dans le témoin aléatoire par rapport au SAE
-entraîné ($p=8\times10^{-12}$, test de Wilcoxon). Ce résultat est particulièrement
-important parce qu'il est continu et indépendant du juge.
+Sous R0 ($K_\text{extra}=5$), cette mesure compare directement le décodeur entraîné aux
+mêmes témoins à décodeur \textbf{aléatoire} que le sanity check ci-dessus (checkpoints
+C1/iso et C1b/cov, réutilisés sans réentraînement), sur un échantillon apparié de 60
+documents tenus à l'écart : le patch causal est restreint aux positions sur lesquelles
+l'extension a réellement été entraînée (\texttt{extract\_residual\_acts} exclut
+systématiquement le premier token et les rares outliers de norme intra-document liés aux
+\emph{massive activations} de Gemma-3 de tout entraînement et de tout calcul de
+$\Delta$FVE ; patcher ces positions produirait une dégradation hors-distribution non
+représentative). Le décodeur entraîné dégrade nettement moins la cross-entropy que les
+deux témoins aléatoires (\textbf{$\Delta$CE 0,301} contre 0,525 et 0,510) :
+$p=7{,}5\times10^{-11}$ (iso) et $p=1{,}6\times10^{-10}$ (cov), test de Wilcoxon
+signed-rank apparié, 56/60 et 54/60 documents en faveur du SAE entraîné. Ce résultat est
+particulièrement important parce qu'il est continu et indépendant du juge --- il montre
+que l'information reconstruite par l'extension est fonctionnellement exploitée par le
+modèle, pas seulement présente géométriquement dans le résidu.
 
 \begin{resultbox}[Validation architecturale]
-Les deux métriques convergent : le décodeur entraîné récupère une quantité substantielle
-d'information résiduelle ($\Delta$FVE de $+0{,}1393$ sous R0, contre $+0{,}0001$ à
-$+0{,}0086$ pour les témoins aléatoires) et cette information intervient causalement
-dans la mesure de cross-entropy. Le taux d'auto-interprétation ne constitue donc pas
-le seul argument en faveur de l'architecture à cœur gelé.
+Les deux métriques convergent, chacune contre un témoin à décodeur \textbf{aléatoire} sous
+R0 : le $\Delta$FVE montre que le décodeur entraîné récupère une quantité substantielle
+d'information résiduelle ($+0{,}1393$ sous R0, contre $+0{,}0001$ à $+0{,}0086$) ; le
+$\Delta$CE montre que cette information intervient causalement sur la prédiction du modèle
+(dégradation de cross-entropy réduite à 0,301 contre 0,51--0,53 pour les témoins aléatoires,
+$p\approx10^{-10}$). Le taux d'auto-interprétation ne constitue donc pas le seul argument en
+faveur de l'architecture à cœur gelé.
 \end{resultbox}
 
 \subsection{Le protocole d'évaluation comme variable expérimentale}
@@ -1061,8 +1098,7 @@ layer12 & layer 12 & 74,0\% (222/300) & $z=2{,}22$, $p=0{,}026$ & $0{,}098$ & $+
 \begin{resultbox}[Un seul écart survit à la correction multi-tests : $K_\text{extra}$]
 V1 et V2 (deux graines de la configuration de R0, aucun hyperparamètre
 changé) donnent \textbf{65,7\% / 63,7\% / 64,0\%} --- un écart de 0,3 point
-entre les deux graines, un plancher de bruit run-à-run nettement plus serré
-qu'estimé sous l'ancien protocole (8 points). Sur les 15 comparaisons de ce chapitre testées contre R0
+entre les deux graines, un plancher de bruit run-à-run serré. Sur les 15 comparaisons de ce chapitre testées contre R0
 (10 ci-dessus, plus les 3 échelles de modèle \S\ref{subsec:model-scale} et
 les 2 sanity checks \S\ref{subsec:sanity-check-resultats}), correction
 Benjamini-Hochberg appliquée : \textbf{$K_\text{extra}=32$ (A1) est la seule
@@ -1095,10 +1131,18 @@ bruit de jugement qui domine, lui, le taux d'interprétabilité brut.
 
 La stabilité des features constitue une question distincte de la qualité de leur
 interprétation individuelle. Deux expériences complémentaires ont été menées. D'une
-part, plusieurs graines d'entraînement donnent des taux globaux très proches sur R0,
-mais le recouvrement des labels attribués aux features individuelles entre graines
-reste faible (28,2\%). Cela suggère qu'une bonne performance globale ne garantit pas
-l'identité des mêmes directions latentes d'un entraînement à l'autre.
+part, les trois graines de R0 (65,7\%, 63,7\%, 64,0\%, \emph{cf.}~\S\ref{subsec:ablations-finales})
+donnent des taux globaux très proches, mais le recouvrement exact des labels attribués
+aux features individuelles entre graines reste faible : \textbf{14,4\%} entre R0 et sa
+première réplication (seed 123), \textbf{11,9\%} entre les deux répliques (seeds 123 et
+7) --- mesuré directement sur les trois graines de la campagne finale, sous protocole
+R0 intégral. Cela suggère qu'une bonne performance globale ne garantit pas
+l'identité des mêmes directions latentes d'un entraînement à l'autre ; ce recouvrement
+est même plus faible que la première estimation obtenue en cours de campagne (28,2\%,
+sous sélection par magnitude et juge auto-référent, non comparable à R0) --- la
+sélection stratifiée, qui échantillonne aussi les régions rares du dictionnaire, plus
+idiosyncrasiques d'une graine à l'autre, explique probablement l'essentiel de cet
+écart plutôt qu'un changement réel de robustesse du SAE.
 
 D'autre part, le regroupement des features par communautés Louvain a été comparé à un
 témoin dans lequel les mêmes objets sont regroupés aléatoirement. Le regroupement
@@ -1446,9 +1490,11 @@ plutôt qu'en une seule découverte dominante.
 
 \begin{enumerate}
   \item \textbf{Validation de l'architecture à cœur gelé.} Le $\Delta$FVE et le
-  $\Delta$CE fournissent deux validations indépendantes du juge LLM : l'extension
-  apprend une information résiduelle substantielle et causalement utile, tandis que
-  les décodeurs figés aléatoires ne reproduisent pas cette capacité.
+  $\Delta$CE fournissent deux validations indépendantes du juge LLM, toutes deux contre
+  un témoin à décodeur aléatoire sous R0 : l'extension apprend une information
+  résiduelle substantielle que les décodeurs figés aléatoires ne reproduisent pas
+  ($\Delta$FVE), et cette information est causalement utile au modèle plutôt que
+  purement géométrique ($\Delta$CE, $p\approx10^{-10}$).
 
   \item \textbf{Caractérisation du protocole d'auto-interprétation.} La sélection par
   magnitude et la sélection stratifiée sondent des populations de features différentes,
@@ -1558,7 +1604,8 @@ protocole expérimental pouvaient réellement être établies.
 Le premier résultat solide est architectural. L'extension à cœur gelé apprend une
 quantité mesurable d'information résiduelle : sous R0, $\Delta$FVE vaut $+0{,}1393$,
 contre seulement $+0{,}0001$ à $+0{,}0086$ pour les témoins à décodeur aléatoire. Une
-mesure indépendante fondée sur la cross-entropy confirme cette différence causale.
+mesure indépendante fondée sur la cross-entropy confirme que cette information est
+causalement exploitée par le modèle, pas seulement présente géométriquement.
 Ces résultats ne dépendent ni du juge LLM ni du document négatif du protocole
 \emph{odd-one-out}. Ce choix architectural mérite d'être rappelé explicitement :
 le Pipeline~1 de ce stage n'a \textbf{jamais réentraîné un SAE from-scratch} sur
