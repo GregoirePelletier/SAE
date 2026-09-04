@@ -1200,35 +1200,36 @@ sélection de features, ni de la construction du négatif.
 \subsection{Robustesse du protocole de jugement}
 \label{subsec:robustesse}
 
-Deux tests évaluent la sensibilité du protocole \emph{odd-one-out} à des
-perturbations de surface qui ne devraient, en principe, pas affecter le
-jugement. Les deux datent de la sélection par magnitude et du juge
-auto-référent, antérieurs au protocole final R0 --- les pourcentages absolus
-ci-dessous ne sont donc pas comparables à 65,7\%, mais la propriété
-qu'ils démontrent (le protocole \emph{odd-one-out} à décision unique est
-bruyant à l'échelle de la feature individuelle) est structurelle, indépendante
-de la version du protocole testée :
+Deux tests évaluent, sous protocole R0 intégral ($n=300$, stratifié,
+Qwen3.8-27B, déduplication par mail parent), la sensibilité du protocole
+\emph{odd-one-out} à des perturbations de surface qui ne devraient, en
+principe, pas affecter le jugement :
 
 \begin{itemize}
   \item \textbf{Réordonnancement} : en répétant la question 5 fois par
-    feature avec un ordre de présentation différent, seules 30,7\% des
+    feature avec un ordre de présentation différent, \textbf{53,3\%} des
     features obtiennent une décision unanime. Le taux agrégé bouge peu
-    (single-shot 45,3\% contre vote majoritaire 48,7\%, test de McNemar
-    $p=0,560$, non significatif) mais \textbf{31,3\% des features changent
+    (single-shot 65,7\% contre vote majoritaire 63,7\%, test de McNemar
+    $p=0{,}51$, non significatif) mais \textbf{19,3\% des features changent
     individuellement de statut} selon l'ordre de présentation.
   \item \textbf{Langue du juge} \cite{resck2025multilingual, multilingualconcepts2025} : traduire les exemples et le prompt en
-    anglais ne change pas significativement le taux agrégé (français 46,9\%
-    contre anglais 45,5\%, McNemar $p=0,894$), mais \textbf{38,6\% des
+    anglais ne change pas significativement le taux agrégé (français 65,5\%
+    contre anglais 63,5\%, McNemar $p=0{,}58$), mais \textbf{27,0\% des
     features changent de statut} selon la langue --- un taux de bruit
     supérieur à celui du simple réordonnancement.
 \end{itemize}
 
 Ces deux résultats convergent vers la même conclusion : le protocole
-\emph{odd-one-out} à décision unique est \textbf{générique\-ment bruyant} face
+\emph{odd-one-out} à décision unique est \textbf{génériquement bruyant} face
 à toute perturbation de surface (ordre, langue), pas spécifiquement biaisé
 dans une direction donnée. Un vote majoritaire sur plusieurs répétitions
 devrait être préféré à une décision \emph{greedy} unique en usage de
-production.
+production. Ce bruit individuel est net mais plus contenu que ne le
+suggérait une première mesure obtenue en cours de campagne (respectivement
+31,3\% et 38,6\% de bascule, sous sélection par magnitude et juge
+auto-référent) --- cohérent avec le motif déjà observé pour d'autres
+résultats de ce rapport (le protocole historique amplifiait les artefacts
+de mesure plutôt que de simplement les répliquer à l'identique).
 
 \subsection{Qualité de l'explication document-level}
 
@@ -1262,24 +1263,26 @@ round-trip/ablation directe quantifie cette survie (proche de 0 : intervention
 effacée ; proche de 1 : préservée ; au-delà de 1 : amplifiée).
 
 Jamais testé au-delà d'une vérification géométrique superficielle, ce
-protocole révèle, sur les 10 features les plus explicatives de 4 intentions,
-un comportement \textbf{très hétérogène selon l'intention} : amplifié pour
-réclamation (1,87$\times$), partiellement préservé pour résiliation
-(0,64--0,82$\times$) et remboursement (0,28--0,37$\times$), quasi totalement
-préservé pour information (0,97--0,99$\times$), et fortement neutralisé pour
-urgence (0,11--0,13$\times$). Le steering n'est donc \textbf{pas} un
-mécanisme d'intervention causale fiable et prévisible en sortie réelle : une
-intervention efficace dans l'espace latent peut s'avérer sans effet une fois
-le résultat effectivement produit.
+protocole révèle, sous R0 ($K_\text{extra}=5$, layer 31), sur les 10
+features les plus explicatives de chacune des 5 intentions, un comportement
+\textbf{très hétérogène selon l'intention} : amplifié pour réclamation
+(4,03$\times$), résiliation (1,53$\times$) et urgence (2,65$\times$),
+partiellement préservé pour information (0,58$\times$), et quasi totalement
+neutralisé pour remboursement (0,02$\times$). Le steering n'est donc
+\textbf{pas} un mécanisme d'intervention causale fiable et prévisible en
+sortie réelle : une intervention efficace dans l'espace latent peut s'avérer
+sans effet une fois le résultat effectivement produit.
 
-\textbf{Note de traçabilité} : la première mesure de ce protocole, obtenue
-avant la correction d'un bug de regex sur les labels d'intention
-(\S\ref{subsec:lexical-leakage}), catégorisait à tort \emph{information}
-comme neutralisée et \emph{urgence} comme préservée --- l'inverse du résultat
-ci-dessus, rejoué sous labels corrigés et confirmé sur deux graines
-indépendantes du classifieur. La conclusion qualitative générale (effet
-hétérogène, pas de mécanisme causal uniforme) est inchangée par cette
-correction ; les catégories par intention, elles, ne l'étaient pas.
+\textbf{Note de stabilité} : la répartition précise par intention n'est pas
+stable d'une configuration à l'autre du SAE --- mesurée sur le checkpoint
+historique ($K_\text{extra}=32$, layer 24), la même chaîne donnait urgence
+fortement neutralisée (0,11--0,13$\times$) plutôt qu'amplifiée, information
+quasi totalement préservée (0,97--0,99$\times$) plutôt que partiellement, et
+remboursement partiellement préservé (0,28--0,37$\times$) plutôt que quasi
+neutralisé. Seule la conclusion générale (effet hétérogène selon l'intention,
+absence de mécanisme causal uniforme) est robuste aux deux configurations ;
+les catégories précises par intention ne le sont pas et ne doivent pas être
+lues comme une propriété stable d'une intention donnée.
 
 \subsection{Retrieval quantitatif (Latent Terms, fusion et reranking)}
 
@@ -1356,48 +1359,48 @@ même chaîne sur un diffing emails reste la suite naturelle de ce résultat.
 \label{subsec:clustering}
 
 Le clustering interprétable de documents a été exercé de bout en bout sur le
-corpus emails, sur le jeu de 68 features interprétables issu de la campagne
-historique (sélection par magnitude, juge auto-référent, antérieure au
-protocole R0) --- un résultat exploratoire, jamais rejoué sur les features
-sélectionnées et jugées sous protocole final, à lire comme une démonstration
-de faisabilité de la chaîne plutôt que comme une mesure de référence. À
-partir d'une requête en langage naturel (\emph{ex.}
-\og{}type de réclamation client\fg{}), un juge LLM génère des mots-clés,
-sélectionne les latents de l'extension dont les labels s'y rapportent (union
-des \emph{top-k} par mot-clé, 61 features sur les 68 ci-dessus),
-puis regroupe les documents par similarité de Jaccard sur
-leur profil d'activation binaire sur ces latents. Chaque cluster obtenu est ensuite étiqueté par un juge LLM, son
-accuracy mesurée par réassignation LLM à l'étiquette la plus proche, et sa
-\textbf{compacité géométrique} comparée, en espace d'embedding dense
+corpus emails, sous R0, sur le jeu de 197 features interprétables de R0
+(\emph{cf.}~\S\ref{subsec:correction-methode}). À partir d'une requête en
+langage naturel (\emph{ex.} \og{}type de réclamation client\fg{}), un juge
+LLM génère des mots-clés, sélectionne les latents de l'extension dont les
+labels s'y rapportent (union des \emph{top-k} par mot-clé), puis regroupe
+les documents par similarité de Jaccard sur leur profil d'activation binaire
+sur ces latents. Chaque cluster obtenu est ensuite étiqueté par un juge LLM,
+son accuracy mesurée par réassignation LLM à l'étiquette la plus proche, et
+sa \textbf{compacité géométrique} comparée, en espace d'embedding dense
 (bge-m3), à des échantillons aléatoires de même taille (\emph{z-conductance} :
 négatif si le cluster est plus dense que le hasard) :
 
 \begin{table}[h!]
 \centering
-\caption{Clustering ciblé sur la requête \og{}type de réclamation client\fg{} (n=300 documents, 4 clusters)}
+\caption{Clustering ciblé sur la requête \og{}type de réclamation client\fg{}, sous R0 (n=300 documents, 4 clusters)}
 \label{tab:clustering}
 \vspace{0.4em}\small
 \begin{tabular}{@{}clcc@{}}
 \toprule
 \textbf{Cluster} & \textbf{Description (LLM)} & \textbf{Accuracy} & \textbf{$z$-conductance} \\ \midrule
-0 (175 doc.) & Résiliation de contrat et litiges de facturation & 61,7\% & $-3{,}12$ \\
-1 (25 doc.) & Activation de service et réclamations mixtes & 40,0\% & $-2{,}91$ \\
-2 (46 doc.) & Réclamations urgentes pour coupures de courant & 56,5\% & $-4{,}32$ \\
-3 (54 doc.) & Demandes administratives mixtes (activation/résiliation) & 5,6\% & $-10{,}06$ \\
+0 (41 doc.) & Réclamations agressives, coupures de courant & 29,3\% & $-1{,}39$ \\
+1 (56 doc.) & Réclamations mixtes formelles, service et facturation & 64,3\% & $-5{,}09$ \\
+2 (111 doc.) & Réclamations formelles standard, coupures de courant & 27,9\% & $-10{,}86$ \\
+3 (92 doc.) & Résiliation de contrat / nouvelles demandes de service & 90,2\% & $-15{,}94$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Les quatre $z$-conductances sont négatives : les clusters obtenus par
 activation SAE sont géométriquement plus compacts, en espace d'embedding
-dense, que des échantillons aléatoires de même taille. L'accuracy varie en revanche fortement
-d'un cluster à l'autre (5,6\% à 61,7\%), cohérent qualitativement avec la
-littérature citée sur des clusters SAE à variance d'accuracy plus élevée que
-des baselines denses : le cluster le moins bien classé (3) porte lui-même
-l'étiquette la moins homogène (\og{}demandes administratives mixtes\fg{}),
-une correspondance qui a du sens --- compacité géométrique et cohérence
-sémantique jugée par LLM ne mesurent pas la même chose, et peuvent diverger
-sur un cluster par nature hétérogène.
+dense, que des échantillons aléatoires de même taille --- un effet même plus
+marqué que sur une première mesure exploratoire obtenue en cours de
+campagne, sur un jeu de features distinct issu de la sélection par magnitude
+(jusqu'à $z=-10{,}06$ au plus négatif, contre $z=-15{,}94$ ici). L'accuracy
+varie en revanche fortement d'un cluster à l'autre (27,9\% à 90,2\%),
+cohérent qualitativement avec la littérature citée sur des clusters SAE à
+variance d'accuracy plus élevée que des baselines denses. La répartition
+précise par cluster (tailles, contenu, accuracy par cluster) n'est pas
+directement comparable entre les deux mesures : le jeu de features R0 n'est
+pas un sur-ensemble de celui de la première mesure, la sélection stratifiée
+et la sélection par magnitude n'échantillonnant pas la même population de
+features.
 
 \textbf{Limite connue des deux résultats ci-dessus} : une seule requête de
 clustering testée, aucune baseline dense/instruction-tuned pour situer

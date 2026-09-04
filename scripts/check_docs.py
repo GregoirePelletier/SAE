@@ -46,7 +46,7 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
     ),
     (
         "report/RAPPORT_STAGE_UNIVERSITE.tex",
-        r"Combiné v12 (65k+époques+capacité, tranche 1-150) & 44,0\% & 0,23 & non \\",
+        r"Combiné v12 & 44,0\% & exploratoire \\",
     ),
     (
         "report/RAPPORT_STAGE_ENTREPRISE.tex",
@@ -54,7 +54,15 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
     ),
     (
         "report/RAPPORT_STAGE_ENTREPRISE.tex",
-        r"Combiné v12 (65k+époques+capacité, tranche 1-150) & 44,0\% & 0,23 & non \\",
+        r"Combiné v12 & 44,0\% & exploratoire \\",
+    ),
+    (
+        "report/Rapport_stage_EDF_relecture.tex",
+        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
+    ),
+    (
+        "report/Rapport_stage_EDF_relecture.tex",
+        r"Combiné v12 & 44,0\% & exploratoire \\",
     ),
 }
 

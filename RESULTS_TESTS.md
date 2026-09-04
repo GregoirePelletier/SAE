@@ -6144,3 +6144,436 @@ M1 (magnitude+juge auto-référent, §110) n'a délibérément pas été inclus 
 cette campagne (comparaison intentionnellement non corrigée, cf. politique
 juge Qwen-partout). Campagne complète (17/17 jobs), aucune section restante
 à compléter pour ce rejugement.
+
+## 120. Recouvrement de labels inter-graines sous R0 (audit de conformité du rapport) : plus faible que la mesure historique, pas plus élevé
+
+**Question** : §21 mesure un recouvrement EXACT de labels de features
+interprétables de 22/78 = 28,2% entre `SEED=42` et `SEED=123`, mais sous
+sélection par magnitude, juge Gemma-3-12b-it auto-référent, négatif non
+corrigé et n=150 (`results_v10_emails_main` vs
+`results_v13_ablation_seed123`) — un protocole non R0, cité tel quel dans
+`RAPPORT_STAGE_ENTREPRISE.tex` (§reproductibilite) comme s'il caractérisait
+la stabilité des features sous R0. Ce même recouvrement, mesuré sous
+méthodologie pleinement corrigée, donne-t-il un ordre de grandeur
+comparable ?
+
+**Écart à la configuration de référence** : aucun calcul GPU/LLM — les trois
+graines R0 (`SEED=42`, R0 lui-même, §97/§119 ; `SEED=123`, V1, §99/§119 ;
+`SEED=7`, V2, §101/§119) sont déjà entraînées et jugées à n=300 sous
+stratifié + Qwen3.8-27B + négatif corrigé + déduplication par mail parent
+— seule une comparaison d'ensembles de chaînes de caractères déjà en cache
+est effectuée (`scripts/seed_label_overlap_r0_test.py`, réutilise la même
+métrique que `feature_group_reproducibility_test.py::exact_label_overlap`,
+qui avait servi à produire le chiffre de §21).
+
+**Méthode statistique** : descriptive — indice de Jaccard
+$|A \cap B| / |A \cup B|$ sur l'ensemble des libellés exacts (chaînes non
+normalisées) des features avec `interp_score==1`, pour chaque paire de
+graines. Aucun test de significativité formel : comme pour la mesure
+historique de §21, il n'existe pas de témoin par permutation associé à
+cette métrique (limite déjà présente en §21, non résolue ici).
+
+**n** : 197 features interprétables (R0, seed 42), 191 (V1, seed 123), 192
+(V2, seed 7), sur 300 features jugées par graine.
+
+**Résultat** (`results_v27_ablation_classic_setup_k5_25m_layer31/cache/
+seed_label_overlap_r0_results.json`) :
+
+| Paire de graines | Labels distincts A | Labels distincts B | Intersection | Union | Jaccard |
+|---|---|---|---|---|---|
+| R0 (seed 42) vs V1 (seed 123) | 162 | 164 | 41 | 285 | **14,4%** |
+| R0 (seed 42) vs V2 (seed 7) | 162 | 164 | 41 | 285 | **14,4%** |
+| V1 (seed 123) vs V2 (seed 7) | 164 | 164 | 35 | 293 | **11,9%** |
+
+**Conclusion** : sous méthodologie R0, le recouvrement exact de labels entre
+graines (11,9% à 14,4% selon la paire) est **plus faible**, pas plus élevé,
+que le chiffre historique de §21 (28,2%) — la conclusion qualitative
+(instabilité individuelle des features malgré un taux agrégé stable, R0 =
+65,7%/63,7%/64,0% pour les trois graines) **se confirme et se renforce**
+sous protocole corrigé, elle ne s'inverse pas. La baisse du chiffre par
+rapport à §21 est cohérente avec le passage à une sélection stratifiée
+(qui échantillonne davantage les régions rares/périphériques du dictionnaire,
+plus idiosyncrasiques d'une graine à l'autre) et à n=300 (population de
+labels distincts mécaniquement plus grande, ce qui réduit un indice de
+Jaccard à taux d'accord individuel égal) plutôt qu'un changement réel de
+robustesse du SAE lui-même. **`RAPPORT_STAGE_ENTREPRISE.tex` doit remplacer
+28,2% par ce chiffre** (14,4%, R0 vs V1 — même paire de valeurs de seed que
+la mesure historique) et préciser que la conclusion qualitative est
+inchangée, pas seulement mettre à jour le nombre.
+
+**Limite connue** : la métrique elle-même reste sensible à la sélection
+stratifiée (deux graines différentes n'examinent pas nécessairement les
+mêmes indices de feature, un artefact déjà noté pour la comparaison
+inter-échelle) et à la longueur/normalisation du label (comparaison en
+chaîne exacte, sans tolérance aux paraphrases proches — un jugement humain
+pourrait considérer deux libellés synonymes comme "le même concept" alors
+que cette métrique les compte comme distincts) ; ne mesure que le
+recouvrement EXACT, pas un recouvrement sémantique (cf. §34/§66 pour le
+volet groupe-à-groupe par similarité bge-m3, non repris ici — hors périmètre
+de cet audit, cf. décision utilisateur).
+
+## 121. Domaine vs volume sous R0 (audit de conformité du rapport) : l'effet domaine confirmé en §46 ne réplique pas sous protocole intégral
+
+**Question** : §12/§46 comparent le corpus générique
+(energy/sports/support) au corpus emails à effectif apparié (n=150 chacun)
+mais sous sélection par magnitude, juge Gemma-3-12b-it auto-référent,
+négatif non corrigé et hyperparamètres historiques
+(`results_v9_full`/`results_v10_emails_main`, $K_\text{extra}=32$, layer 24,
+500k tokens) — un protocole non R0, cité dans
+`RAPPORT_STAGE_ENTREPRISE.tex` (§diagnostic-initial) comme la démonstration
+que "le facteur qui a déterminé l'interprétabilité était la nature du
+corpus d'entraînement, pas sa taille". Cette conclusion résiste-t-elle à la
+méthodologie R0 intégrale ?
+
+**Écart à la configuration de référence** : corpus principal = générique
+(energy/sports/support, `CONFIRMATORY_DOMAIN_BASELINE=1`,
+`src/sae/saev5.py`, comportement inchangé sinon) au lieu du corpus emails ;
+sinon identique à R0 (§97) : sélection stratifiée, juge Qwen3.8-27B,
+négatif corrigé, $K_\text{extra}=5$, $D_\text{extra}=1024$, 25M tokens,
+layer 31, $n=300$. Pas de déduplication par mail parent pertinente ici
+(`train_groups=None`, aucune notion de "mail d'origine" dans ce corpus) —
+écart structurel assumé, pas un oubli. Contrairement à §46 (rejugement seul
+sur un checkpoint déjà entraîné), aucun checkpoint sous ces hyperparamètres
+n'existait pour le corpus générique — extraction et entraînement complets
+requis (job 46946, h100, `results_v40_confirmatory_domain_baseline_r0_setup/`).
+
+**Méthode statistique** : `two_proportion_test` (`src/analysis/stats.py`)
+contre R0 (§97/§119, 65,7%, 197/300). Comparaison isolée, pas incluse dans
+la famille de 15 comparaisons corrigée Benjamini-Hochberg de §119 (axe
+différent : corpus, pas hyperparamètre SAE ou échelle de modèle) — le $p$
+brut (0,60) est de toute façon si loin du seuil qu'une correction conjointe
+ne changerait pas la conclusion qualitative.
+
+**n** : 300 features jugées (corpus générique), comparé à R0 (300, corpus
+emails).
+
+**Résultat** (`results_v40_confirmatory_domain_baseline_r0_setup/cache/
+p1_judge_labels_extended.json`, sidecar confirmant
+`judge_model_id=Qwen3.8-27B`, `feature_selection_method=stratified`,
+`doc_groups_dedup=true`) : **67,7% (203/300)**, IC95% Wilson
+[62,2% ; 72,7%] pour le corpus générique, contre **65,7% (197/300)** pour
+R0 (emails) — $z=0{,}52$, $p=0{,}60$, **non significatif**. Diagnostics de
+fiabilité avant lecture du taux : `dead_pct_extension`=2,05% (sain,
+comparable au 5,7% de R0), $\rho_\text{SAE}$=0,8389, FVE(core
+seul)=0,7058, FVE(core+extension)=0,8067, $\Delta$FVE=+0,1009 (du même
+ordre de grandeur que R0, +0,1393 — reconstruction saine, pas de signe de
+sous-entraînement).
+
+**Conclusion** : **l'effet domaine mesuré en §46 (45,3% vs 30,0%, écart de
+15,3 points, $z=2{,}74$, $p=0{,}006$, significatif sous magnitude + juge
+auto-référent) ne réplique pas du tout sous protocole R0** : le point
+estimé s'inverse même légèrement (générique 67,7% $>$ emails 65,7%), sans
+que cet écart soit lui-même significatif. **`RAPPORT_STAGE_ENTREPRISE.tex`
+doit corriger sa conclusion, pas seulement ses chiffres** : l'affirmation
+"le facteur qui a déterminé l'interprétabilité était la nature du corpus
+d'entraînement, pas sa taille" ne tient plus sous méthodologie corrigée —
+ni le domaine ni le volume (déjà établi sans effet, Table~\ref{tab:synthese})
+ne montrent d'effet détectable sur le taux d'interprétabilité une fois la
+sélection stratifiée et le juge indépendant appliqués. Ce résultat rejoint
+la liste déjà longue d'effets mesurés comme significatifs sous
+magnitude + auto-jugement qui ne survivent pas à la correction complète du
+protocole (effet d'échelle du modèle, §119 ; ancien biais de négatif,
+§115-117) — un motif structurel du protocole historique plutôt qu'un
+hasard isolé à cette comparaison précise.
+
+**Limite connue** : un seul seed pour chaque bras (comme pour l'essentiel
+de la campagne finale) ; le corpus générique (energy/sports/support,
+Wikipédia/fineweb2 filtré par mots-clés) reste qualitativement très
+différent du corpus emails augmenté (registre, longueur de document,
+structure) — l'absence d'effet mesurable ici ne dit rien sur un domaine
+plus proche des emails mais tout de même hors distribution ; deux domaines
+aussi extrêmes que possible donnant un résultat statistiquement
+indiscernable est en soi le résultat le plus fort disponible contre
+l'hypothèse d'un effet domaine détectable à ce protocole et ce $n$. La
+taille d'effet minimale détectable à $n=300$ par bras et à ce taux de base
+reste ${\sim}10$ points (cf. §119) : un effet domaine réel mais inférieur à
+ce seuil resterait indétectable ici, comme pour toute comparaison de cette
+campagne.
+
+## 122. ΔCE entraîné contre décodeur aléatoire sous R0 (audit de conformité du rapport) : la vraie comparaison que le texte prétendait déjà avoir, corrigée après un premier essai invalidé par un artefact de masquage
+
+**Question** : les deux rapports décrivaient le $\Delta$CE de §58/§61 comme
+une comparaison décodeur entraîné contre décodeur aléatoire, alors que cette
+mesure compare en réalité core seul contre core+extension entraînée, sur le
+checkpoint historique $K_\text{extra}=32$ (pas R0). Une fois le texte corrigé
+pour refléter honnêtement ce qui a été mesuré (cf. `RAPPORT_STAGE_ENTREPRISE.tex`),
+la vraie comparaison — décodeur entraîné (R0) contre décodeurs aléatoires
+figés (C1/C1b), sous $K_\text{extra}=5$ — reste-t-elle à produire, et
+confirme-t-elle la lecture qu'en donne le $\Delta$FVE (R0 largement
+supérieur aux deux témoins aléatoires, §98/§105/§119) ?
+
+**Écart à la configuration de référence** : aucun réentraînement — réutilise
+trois checkpoints déjà entraînés sous $K_\text{extra}=5$/$D_\text{extra}=1024$/
+layer 31 : R0 (décodeur entraîné, `results_v27.../p1_frozen_core_d1024_k5.pt`,
+§97), C1 (décodeur aléatoire figé, init \emph{iso}, `results_v37.../p1_frozen_core_d1024_k5.pt`,
+§98) et C1b (décodeur aléatoire figé, init \emph{cov}, `results_v42.../p1_frozen_core_d1024_k5.pt`,
+§105) — même core GemmaScope gelé partagé entre les trois. $\Delta$CE
+(`ce_loss_increase`, `src/sae/compare/crosslingual.py`) calculé sur les
+mêmes 60 documents tenus à l'écart (test split, `CORPUS_SPLIT_SEED`) pour
+les trois conditions.
+
+**Premier essai (job 46994) invalidé** : le patch s'appliquait à TOUTES les
+positions du document, y compris le premier token de contenu et les
+outliers de norme intra-document (\og{}massive activations\fg{} de Gemma-3,
+déjà documentées dans le rapport) — des positions sur lesquelles l'extension
+n'a jamais été entraînée ni évaluée (`extract_residual_acts`, utilisé pour
+tout l'entraînement et le $\Delta$FVE officiels, les exclut systématiquement
+via `valid_token_mask`/`norm_outlier_mask`, `src/analysis/activations.py`).
+Résultat de ce premier essai : $\Delta$CE(R0\_trained)=5,16, **supérieur**
+aux deux témoins aléatoires (1,18 et 1,26) — l'inverse de ce que montre le
+$\Delta$FVE. Vérifié empiriquement que ce n'est PAS un problème de classe de
+chargement (`SAEBoostResidualSAE`/`FrozenDecoderExtendedSAE` partagent
+exactement les mêmes paramètres ; `load_state_dict` confirme `missing=[]`,
+`unexpected=[]` pour les trois checkpoints dans les deux essais). Diagnostic
+retenu : un décodeur entraîné et calibré sur la distribution normale du
+résidu produit une reconstruction largement fausse sur une position hors
+distribution (BOS/outlier) qu'il n'a jamais vue, alors qu'un décodeur
+aléatoire quasi mort (§98 : `dead_pct_extension`=98,9\% pour C1) reste
+largement inoffensif faute de réagir à quoi que ce soit — un artefact de
+protocole de mesure, pas une propriété réelle du SAE. Corrigé
+(`scripts/ce_loss_r0_trained_vs_random_test.py`) : le patch ne s'applique
+plus qu'aux positions valides (même masque que l'extraction officielle),
+les positions exclues gardant leur activation d'origine.
+
+**Méthode statistique** : test de Wilcoxon signed-rank apparié par document
+(H1 : $\Delta$CE[aléatoire] $>$ $\Delta$CE[entraîné]), une comparaison pour
+chaque témoin aléatoire (iso, cov).
+
+**n** : 60 documents appariés (même échantillon pour les trois conditions).
+
+**Résultat** (job 47197, h100, `results_v27_ablation_classic_setup_k5_25m_layer31/cache/
+ce_loss_r0_trained_vs_random_results.json`, 0,9\% des tokens masqués en
+moyenne par document, cohérent avec la rareté documentée des positions
+outliers/BOS) :
+
+| Condition | $\Delta$CE moyen | vs R0\_trained ($H_1$ : aléatoire $>$ entraîné) |
+|---|---|---|
+| R0\_trained | **0,301** | --- |
+| C1\_random\_iso | 0,525 | $W=1785$, $p=7{,}5\times10^{-11}$, 56/60 documents en faveur du SAE entraîné |
+| C1b\_random\_cov | 0,510 | $W=1769$, $p=1{,}6\times10^{-10}$, 54/60 documents en faveur du SAE entraîné |
+
+**Conclusion** : une fois le patch restreint aux positions sur lesquelles
+l'extension a réellement été entraînée/évaluée, le décodeur entraîné dégrade
+nettement moins la cross-entropy que les deux témoins aléatoires figés
+($\Delta$CE 0,301 contre 0,51-0,53), effet hautement significatif et
+quasi unanime par document (56/60 et 54/60) — **cette fois, la lecture du
+$\Delta$CE converge réellement avec celle du $\Delta$FVE** (R0 largement
+supérieur aux témoins aléatoires, §98/§105/§119) : `RAPPORT_STAGE_ENTREPRISE.tex`
+peut désormais citer un vrai $\Delta$CE entraîné-vs-aléatoire sous R0, plutôt
+que la comparaison historique core-seul-vs-core+extension sous
+$K_\text{extra}=32$ mal décrite dans les versions précédentes.
+
+**Limite connue** : $n=60$ documents, un seul seed d'entraînement par
+condition ; le masquage (`valid_token_mask`/`norm_outlier_mask`) réutilise
+les fonctions de l'extraction officielle mais n'a pas été audité
+indépendamment pour ce script précis (risque résiduel que le masque
+lui-même diffère subtilement de celui utilisé à l'entraînement, ex. ordre
+d'application par rapport au padding) ; les deux témoins aléatoires (iso,
+cov) restent structurellement à faible capacité active (§98 : 11/1024 et
+31/1024 directions vivantes) — le test porte sur l'effet agrégé au niveau
+document, pas sur une décomposition par direction active/morte.
+
+## 123. Robustesse au réordonnancement sous R0 (audit de conformité du rapport) : le protocole final est plus stable individuellement que la mesure historique, pas moins
+
+**Question** : §13.1 mesure le taux de décision unanime sur 5
+réordonnancements (30,7%) et le taux de bascule individuelle (31,3%) sur
+`results_v10_emails_main` — sélection par magnitude, juge Gemma-3-12b-it
+auto-référent rechargé comme juge (biais que CLAUDE.md interdit
+explicitement de réintroduire), sans déduplication par mail parent. Le
+même protocole, sous R0 intégral, donne-t-il un ordre de grandeur
+comparable ?
+
+**Écart à la configuration de référence** : aucun calcul GPU au-delà du
+rejugement — réutilise les activations/fragments déjà en cache de R0.
+Corrige trois écarts du script historique
+(`scripts/judge_robustness_check_r0_test.py`, adapté de
+`judge_robustness_check.py`) : juge = `JUDGE_MODEL_ID` (Qwen3.8-27B,
+découplé de `MODEL_ID`) au lieu de Gemma-3-12b-it auto-référent ;
+`doc_groups=train_groups` (déduplication par mail parent, comme l'appel
+officiel `odd_one_out_judge` dans `saev5.py`) ; 300 features stratifiées de
+R0 au lieu de 150 par magnitude. **Piège rencontré et corrigé en cours de
+route** : un premier essai donnait 0% de vote majoritaire (100% de réponses
+non parsables, `predicted=-1` sur toutes les répétitions) — cause
+identifiée : les templates de chat Qwen3(.x) activent par défaut un
+préambule `<think>...</think>` qui dépasse à lui seul `max_new_tokens=8`
+sans jamais atteindre la réponse, un piège déjà documenté dans
+`src/sae/judge.py::_batched_generate` (`enable_thinking=False`) mais absent
+de l'appel `_apply_chat_and_extract` utilisé par ce script — corrigé en
+ajoutant `enable_thinking=False`, script relancé.
+
+**Méthode statistique** : `paired_mcnemar_test` (single-shot vs vote
+majoritaire, mêmes 300 features).
+
+**n** : 300 features (5 répétitions chacune).
+
+**Résultat** (job 47362, h100-bis, `p1_judge_robustness_r0.json`) :
+
+| Métrique | R0 (n=300) | Historique §13.1 (n=150) |
+|---|---|---|
+| Taux single-shot | 65,7% | 45,3% |
+| Taux vote majoritaire | 63,7% | 48,7% |
+| McNemar single-shot vs majoritaire | $\chi^2=0{,}43$, $p=0{,}51$ | $p=0{,}560$ |
+| Décisions unanimes (5/5) | **53,3% (160/300)** | 30,7% (46/150) |
+| Features changeant de statut | **19,3% (58/300)** | 31,3% (47/150) |
+
+**Conclusion** : sous R0, le protocole reste globalement stable en agrégé
+(65,7%→63,7%, non significatif, comme historiquement) mais est
+**individuellement plus stable** que sous l'ancien protocole : 53,3%
+de décisions unanimes contre 30,7%, et 19,3% de bascules individuelles
+contre 31,3% — près de 12 points de moins. La conclusion qualitative de
+§13.1 (le protocole odd-one-out à décision unique est bruyant au niveau
+de la feature individuelle, un vote majoritaire est préférable en
+production) **se confirme**, mais son ampleur exacte était surestimée sous
+l'ancien protocole — cohérent avec le motif déjà observé ailleurs dans ce
+rapport (sélection par magnitude + juge auto-référent amplifiant les
+artefacts de mesure). `RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce chiffre
+comme référence, pas celui de §13.1.
+
+**Limite connue** : un seul seed de réordonnancement (5 répétitions, pas de
+réplication de la campagne elle-même) ; comme pour §13.1, aucun témoin par
+permutation n'existe pour cette métrique.
+
+## 124. Biais multilingue du juge sous R0 (audit de conformité du rapport) : même lecture qualitative, bascule individuelle plus faible
+
+**Question** : §22 mesure le biais multilingue (FR 46,9% vs EN 45,5%,
+38,6% de bascule individuelle) sur `results_v10_emails_main`, avec les
+mêmes écarts que §13.1 (magnitude, juge/traducteur Gemma-3-12b-it
+auto-référent, sans déduplication). Réplique-t-il sous R0 ?
+
+**Écart à la configuration de référence** : mêmes trois corrections que
+§123 (`scripts/multilingual_judge_bias_test_r0.py`, adapté de
+`multilingual_judge_bias_test.py`) : juge/traducteur = Qwen3.8-27B
+découplé, `doc_groups=train_groups`, 300 features R0. **Même piège
+`enable_thinking`** rencontré et corrigé (le premier essai est resté
+bloqué ${\sim}2$h sans produire la moindre ligne de progression — généra-
+tion emballée dans le préambule de raisonnement à chaque appel, jamais
+arrivée à la réponse malgré un budget de tokens généreux pour la
+traduction ; job annulé avant terme, aucun résultat de ce premier essai
+n'a été utilisé).
+
+**Méthode statistique** : `paired_mcnemar_test` (FR vs EN, mêmes features).
+
+**n** : 296 features (4 échecs de traduction exclus, sur 300).
+
+**Résultat** (job 47363, h100-bis, `multilingual_judge_bias_r0_results.json`) :
+
+| Métrique | R0 (n=296) | Historique §22 (n=145) |
+|---|---|---|
+| Taux FR | 65,5% | 46,9% |
+| Taux EN | 63,5% | 45,5% |
+| McNemar FR vs EN | $\chi^2=0{,}31$, $p=0{,}58$ | $p=0{,}894$ |
+| Features changeant de statut | **27,0% (80/296)** | 38,6% (56/145) |
+
+**Conclusion** : même lecture que §22 — aucune différence agrégée
+significative entre français et anglais traduit (non-significatif dans les
+deux protocoles), mais un bruit de bascule individuelle substantiel. Comme
+pour le réordonnancement (§123), ce bruit individuel est **plus faible**
+sous R0 qu'historiquement (27,0% contre 38,6%) — le motif se confirme,
+son ampleur était surestimée sous l'ancien protocole.
+`RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce chiffre comme référence.
+
+**Limite connue** : la traduction reste faite par le même modèle que le
+juge (Qwen, pas un traducteur neutre) ; 4/300 échecs de parsing JSON
+exclus, non attribuables à une catégorie de features en particulier
+(vérification rapide, pas d'analyse systématique du biais d'exclusion).
+
+## 125. Clustering ciblé sous R0 (audit de conformité du rapport) : structure géométrique confirmée, accuracy qualitativement différente sur un jeu de features distinct
+
+**Question** : §86 exerce la chaîne complète de clustering ciblé
+(mots-clés LLM, union top-k, Jaccard, étiquetage, accuracy, z-conductance)
+sur les 68 features interprétables de la campagne historique (sélection
+par magnitude, juge auto-référent). Le résultat qualitatif (clusters plus
+compacts que le hasard, accuracy hétérogène) tient-il sur les 197 features
+interprétables de R0 ?
+
+**Écart à la configuration de référence** : aucun changement de code —
+`scripts/clustering_llm_test.py` était déjà paramétré par `SAVE_DIR` et
+utilisait déjà `load_judge_model()` (Qwen3.8-27B, jamais `MODEL_ID`) ;
+seul `SAVE_DIR` est repointé sur R0. Latents = 197 features interprétables
+de R0 (`p1_top_extended_features.json`) au lieu des 68 historiques.
+
+**Méthode statistique** : descriptive (accuracy et z-conductance par
+cluster, témoin par permutation à 100 tirages déjà intégré au script).
+
+**n** : 300 documents (même requête \og{}type de réclamation client\fg{},
+4 clusters).
+
+**Résultat** (job 47339, h100-bis, `clustering_llm_verification.json`) :
+
+| Cluster | Taille | Description LLM | Accuracy | $z$-conductance |
+|---|---|---|---|---|
+| 0 | 41 | Aggressive complaints, power outages | 29,3% | −1,39 |
+| 1 | 56 | Formal/mixed-language service+billing complaints | 64,3% | −5,09 |
+| 2 | 111 | Standard formal power-cut complaints | 27,9% | −10,86 |
+| 3 | 92 | Contract termination / new service requests | 90,2% | −15,94 |
+
+**Conclusion** : les quatre $z$-conductances restent négatives (clusters
+géométriquement plus compacts que des échantillons aléatoires) — la
+structure géométrique **se confirme** sur le jeu de features R0, avec un
+effet même plus marqué qu'historiquement ($z$ jusqu'à −15,94 contre −10,06
+au plus négatif en §86). L'accuracy reste hétérogène (27,9% à 90,2%,
+contre 5,6% à 61,7% historiquement) — toujours cohérent qualitativement
+avec la littérature citée (accuracy par cluster plus variable qu'une
+baseline dense), mais la répartition par cluster n'est pas directement
+comparable : les mots-clés générés, la taille des clusters (41/56/111/92
+contre 175/25/46/54) et le contenu même diffèrent, puisque le jeu de 197
+features R0 n'est pas un sur-ensemble des 68 historiques (sélection
+stratifiée contre magnitude). `RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce
+résultat comme référence, en conservant la mise en garde déjà présente
+(une seule requête testée, pas de baseline dense/instruction-tuned,
+$n_\text{clusters}$ non sélectionné empiriquement).
+
+**Limite connue** : identique à §86 (une seule requête, un seul seed, pas
+de baseline dense) ; la comparaison cluster-à-cluster avec §86 n'a pas de
+sens direct (jeux de features disjoints, tailles de cluster différentes) —
+seule la propriété qualitative agrégée (compacité systématique, accuracy
+hétérogène) est comparable entre les deux mesures.
+
+## 126. Fidélité du steering sous R0 (audit de conformité du rapport) : hétérogénéité confirmée, catégorisation par intention non stable entre configurations
+
+**Question** : §24/§68/§69 mesurent la fidélité du steering
+(`steer_and_decode`) exclusivement sur le checkpoint historique
+$K_\text{extra}=32$/layer 24. Réplique-t-elle sous R0
+($K_\text{extra}=5$/layer 31) ?
+
+**Écart à la configuration de référence** : `scripts/steering_fidelity_test_r0.py`,
+adapté de `steering_fidelity_test.py` — seuls `D_EXTRA`/`K_EXTRA`/`SAE_ID`
+(1024/5/`layer_31_width_16k_l0_medium`, au lieu de 1024/32/`layer_24_...`)
+et `SAVE_DIR` changent ; le correctif `random_state=SEED` de §69 était déjà
+en place. Aucun appel au juge LLM dans ce script (sonde logistique +
+encode/decode du SAE seulement) — non affecté par le piège
+`enable_thinking` de §123/§124.
+
+**Méthode statistique** : descriptive (ratio round-trip/ablation en place,
+comme §24/§68/§69).
+
+**n** : jusqu'à 200 documents par intention (5 intentions).
+
+**Résultat** (job 47360, h100-bis, `steering_fidelity_r0_results.json`) :
+
+| Intention | Chute en place | Chute round-trip | Ratio | R0 | Historique (§69, K32/layer24) |
+|---|---|---|---|---|---|
+| Réclamation | 0,141 | 0,569 | **4,03×** | amplifié | 1,87× (amplifié) |
+| Résiliation | 0,569 | 0,871 | **1,53×** | amplifié | 0,82× (partiel) |
+| Remboursement | 0,998 | 0,019 | **0,02×** | neutralisé | 0,37× (partiel) |
+| Information | 0,938 | 0,544 | **0,58×** | partiel | 0,99× (quasi préservé) |
+| Urgence | 0,370 | 0,981 | **2,65×** | amplifié | 0,11× (neutralisé) |
+
+**Conclusion** : la conclusion qualitative générale (comportement
+hétérogène selon l'intention, pas de mécanisme causal uniforme, le steering
+n'est pas un outil d'intervention fiable et prévisible) **se confirme**
+sous R0. En revanche, **la catégorisation précise par intention change
+substantiellement entre K32/layer24 et K5/layer31** — urgence passe de
+fortement neutralisée (0,11×) à amplifiée (2,65×), information de quasi
+préservée (0,99×) à partiellement préservée (0,58×), remboursement de
+partiellement préservée (0,37×) à quasi neutralisée (0,02×) : comme pour
+le correctif d'intention de §68/§69, les affirmations spécifiques par
+intention ne sont pas stables d'une configuration à l'autre, seule la
+conclusion générale (hétérogénéité, absence de mécanisme uniforme) l'est.
+`RAPPORT_STAGE_ENTREPRISE.tex` doit citer les chiffres R0 comme référence
+et ne plus présenter la répartition K32/layer24 comme le résultat final.
+
+**Limite connue** : un seul seed de classifieur par intention (contrairement
+à §69 qui en a confirmé deux pour K32/layer24) ; les vecteurs restent des
+codes SAE poolés par MAX documentaire, pas des codes de token réels (même
+limite qu'à l'origine, §24).
