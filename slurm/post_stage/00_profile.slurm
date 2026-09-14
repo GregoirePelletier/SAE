@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=SAE_post_e00_profile
+#SBATCH --job-name=SAE_post_e00_profile_v2
 #SBATCH --partition=h100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
@@ -10,12 +10,16 @@
 #SBATCH --output=/home/h21486/SAE/logs/post_stage/e00_profile_%j.out
 #SBATCH --error=/home/h21486/SAE/logs/post_stage/e00_profile_%j.err
 
-# E00 -- premier profilage reel, borne (Plan_execution_SAE_15_jours_Claude_Code.md
-# §5.7) : 1B/layer13, 250k tokens residus, filler MODESTE (20k chunks, pas les
-# ~1,2M d'un run de production) pour observer un premier ordre de grandeur du
-# cout memoire des lignes filler dans all_doc_sae_acts (C1) sans faire courir
-# ~1,2M forwards Gemma-3-1B supplementaires des la premiere mesure. Aucun
-# correctif applique encore -- ce job MESURE le code actuel tel quel.
+# E00 -- validation du correctif C1 (docs/post_stage/memory_diagnosis.md),
+# apres le premier profilage (job 48515, correctif pas encore applique a
+# l'epoque). Meme config qu'alors (1B/layer13, 250k tokens residus, 20k
+# filler) SAUF MAX_AUGMENTED_PER_MAIL=1 : le premier profilage avait laisse
+# le defaut (13, saev5.py:298) sans le savoir, traitant en realite les 36 602
+# documents de la production complete au lieu d'un sous-echantillon --
+# corrige ici pour qu'un run complet (jusqu'aux sondes en aval) tienne dans
+# la fenetre de 2h. But : confirmer sur un run reel que le pic transitoire
+# mesure au moment de torch.stack(all_doc_sae_acts) a disparu/est reduit a
+# l'echelle desormais reellement utile (train+test+diff, sans filler).
 #
 # Pas de --signal=B:USR1 (avertissement explicite du plan, §16.4) : le "B:"
 # viserait le shell batch, pas necessairement python. Ici le signal va au
@@ -50,11 +54,12 @@ export PIPELINES=p1
 # comme test synthetique.
 export N_TOKENS_EXTRA_TRAIN=250000
 export N_VOLUME_FILLER_TARGET_CHUNKS=20000
+export MAX_AUGMENTED_PER_MAIL=1
 export D_EXTRA=1024
 export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
-export SAVE_DIR="/home/h21486/SAE/results_post_stage_e00_profile_1b/"
+export SAVE_DIR="/home/h21486/SAE/results_post_stage_e00_profile_1b_v2/"
 
 export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH:-}"
 

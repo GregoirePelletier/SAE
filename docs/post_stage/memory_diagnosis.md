@@ -94,13 +94,21 @@ représentation, §6.4).
 
 `N_TOKENS_EXTRA_TRAIN=250000` ne borne que le réservoir de résidus pour
 l'entraînement de l'extension -- **pas la taille du corpus documentaire**.
-`MAX_AUGMENTED_PER_MAIL` (non positionné dans ce job, défaut `None` =
-illimité) contrôle le nombre de variantes augmentées par mail d'origine, et
-donc la taille réelle de `all_doc_sae_acts`/les sondes en aval : ce
-"profilage borné" a en réalité traité les **36 602 documents** de la
-production complète, pas un sous-échantillon. Un futur profilage
-réellement rapide doit positionner `MAX_AUGMENTED_PER_MAIL` à une petite
-valeur (ex. 2-3) en plus de `N_TOKENS_EXTRA_TRAIN`.
+Correction après vérification du code (`saev5.py:298`) : `MAX_AUGMENTED_PER_MAIL`
+défaut réellement à **13**, pas à l'illimité comme affirmé dans une première
+version de ce diagnostic (l'appel direct utilisé pour compter les labels,
+§ci-dessous, passait `None` explicitement -- une erreur de méthode dans le
+diagnostic, pas dans le pipeline). 36 602 documents train est donc la taille
+de corpus **normale et attendue** à ce défaut (3 474 mails × jusqu'à 13
+variantes, cohérent avec les 39 949 variantes acceptées mentionnées dans le
+plan, §2.1), pas un signe que le job a échappé à une borne. Ce "profilage
+borné" n'était donc borné qu'en tokens résidus, jamais en nombre de
+documents -- même à `N_TOKENS_EXTRA_TRAIN` minuscule, tout job qui ne
+positionne pas explicitement `MAX_AUGMENTED_PER_MAIL` à une petite valeur
+(ex. 1-2) traite le corpus à sa taille de production pour l'extraction
+document-niveau et les sondes en aval. Un futur profilage réellement rapide
+doit positionner `MAX_AUGMENTED_PER_MAIL` explicitement bas en plus de
+`N_TOKENS_EXTRA_TRAIN`.
 
 ## 6. Prochaine étape
 
