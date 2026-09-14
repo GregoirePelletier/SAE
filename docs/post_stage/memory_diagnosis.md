@@ -110,7 +110,42 @@ document-niveau et les sondes en aval. Un futur profilage réellement rapide
 doit positionner `MAX_AUGMENTED_PER_MAIL` explicitement bas en plus de
 `N_TOKENS_EXTRA_TRAIN`.
 
-## 6. Prochaine étape
+## 6. Validation du correctif C1
+
+Deux validations complémentaires, l'une isolée (sans confondre avec la
+réduction de corpus), l'autre en conditions réelles.
+
+**Benchmark synthétique isolé** (CPU, aucun modèle/donnée réelle, échelle
+volontairement réduite après qu'une première tentative à l'échelle
+production -- 1,2M lignes filler -- a été tuée par OOM en tournant **par
+erreur sur le nœud frontal** ; ne pas répéter à cette échelle hors `sbatch`) :
+à 2 000 documents réels + 20 000 filler, construction "ancienne" (zéro par
+filler + `torch.stack`) → pic transitoire de 690 Mo ; construction "corrigée"
+(filler jamais ajouté) → 65 Mo. Ratio ~10,6×, cohérent avec le ratio de
+lignes (22 000/2 000 = 11×) -- confirme le mécanisme indépendamment de toute
+mesure sur pipeline réel.
+
+**Run réel post-correctif** (job 48530, même config que 48515 --
+`MAX_AUGMENTED_PER_MAIL=1` en plus pour tenir dans la fenêtre) :
+`COMPLETED` en 35 min 39 s (le job 48515 équivalent avait été tué par
+`TIMEOUT` à 2h). Pic mémoire de la transition extraction→entraînement :
+9,76 → 4,82 Go (Δ 4,94 Go, à comparer au format toujours compact sur disque,
+vérifié `n_total=27 814, kept_rows.shape=[7 814, 16384]` -- exactement
+`n_train(6 567) + n_test+n_diff(1 247)`, filler totalement absent). Le
+run entier a terminé avec des métriques dans la plage historique attendue
+(ΔFVE domaine +0,2856, `acc_SAE` axes email 84,4% sur 14 classes) : le
+correctif ne change aucun résultat scientifique, seulement la mémoire de
+construction.
+
+**Attention à ne pas sur-interpréter** : ce run a un corpus bien plus petit
+que 48515 (`MAX_AUGMENTED_PER_MAIL=1` vs 13 par défaut) et a probablement
+bénéficié d'un cache page OS déjà chaud pour les poids Qwen (même nœud
+`dgx-h100` que 48515) -- le pic mémoire global du run (18,15 Go) n'est donc
+**pas** directement comparable au pic de 48515 (103 Go) comme mesure isolée
+du correctif ; c'est le benchmark synthétique ci-dessus, à corpus égal, qui
+isole proprement l'effet du correctif.
+
+## 7. Prochaine étape
 
 Le correctif prioritaire identifié par cette mesure : ne jamais construire
 `all_doc_sae_acts` avec les lignes filler en mémoire (ni pendant la
