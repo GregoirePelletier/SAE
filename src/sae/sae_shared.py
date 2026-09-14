@@ -250,6 +250,28 @@ def save_doc_acts_sparse_filler(tensor: "torch.Tensor", n_train: int, n_filler: 
     }, path)
 
 
+def save_doc_acts_compact(
+    compact_tensor: "torch.Tensor", n_train: int, n_filler: int, n_total: int, path: str
+) -> None:
+    """Comme `save_doc_acts_sparse_filler`, pour un appelant qui n'a JAMAIS
+    matérialisé les lignes filler en mémoire (correctif E00,
+    `memory_diagnosis.md` §2 -- la construction en liste Python + append d'une
+    ligne zéro par document filler, suivie de `torch.stack` sur l'ensemble,
+    faisait transitoirement coexister liste et tenseur à l'échelle `n_total`
+    plutôt qu'à l'échelle réellement utile). `compact_tensor` a déjà
+    `n_total - n_filler` lignes (train ++ test ++ diff, même ordre que
+    `build_reencode_targets`) -- rien à masquer, contrairement à
+    `save_doc_acts_sparse_filler`. Même schéma de fichier en sortie : tout
+    consommateur existant (`load_doc_acts_sparse_filler`/`load_all_doc_acts`)
+    continue de fonctionner sans modification."""
+    torch.save({
+        "n_total": n_total, "d": compact_tensor.shape[1],
+        "n_train": n_train, "n_filler": n_filler,
+        "dtype": str(compact_tensor.dtype).removeprefix("torch."),
+        "kept_rows": compact_tensor,
+    }, path)
+
+
 def _reconstruct_sparse_filler_payload(payload: dict) -> "torch.Tensor":
     dtype = getattr(torch, payload["dtype"])
     out = torch.zeros(payload["n_total"], payload["d"], dtype=dtype)

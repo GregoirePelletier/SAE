@@ -6,6 +6,7 @@ import torch
 
 from src.sae.sae_shared import (
     save_doc_acts_sparse_filler,
+    save_doc_acts_compact,
     load_doc_acts_sparse_filler,
     load_all_doc_acts,
 )
@@ -72,6 +73,50 @@ def test_load_all_doc_acts_dispatches_on_sparse_filler_format(tmp_path):
     restored = load_all_doc_acts(path)
     assert torch.equal(restored[:n_train], train)
     assert torch.equal(restored[n_train + n_filler:], test)
+
+
+def test_save_doc_acts_compact_matches_save_doc_acts_sparse_filler(tmp_path):
+    # correctif E00 (memory_diagnosis.md §2) : un appelant qui n'a jamais
+    # matérialisé les lignes filler (all_doc_sae_acts compact dès la
+    # construction, plus de torch.zeros(d) par document filler) doit produire
+    # un fichier byte-pour-byte équivalent, du point de vue de tout lecteur
+    # existant, à l'ancien chemin dense+masqué.
+    full, train, filler, test = _make_tensor()
+    n_train, n_filler = train.shape[0], filler.shape[0]
+    n_total = full.shape[0]
+    compact_tensor = torch.cat([train, test], dim=0)  # jamais construit avec filler
+
+    path_new = str(tmp_path / "via_compact.pt")
+    path_old = str(tmp_path / "via_dense_masked.pt")
+    save_doc_acts_compact(compact_tensor, n_train, n_filler, n_total, path_new)
+    save_doc_acts_sparse_filler(full, n_train, n_filler, path_old)
+
+    restored_new = load_all_doc_acts(path_new)
+    restored_old = load_all_doc_acts(path_old)
+    assert torch.equal(restored_new, restored_old)
+    assert torch.equal(restored_new[:n_train], train)
+    assert torch.equal(restored_new[n_train + n_filler:], test)
+    assert torch.equal(restored_new[n_train:n_train + n_filler], torch.zeros_like(filler))
+
+
+def test_save_doc_acts_compact_output_size_independent_of_filler_count(tmp_path):
+    import os
+    n_train, n_test, d = 5, 3, 64
+    compact_tensor = torch.rand(n_train + n_test, d)
+
+    small_filler_path = str(tmp_path / "small_filler.pt")
+    huge_filler_path = str(tmp_path / "huge_filler.pt")
+    save_doc_acts_compact(compact_tensor, n_train, 10, n_train + 10 + n_test, small_filler_path)
+    save_doc_acts_compact(compact_tensor, n_train, 500_000, n_train + 500_000 + n_test, huge_filler_path)
+
+    # Le fichier ne contient jamais les lignes filler -- sa taille ne dépend
+    # donc pas du nombre de documents filler déclarés (à quelques octets près,
+    # l'encodage entier de n_filler/n_total dans les métadonnées du pickle
+    # variant légèrement avec leur nombre de chiffres), seulement du nombre de
+    # lignes réellement utiles (contrairement à un tenseur dense qui les
+    # inclurait toutes -- un filler 50 000x plus grand ferait une différence
+    # de plusieurs ordres de grandeur, pas quelques octets).
+    assert abs(os.path.getsize(small_filler_path) - os.path.getsize(huge_filler_path)) < 100
 
 
 def test_load_all_doc_acts_still_reads_plain_dense_tensor(tmp_path):

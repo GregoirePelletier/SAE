@@ -209,7 +209,7 @@ from sae_shared import (
     load_or_train_extended_sae,
     compute_activation_cache_key, shared_activation_cache_dir,
     acquire_shared_cache_lock,
-    save_doc_acts_sparse_filler, load_doc_acts_sparse_filler,
+    save_doc_acts_sparse_filler, save_doc_acts_compact, load_doc_acts_sparse_filler,
 )
 
 from src.sae.judge import (
@@ -881,7 +881,6 @@ def run_llm_max_pool_pipeline(
     # entre runs à D_EXTRA différents. Le padding vers d_core+D_EXTRA, quand
     # nécessaire, se fait exclusivement en aval, dans ext_fragments_dir
     # (privé par run, cf. plus bas).
-    d_total_expected = d_core
 
     cache_acts_path      = os.path.join(CACHE_DIR, "p1_all_doc_acts.pt")
     # Réservoir memmap disque (pas un .pt chargé intégralement en RAM, cf.
@@ -1140,15 +1139,23 @@ def run_llm_max_pool_pipeline(
         # leurs fragments (doc_maxpool, CPU, O(nnz) -- pas de GPU, quasi-instantané
         # même pour des dizaines de milliers de documents) plutôt que de les
         # recalculer sur GPU. Compteurs de réservoir repris à leur valeur persistée.
-        # Filler (allègement extraction, §2.2) : aucun fragment -> placeholder,
-        # jamais lu en aval (mêmes garanties que build_reencode_targets).
+        # Filler (allègement extraction, §2.2) : aucun fragment -> AUCUNE ligne
+        # ajoutée à all_doc_sae_acts (correctif mémoire E00, docs/post_stage/
+        # memory_diagnosis.md §2 -- une ligne zéro par document filler ici,
+        # combinée au torch.stack final, produisait une coexistence liste+tenseur
+        # dont le pic mesuré extrapole à l'échelle d'un run de production, cf.
+        # diagnostic). all_doc_sae_acts est désormais TOUJOURS compact (train ++
+        # test ++ diff, même ordre que build_reencode_targets, jamais la plage
+        # filler) -- sans effet sur le format partagé sur disque
+        # (save_doc_acts_compact ci-dessous écrit le même schéma que
+        # save_doc_acts_sparse_filler) ni sur aucun consommateur en aval : cette
+        # variable est intégralement réaffectée avant le ré-encodage, jamais lue
+        # entre les deux.
         if _resume_from > 0:
             print(f"  [P1] Reconstruction de {_resume_from} vecteurs déjà extraits depuis les fragments...")
             all_doc_sae_acts = []
             for _di in tqdm(range(_resume_from), desc="Reprise (fragments->vecteurs)"):
-                if is_filler_document(_di, n_train, n_filler):
-                    all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))
-                else:
+                if not is_filler_document(_di, n_train, n_filler):
                     all_doc_sae_acts.append(doc_maxpool(load_fragment(token_fragments_dir, _di)))
         else:
             all_doc_sae_acts = []
@@ -1264,10 +1271,9 @@ def run_llm_max_pool_pipeline(
                         token_sae_acts = pretrained_sae.encode(filtered)
 
                         # Stockage SPARSE (CSR) : ~250 Ko/doc au lieu de ~400 Mo dense a width 262k.
-                        # Largeur core UNIQUEMENT (jamais D_EXTRA -- N1, cf.
-                        # d_total_expected ci-dessus) : ce fragment/vecteur vit
-                        # dans le cache d'extraction PARTAGÉ, D_EXTRA n'y a pas
-                        # sa place.
+                        # Largeur core UNIQUEMENT (jamais D_EXTRA -- N1) : ce
+                        # fragment/vecteur vit dans le cache d'extraction PARTAGÉ,
+                        # D_EXTRA n'y a pas sa place.
                         doc_sae_vec = token_sae_acts.max(dim=0).values
 
                         _fragment_writer.add(
@@ -1278,11 +1284,13 @@ def run_llm_max_pool_pipeline(
                             raw_acts=filtered,
                         )
                         all_doc_sae_acts.append(doc_sae_vec.cpu())
-                    else:
-                        # Placeholder bon marché : garde all_doc_sae_acts aligné sur
-                        # doc_global_idx (liste construite par append, dans l'ordre) --
-                        # jamais lu en aval (cf. slicing train/test/diff plus bas).
-                        all_doc_sae_acts.append(torch.zeros(d_total_expected, dtype=TORCH_DTYPE))
+                    # else : document filler -- AUCUNE ligne ajoutée à
+                    # all_doc_sae_acts (correctif E00, memory_diagnosis.md §2 ;
+                    # remplace l'ancien placeholder torch.zeros(d_total_expected),
+                    # qui gardait un alignement sur doc_global_idx jamais exploité
+                    # en aval -- cf. build_reencode_targets/slicing train/test/diff,
+                    # qui sautent déjà cette plage). all_doc_sae_acts reste compact
+                    # (train ++ test ++ diff, même ordre que build_reencode_targets).
 
                     if USE_FROZEN_CORE and doc_global_idx < n_train + n_filler:
                         # Réservoir (Vitter, Algorithm R) : échantillon uniforme
@@ -1357,8 +1365,15 @@ def run_llm_max_pool_pipeline(
         # ~845) plutôt qu'à un checkpoint devenu obsolète s'il reste sur disque.
         _clear_checkpoint(_extraction_progress_path(CACHE_DIR))
 
+        # all_doc_sae_acts est déjà compact ici (train ++ test ++ diff, filler
+        # jamais append -- cf. correctif ci-dessus) : plus de coexistence
+        # liste+tenseur à l'échelle n_total, seulement à l'échelle réellement
+        # utile. save_doc_acts_compact écrit le même schéma de fichier que
+        # save_doc_acts_sparse_filler (kept_rows déjà filler-exclu, rien à
+        # masquer) -- load_doc_acts_sparse_filler/load_all_doc_acts (~20
+        # scripts consommateurs du cache PARTAGÉ) restent inchangés.
         all_doc_sae_acts = torch.stack(all_doc_sae_acts)
-        save_doc_acts_sparse_filler(all_doc_sae_acts, n_train, n_filler, cache_acts_path)
+        save_doc_acts_compact(all_doc_sae_acts, n_train, n_filler, len(all_texts), cache_acts_path)
 
         if USE_FROZEN_CORE and reservoir is not None:
             # Corpus plus petit que N_TOKENS_EXTRA_TRAIN : le buffer préalloué n'a
