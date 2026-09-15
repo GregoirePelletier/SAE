@@ -1,0 +1,80 @@
+{
+  "generated_at_unix": 1789461065.6770926,
+  "join": {
+    "method": "positional_via_parent_id",
+    "positional_join_fallback": true
+  },
+  "n_duplicate_parent_hashes": 0,
+  "n_parents": 3474,
+  "n_parents_by_split": {
+    "confirm": 869,
+    "dev": 521,
+    "fit": 2084
+  },
+  "n_variants_by_split": {
+    "confirm": 9996,
+    "dev": 5997,
+    "fit": 23886
+  },
+  "n_variants_total_accepted": 39949,
+  "n_variants_unmatched": 70,
+  "parent_char_length_stats_by_split": {
+    "confirm": {
+      "max": 10963,
+      "mean": 1406.6225546605294,
+      "n": 869,
+      "p50": 1337.0,
+      "p90": 2009.6000000000001
+    },
+    "dev": {
+      "max": 4394,
+      "mean": 1378.0076775431862,
+      "n": 521,
+      "p50": 1298.0,
+      "p90": 1982.0
+    },
+    "fit": {
+      "max": 3583,
+      "mean": 1378.243282149712,
+      "n": 2084,
+      "p50": 1319.0,
+      "p90": 1997.7
+    }
+  },
+  "schema_version": "post-stage-corpus-v1",
+  "source": {
+    "augmented_jsonl_path": "local_data/emails/augmented_mails.jsonl",
+    "mails_tsv_path": "local_data/emails/Mails.tsv",
+    "status": "synthetic"
+  },
+  "split_config": {
+    "confirm": 0.25,
+    "dev": 0.15,
+    "fit": 0.6,
+    "seed": 20260914
+  },
+  "token_length_stats_by_split": null,
+  "variant_char_length_stats_by_split": {
+    "confirm": {
+      "max": 3395,
+      "mean": 1283.7930172068827,
+      "n": 9996,
+      "p50": 1248.0,
+      "p90": 1880.0
+    },
+    "dev": {
+      "max": 3087,
+      "mean": 1264.9654827413706,
+      "n": 5997,
+      "p50": 1231.0,
+      "p90": 1871.0
+    },
+    "fit": {
+      "max": 3521,
+      "mean": 1270.0196767981245,
+      "n": 23886,
+      "p50": 1233.0,
+      "p90": 1877.0
+    }
+  }
+}

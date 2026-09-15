@@ -1,0 +1,29 @@
+# Configuration du gel de corpus (plan §4.1-4.2). Source de verite pour
+# regenerer configs/post_stage/{corpus_manifest,split_assignments}.json via
+# src/post_stage/dataset_contract.py::build_corpus_manifest.
+
+mails_tsv_path: local_data/emails/Mails.tsv
+augmented_jsonl_path: local_data/emails/augmented_mails.jsonl
+status: synthetic  # aucune donnee client reelle a ce jour dans cette campagne
+
+split:
+  seed: 20260914  # POST_STAGE_SPLIT_SEED -- decouple de SEED/CORPUS_SPLIT_SEED (config.py)
+  fit: 0.60
+  dev: 0.15
+  confirm: 0.25
+  unit: parent_email  # parent-aware : une variante augmentee suit toujours son mail d'origine
+
+join:
+  # augmented_mails.jsonl reel ne porte PAS parent_sha1 (verifie -- seul le
+  # chemin positionnel via parent_id, index dans Mails.tsv, est exerce en
+  # pratique). dataset_contract.py supporte les deux ; ceci documente lequel
+  # s'applique au corpus actuel, a re-verifier si le corpus augmente est
+  # regenere avec parent_sha1.
+  method: positional_via_parent_id
+
+rules:
+  - "CONFIRM n'entre jamais dans : encodeur entraine, IDF, PCA d'initialisation,
+     seuil de regroupement, choix de requete, calibration p90, reglage de sonde."
+  - "Une variante garde le split de son mail parent (aucune fuite variante/parent)."
+  - "Le manifeste et les assignations de split ne contiennent jamais de texte
+     brut -- seulement sha1/comptages (configs/post_stage/*.json, versionnes)."
