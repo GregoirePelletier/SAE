@@ -212,6 +212,40 @@ def downstream_classification(
     return results
 
 
+def held_out_probe_accuracy(X_train, y_train, X_eval, y_eval) -> dict:
+    """Sonde logistique entraînée sur (X_train, y_train), évaluée sur
+    (X_eval, y_eval) tenu à l'écart -- PAS de CV interne, contrairement à
+    `downstream_classification` (qui fait sa propre CV sur un seul
+    ensemble). Protocole voulu par le plan post-soutenance (§6.4) pour
+    comparer des représentations entraînées sur FIT et évaluées sur DEV/
+    CONFIRM, jamais mélangés.
+
+    `X_train`/`X_eval` : `np.ndarray` dense OU `scipy.sparse.csr_matrix` --
+    passer du CSR pour des activations SAE quasi-vides (CLAUDE.md :
+    `sklearn` recopie tout `X` dense fp32 en fp64 en interne, coût
+    dramatique en grande dimension creuse).
+
+    Retourne accuracy + vecteur booléen `correct` par observation (aligné à
+    `y_eval`, réutilisable pour McNemar apparié/bootstrap par groupe en
+    aval) -- pas seulement un scalaire."""
+    from sklearn.linear_model import LogisticRegression
+
+    y_train_arr = np.asarray(y_train)
+    y_eval_arr = np.asarray(y_eval)
+    n_classes = len(set(y_train_arr.tolist()))
+    solver = "liblinear" if n_classes <= 2 else "lbfgs"
+    clf = LogisticRegression(max_iter=1000, C=1.0, solver=solver, random_state=42)
+    clf.fit(X_train, y_train_arr)
+    preds = clf.predict(X_eval)
+    correct = (preds == y_eval_arr)
+    return {
+        "accuracy": float(correct.mean()),
+        "correct": correct,
+        "predictions": preds,
+        "n_train": len(y_train_arr), "n_eval": len(y_eval_arr), "n_classes": n_classes,
+    }
+
+
 def normalize_by_p90_and_score(matched_acts: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     """Score documentaire pondéré à température pour le retrieval par propriété
     (`property_based_retrieval`, `saev5.py`), activations normalisées par le 90e
