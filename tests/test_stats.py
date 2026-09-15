@@ -1,4 +1,7 @@
+import numpy as np
+
 from src.analysis.stats import (
+    bootstrap_ci_by_group,
     chance_corrected_rate,
     cochran_armitage_trend_test,
     fdr_bh,
@@ -75,3 +78,49 @@ def test_chance_corrected_rate_lower_with_easier_items_at_same_raw_rate():
     hard = chance_corrected_rate([1, 1, 1, 0, 0], [10] * 5)    # hasard 10%
     assert easy.obs_rate == hard.obs_rate == 0.6
     assert easy.corrected_rate < hard.corrected_rate
+
+
+def test_bootstrap_ci_by_group_contains_true_mean_for_iid_data():
+    rng = np.random.default_rng(0)
+    n_groups = 200
+    values = rng.normal(loc=0.7, scale=0.1, size=n_groups)
+    groups = np.arange(n_groups)  # un groupe par observation -- cas i.i.d. degenere
+    res = bootstrap_ci_by_group(values, groups, n_boot=1000, seed=1)
+    assert res.ci_low < 0.7 < res.ci_high
+    assert res.n_groups == n_groups
+
+
+def test_bootstrap_ci_by_group_deterministic_for_same_seed():
+    rng = np.random.default_rng(0)
+    values = rng.normal(size=50)
+    groups = rng.integers(0, 10, size=50)
+    a = bootstrap_ci_by_group(values, groups, seed=7)
+    b = bootstrap_ci_by_group(values, groups, seed=7)
+    assert a == b
+
+
+def test_bootstrap_ci_by_group_respects_group_structure_not_just_n_observations():
+    # Memes valeurs repetees 5x PAR GROUPE (5 variantes identiques par mail) :
+    # un bootstrap qui rechantillonnerait les observations individuellement
+    # (au lieu des groupes) sous-estimerait la variance -- l'IC doit rester
+    # LARGE ici (peu de groupes reellement independants), pas se resserrer
+    # artificiellement parce qu'il y a beaucoup de LIGNES.
+    rng = np.random.default_rng(3)
+    n_groups = 6
+    group_means = rng.normal(loc=0.5, scale=0.3, size=n_groups)
+    values = np.repeat(group_means, 5)  # 5 "variantes" identiques par groupe
+    groups = np.repeat(np.arange(n_groups), 5)
+    res_grouped = bootstrap_ci_by_group(values, groups, n_boot=2000, seed=5)
+
+    # Repli (mauvaise pratique, pour comparaison) : bootstrap NAIF par ligne --
+    # traite chaque groupe de 5 lignes identiques comme si "peu de variance" y regnait.
+    res_naive = bootstrap_ci_by_group(values, np.arange(len(values)), n_boot=2000, seed=5)
+    width_grouped = res_grouped.ci_high - res_grouped.ci_low
+    width_naive = res_naive.ci_high - res_naive.ci_low
+    assert width_grouped > width_naive
+
+
+def test_bootstrap_ci_by_group_rejects_mismatched_lengths():
+    import pytest
+    with pytest.raises(ValueError):
+        bootstrap_ci_by_group([1.0, 2.0, 3.0], ["a", "b"])

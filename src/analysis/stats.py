@@ -207,3 +207,57 @@ def horvitz_thompson_mean(values: list[float] | np.ndarray,
     inclusion_probs = np.asarray(inclusion_probs, dtype=np.float64)
     weights = 1.0 / inclusion_probs
     return float(np.sum(values * weights) / np.sum(weights))
+
+
+@dataclass
+class BootstrapCIResult:
+    estimate: float
+    ci_low: float
+    ci_high: float
+    n_groups: int
+    n_boot: int
+
+
+def bootstrap_ci_by_group(
+    values: list[float] | np.ndarray,
+    groups: list | np.ndarray,
+    statistic=np.mean,
+    n_boot: int = 2000,
+    alpha: float = 0.05,
+    seed: int = 42,
+) -> BootstrapCIResult:
+    """IC bootstrap PAR GROUPE (E01/E03/E04, Plan_execution_SAE_15_jours_
+    Claude_Code.md §6.4 : "IC par bootstrap de parents") -- rééchantillonne
+    les GROUPES entiers avec remise (un mail d'origine et toutes ses
+    observations, ex. ses variantes augmentées, partent ou restent
+    ensemble), jamais les observations individuelles indépendamment : sinon
+    un bootstrap naïf sous-estimerait la variance réelle en traitant des
+    variantes du même mail comme des tirages indépendants (même piège que la
+    CV group-aware, `RESULTS_TESTS.md` §57).
+
+    `values`/`groups` alignés 1:1 par observation (ex. `values` = score ou
+    différence appariée FULL-CORE par observation, `groups` = parent_id).
+    `statistic` s'applique au tableau de valeurs rééchantillonné -- passer
+    une différence déjà calculée par observation avec `statistic=np.mean`
+    donne l'IC de la différence moyenne (usage principal, §6.4), mais
+    n'importe quelle statistique vectorisée convient (médiane, etc.)."""
+    values = np.asarray(values, dtype=np.float64)
+    groups = np.asarray(groups)
+    if values.shape[0] != groups.shape[0]:
+        raise ValueError(f"values ({values.shape[0]}) et groups ({groups.shape[0]}) "
+                          "doivent avoir la même longueur (alignés par observation).")
+
+    rng = np.random.default_rng(seed)
+    unique_groups = np.unique(groups)
+    n_groups = len(unique_groups)
+    group_to_indices = {g: np.where(groups == g)[0] for g in unique_groups}
+    point_estimate = float(statistic(values))
+
+    boot_stats = np.empty(n_boot)
+    for b in range(n_boot):
+        sampled_groups = rng.choice(unique_groups, size=n_groups, replace=True)
+        idx = np.concatenate([group_to_indices[g] for g in sampled_groups])
+        boot_stats[b] = statistic(values[idx])
+    lo, hi = np.percentile(boot_stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return BootstrapCIResult(estimate=point_estimate, ci_low=float(lo), ci_high=float(hi),
+                              n_groups=n_groups, n_boot=n_boot)

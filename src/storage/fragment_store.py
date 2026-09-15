@@ -374,6 +374,47 @@ def doc_maxpool(frag: dict) -> torch.Tensor:
     return out
 
 
+def doc_topk_mean_pool(frag: dict, k: int = 3) -> torch.Tensor:
+    """Moyenne des `k` plus fortes activations par feature -- alternative au
+    max-pooling (E01, Plan_execution_SAE_15_jours_Claude_Code.md §6.3) qui
+    teste la domination d'un pic isolé plutôt que de la mesurer implicitement.
+    Zéros implicites inclus dans la moyenne (une feature non-nulle sur moins
+    de `k` tokens du document a des zéros parmi ses `k` plus fortes valeurs --
+    les coefficients SAE sont non négatifs, donc "zéro" est bien la valeur
+    plancher, jamais en concurrence avec une vraie valeur négative) ; diviseur
+    `min(k, T)` : un document plus court que `k` tokens moyenne sur tous ses
+    tokens plutôt que d'inventer des zéros supplémentaires au-delà de T.
+
+    O(nnz log nnz) (deux tris stables composés, jamais de densification
+    [T, d] -- seul `doc_maxpool` ci-dessus, une réduction, peut se permettre
+    scatter_reduce directement ; un top-k par groupe n'a pas d'équivalent
+    scatter_reduce simple, cf. `src/analysis/activations.py::scatter_maxpool`,
+    qui documentait déjà ce manque)."""
+    T, d = frag["shape"]
+    cols = frag["cols"].long()
+    vals = frag["vals"].float()
+    divisor = float(max(1, min(k, T)))
+    out = torch.zeros(d, dtype=torch.float32)
+    if cols.numel() == 0:
+        return out
+
+    # 1er tri (valeur décroissante), 2e tri STABLE (colonne croissante) :
+    # préserve l'ordre décroissant du 1er tri à l'intérieur de chaque groupe
+    # de colonne identique -- équivalent à un tri composé (col, -val) sans
+    # construire de clé combinée.
+    order_by_val = torch.argsort(vals, descending=True, stable=True)
+    cols_sorted, vals_sorted = cols[order_by_val], vals[order_by_val]
+    order_by_col = torch.argsort(cols_sorted, stable=True)
+    cols_sorted, vals_sorted = cols_sorted[order_by_col], vals_sorted[order_by_col]
+
+    unique_cols, counts = torch.unique_consecutive(cols_sorted, return_counts=True)
+    offsets = torch.cat([torch.zeros(1, dtype=counts.dtype), counts.cumsum(0)[:-1]])
+    for j, start, count in zip(unique_cols.tolist(), offsets.tolist(), counts.tolist()):
+        take = min(k, count)
+        out[j] = vals_sorted[start:start + take].sum()
+    return out / divisor
+
+
 def sum_columns(frag: dict) -> np.ndarray:
     """Σ_t acts[t, :] -> np.float64 [d_total] (pour feature_selection_by_magnitude)."""
     d = frag["shape"][1]
