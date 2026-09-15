@@ -2391,6 +2391,13 @@ if __name__ == "__main__":
                 "avec le manifeste gele. Pas de repli synthetique ici (un run de campagne "
                 "n'a pas vocation a tourner sur un corpus degrade)."
             )
+        # Corpus diffing energy/sports/support (E04, pas E01) : hors perimetre
+        # de ce mode -- chaque branche de ce if/elif/else est responsable de
+        # fixer diff_texts/diff_labels elle-meme (cf. CONFIRMATORY_DOMAIN_
+        # BASELINE ci-dessous, meme convention), le bloc de preparation plus
+        # bas est imbrique dans la branche "else" classique uniquement, pas
+        # partage entre les trois branches.
+        diff_texts, diff_labels = [], []
     elif CONFIRMATORY_DOMAIN_BASELINE:
         print("  [CONFIRMATORY_DOMAIN_BASELINE=1] Corpus principal = generic "
               "energy/sports/support (réplique n=150 du baseline pré-correctif).")
