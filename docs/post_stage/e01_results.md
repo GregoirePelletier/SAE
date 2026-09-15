@@ -57,7 +57,45 @@ l'extension a un catalogue de features propre au domaine que CORE seul n'a
 pas) et E04 (diffing) avant toute décision sur la représentation du
 prototype.
 
-## Limites connues de ce premier passage
+## Pooling alternatif : moyenne des 3 plus fortes activations vs max-pooling
+
+Même protocole FIT→DEV, même sonde à 14 classes, seule la mise en commun
+token→document change (`doc_topk_mean_pool`, k=3, contre `doc_maxpool`) :
+
+| | max-pooling (référence) | top-3-moyenne | diff | McNemar p | IC bootstrap (521 groupes) |
+|---|---:|---:|---:|---:|---|
+| CORE | 88,68 % | 89,09 % | -0,41 pt | 0,22 (p_fdr=0,44) | [-1,03 ; +0,20] |
+| FULL | 88,80 % | 88,97 % | -0,17 pt | 0,63 (p_fdr=0,63) | [-0,77 ; +0,43] |
+
+Léger avantage numérique du top-3-moyenne dans les deux cas, mais **aucun
+des deux écarts n'est établi** (IC croisant zéro, p_fdr>0,05). Conclusion :
+pas de motif de changer le max-pooling de référence sur la seule base de
+cette sonde -- cohérent avec le plan (§6.3 : "Aucun choix entre dix
+agrégations sur le test").
+
+## Baseline longueur seule et stratification par longueur (DEV)
+
+Sonde n'utilisant QUE `len(texte)` comme feature : **18,9 % d'accuracy**
+(chance uniforme ≈ 7,1% à 14 classes, plus si classes déséquilibrées) --
+la longueur seule porte un signal non trivial mais très inférieur à CORE/
+FULL/TFIDF (~88 %), écartant l'hypothèse que ces représentations ne
+feraient que capturer un artefact de longueur.
+
+| Tranche (caractères) | n | acc CORE | acc FULL | acc longueur seule |
+|---|---:|---:|---:|---:|
+| 8-956 | 1626 | 93,1 % | 93,4 % | 28,6 % |
+| 957-1235 | 1633 | 88,5 % | 88,2 % | 15,1 % |
+| 1236-1554 | 1628 | 87,7 % | 87,8 % | 9,5 % |
+| 1555-4394 | 1631 | 85,5 % | 85,8 % | 22,5 % |
+
+Accuracy CORE/FULL décroît régulièrement avec la longueur (93→86 %) : les
+documents courts sont plus faciles à classer sur cet axe. CORE et FULL
+restent à moins de 0,3 point l'un de l'autre dans **chaque** tranche -- le
+constat FULL≈CORE de la section précédente n'est pas masqué par un effet
+de longueur qui favoriserait l'un des deux bras sur un sous-ensemble
+particulier.
+
+## Limites connues restantes
 
 - Entraînement effectué avec un plafond réservoir à 8 000 000 tokens
   **entièrement rempli** (`N_TOKENS_EXTRA_TRAIN=8000000`) : FIT offre donc
@@ -65,20 +103,21 @@ prototype.
   choisi trop bas pour la mesurer, cf. §6.1 du plan qui demande de rapporter
   ce nombre). À refaire avec un plafond plus haut si on veut le chiffre
   exact plutôt qu'une borne.
-- Pas de stratification par longueur de document ni de baseline longueur
-  seule (§6.3, pas encore fait).
-- Le pooling alternatif (moyenne des 3 plus fortes activations,
-  `doc_topk_mean_pool`) est implémenté et testé mais pas encore comparé au
-  max-pooling sur ce run.
-- Comparaison faite sur DEV, pas CONFIRM (attendu à ce stade — DEV sert aux
+- Comparaison faite sur DEV, pas CONFIRM (attendu à ce stade -- DEV sert aux
   choix de développement, CONFIRM est réservé à l'évaluation finale une fois
   le protocole figé, §4.2/§6.4).
 - Une seule graine d'entraînement (E05 prévoit 2-3 graines pour évaluer la
   stabilité, pas encore fait ici).
+- Stratification par longueur faite uniquement pour CORE/FULL max-pooling
+  (pas DENSE/TFIDF ni le pooling alternatif) -- suffisant pour vérifier
+  l'absence de confusion longueur/FULL-vs-CORE, pas un audit complet de
+  toutes les combinaisons.
 
 ## Fichiers
 
 - Checkpoint : `results_post_stage_e01_fit_1b_layer13_k5/p1_extended_sae.pt`,
   `p1_frozen_core_d1024_k5.pt`.
-- Comparaison : `results_post_stage_e01_fit_1b_layer13_k5/e01_representation_comparison.json`.
-- Script : `scripts/post_stage/e01_compare_representations.py`.
+- Comparaison représentations : `results_post_stage_e01_fit_1b_layer13_k5/e01_representation_comparison.json`.
+- Pooling/longueur : `results_post_stage_e01_fit_1b_layer13_k5/e01_pooling_and_length_analysis.json`.
+- Scripts : `scripts/post_stage/e01_compare_representations.py`,
+  `scripts/post_stage/e01_pooling_and_length_analysis.py`.
