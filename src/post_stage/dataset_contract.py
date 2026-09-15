@@ -19,9 +19,10 @@ import hashlib
 import json
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 try:
     from src.data.preparation import load_and_clean_emails
@@ -191,3 +192,84 @@ def write_corpus_manifest(
         with open(tmp_path, "w") as f:
             json.dump(payload, f, indent=2, sort_keys=True)
         os.replace(tmp_path, path)
+
+
+def load_fit_dev_corpus_from_manifest(
+    split_assignments_path: str,
+    mails_tsv_path: str,
+    augmented_jsonl_path: str,
+    max_augmented_per_mail: Optional[int] = None,
+    sampling_seed: int = POST_STAGE_SPLIT_SEED,
+    return_groups: bool = False,
+) -> Tuple:
+    """Charge FIT (role "train") et DEV (role "test") depuis le split DEJA
+    GELE (`split_assignments_path`, ecrit une fois par `write_corpus_manifest`)
+    -- ne recalcule jamais un nouveau split. CONFIRM est totalement absent du
+    resultat (§4.2 : CONFIRM n'entre jamais dans un encodeur entraine).
+
+    Meme forme de retour que `src.data.preparation.build_email_train_test_corpus`
+    (train_texts, train_labels, test_texts, test_labels[, train_groups,
+    test_groups]) pour rester un remplacement direct de son unique appelant
+    dans `saev5.py` -- FIT joue le role "train", DEV le role "test"/validation
+    interne, dans les memes structures de donnees que le pipeline existant
+    consomme deja."""
+    with open(split_assignments_path) as f:
+        assignments = json.load(f)
+    parent_split_by_hash = {r["parent_sha1"]: r["split"] for r in assignments["parents"]}
+    variant_split_by_aug_id = {r["aug_id"]: r["split"] for r in assignments["variants"]}
+
+    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+
+    fit_texts, fit_labels, fit_groups = [], [], []
+    dev_texts, dev_labels, dev_groups = [], [], []
+    for i, (h, text) in enumerate(zip(real_hashes, real_texts)):
+        split = parent_split_by_hash.get(h)
+        if split == "fit":
+            fit_texts.append(text); fit_labels.append("original"); fit_groups.append(i)
+        elif split == "dev":
+            dev_texts.append(text); dev_labels.append("original"); dev_groups.append(i)
+        # confirm (ou parent absent du manifeste, ex. Mails.tsv modifie depuis
+        # le gel) : jamais inclus ici.
+
+    if augmented_jsonl_path and os.path.exists(augmented_jsonl_path):
+        df_aug = load_augmented(augmented_jsonl_path)
+        df_aug = df_aug[df_aug["text"].notna()].copy()
+        # "resolved_split", pas "_split" : itertuples(index=False) renomme
+        # silencieusement tout nom de colonne commencant par "_" (reserve aux
+        # champs positionnels du namedtuple sous-jacent), row._split n'aurait
+        # alors plus jamais existe -- AttributeError attrape par le test
+        # (test_load_fit_dev_corpus_no_dev_leakage_into_fit et consorts).
+        df_aug["resolved_split"] = df_aug["aug_id"].map(variant_split_by_aug_id)
+        # Un parent n'appartient qu'a UN split : toutes ses variantes portent
+        # deja le meme resolved_split (resolu une fois pour toutes dans le
+        # manifeste, cf. build_corpus_manifest) -- filtrer ici exclut confirm
+        # ET tout aug_id absent du manifeste (variante orpheline/non gelee).
+        df_aug = df_aug[df_aug["resolved_split"].isin(("fit", "dev"))]
+
+        if max_augmented_per_mail and len(df_aug):
+            rng = np.random.default_rng(sampling_seed)
+            sampled_frames = [
+                group.loc[rng.choice(group.index.to_numpy(),
+                                      size=min(len(group), max_augmented_per_mail),
+                                      replace=False)]
+                for _, group in df_aug.groupby("parent_id")
+            ]
+            df_aug = pd.concat(sampled_frames)
+
+        for row in df_aug.itertuples(index=False):
+            label = f"{row.aug_axis}__{row.aug_level}"
+            try:
+                parent_idx = int(row.parent_id)
+            except (TypeError, ValueError):
+                parent_idx = -1
+            if row.resolved_split == "fit":
+                fit_texts.append(row.text); fit_labels.append(label); fit_groups.append(parent_idx)
+            else:
+                dev_texts.append(row.text); dev_labels.append(label); dev_groups.append(parent_idx)
+
+        print(f"  [post_stage] Corpus FIT/DEV geles : {len(fit_texts)} FIT / "
+              f"{len(dev_texts)} DEV (CONFIRM exclu).")
+
+    if return_groups:
+        return fit_texts, fit_labels, dev_texts, dev_labels, fit_groups, dev_groups
+    return fit_texts, fit_labels, dev_texts, dev_labels

@@ -221,6 +221,7 @@ from src.sae.judge import (
 )
 from src.analysis.clustering_llm import select_latents_union
 from src.analysis.metrics import dead_pct_core_extension
+from src.post_stage.dataset_contract import load_fit_dev_corpus_from_manifest
 
 try:
     from src.analysis.cooccurrence import (
@@ -2362,8 +2363,35 @@ if __name__ == "__main__":
     # (energy/sports/support, même logique de split), pour comparer domaine-vs-
     # volume à effectif comparable plutôt qu'à effectifs confondus.
     CONFIRMATORY_DOMAIN_BASELINE = os.environ.get("CONFIRMATORY_DOMAIN_BASELINE", "0") == "1"
+    # POST_STAGE_SPLIT_ASSIGNMENTS_PATH (defaut vide, comportement 100%
+    # inchange sinon) : campagne post-soutenance (Plan_execution_SAE_15_jours_
+    # Claude_Code.md §4.1-4.2/§6.1) -- FIT/DEV geles une fois pour toutes
+    # (src/post_stage/dataset_contract.py::write_corpus_manifest), jamais
+    # recalcules ici. CONFIRM est totalement absent des deux roles train/test
+    # de ce run (contrairement au split ad-hoc de build_email_train_test_corpus
+    # ci-dessous, qui n'a pas cette notion). Prioritaire sur
+    # CONFIRMATORY_DOMAIN_BASELINE si les deux sont positionnes par erreur.
+    POST_STAGE_SPLIT_ASSIGNMENTS_PATH = os.environ.get("POST_STAGE_SPLIT_ASSIGNMENTS_PATH", "")
 
-    if CONFIRMATORY_DOMAIN_BASELINE:
+    if POST_STAGE_SPLIT_ASSIGNMENTS_PATH:
+        print(f"  [POST_STAGE] Corpus FIT/DEV geles depuis "
+              f"{POST_STAGE_SPLIT_ASSIGNMENTS_PATH!r} (CONFIRM exclu).")
+        with stage_timer("Chargement corpus FIT/DEV geles (campagne post-soutenance)"):
+            train_texts, train_labels, test_texts, test_labels, train_groups, test_groups = (
+                load_fit_dev_corpus_from_manifest(
+                    POST_STAGE_SPLIT_ASSIGNMENTS_PATH, LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+                    max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL, return_groups=True,
+                )
+            )
+        corpus_degraded, corpus_degraded_reason = False, None
+        if not train_texts:
+            raise RuntimeError(
+                f"POST_STAGE_SPLIT_ASSIGNMENTS_PATH={POST_STAGE_SPLIT_ASSIGNMENTS_PATH!r} : "
+                "aucun texte FIT charge -- manifeste absent/vide ou Mails.tsv incompatible "
+                "avec le manifeste gele. Pas de repli synthetique ici (un run de campagne "
+                "n'a pas vocation a tourner sur un corpus degrade)."
+            )
+    elif CONFIRMATORY_DOMAIN_BASELINE:
         print("  [CONFIRMATORY_DOMAIN_BASELINE=1] Corpus principal = generic "
               "energy/sports/support (réplique n=150 du baseline pré-correctif).")
         energy_texts = prepare_domain_dataset(

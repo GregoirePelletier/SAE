@@ -10,6 +10,7 @@ from src.post_stage.dataset_contract import (
     assign_parent_splits,
     build_corpus_manifest,
     write_corpus_manifest,
+    load_fit_dev_corpus_from_manifest,
     SPLIT_NAMES,
 )
 
@@ -171,3 +172,90 @@ def test_write_corpus_manifest_no_raw_text_leaked(tmp_path):
         with open(path) as f:
             content = f.read()
         assert marker not in content
+
+
+def _freeze_and_write(tmp_path, mails_path, aug_path, fit=0.6, dev=0.15, seed=42):
+    manifest, parent_records, variant_records = build_corpus_manifest(
+        mails_path, aug_path, fit=fit, dev=dev, seed=seed
+    )
+    manifest_path = str(tmp_path / "corpus_manifest.json")
+    split_path = str(tmp_path / "split_assignments.json")
+    write_corpus_manifest(manifest, parent_records, variant_records, manifest_path, split_path)
+    return manifest, split_path
+
+
+def test_load_fit_dev_corpus_excludes_confirm_entirely(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=100)
+    _write_augmented_jsonl(aug_path, n_parents=100, variants_per_parent=2)
+    manifest, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    fit_texts, fit_labels, dev_texts, dev_labels, fit_groups, dev_groups = (
+        load_fit_dev_corpus_from_manifest(split_path, mails_path, aug_path, return_groups=True)
+    )
+
+    n_confirm_parents = manifest["n_parents_by_split"]["confirm"]
+    n_confirm_variants = manifest["n_variants_by_split"]["confirm"]
+    n_fit_parents = manifest["n_parents_by_split"]["fit"]
+    n_dev_parents = manifest["n_parents_by_split"]["dev"]
+    n_fit_variants = manifest["n_variants_by_split"]["fit"]
+    n_dev_variants = manifest["n_variants_by_split"]["dev"]
+
+    total_texts = len(fit_texts) + len(dev_texts)
+    total_expected = (
+        n_fit_parents + n_dev_parents + n_fit_variants + n_dev_variants
+    )
+    assert total_texts == total_expected
+    assert n_confirm_parents > 0 and n_confirm_variants > 0  # le test doit etre non-trivial
+    assert len(fit_texts) == n_fit_parents + n_fit_variants
+    assert len(dev_texts) == n_dev_parents + n_dev_variants
+    assert len(fit_texts) == len(fit_labels) == len(fit_groups)
+    assert len(dev_texts) == len(dev_labels) == len(dev_groups)
+
+
+def test_load_fit_dev_corpus_max_augmented_per_mail_caps_variants(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=50)
+    _write_augmented_jsonl(aug_path, n_parents=50, variants_per_parent=5)
+    _, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    fit_texts, _, dev_texts, _ = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, max_augmented_per_mail=None
+    )
+    fit_texts_capped, _, dev_texts_capped, _ = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, max_augmented_per_mail=1
+    )
+    assert len(fit_texts_capped) + len(dev_texts_capped) < len(fit_texts) + len(dev_texts)
+
+
+def test_load_fit_dev_corpus_deterministic_sampling(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=30)
+    _write_augmented_jsonl(aug_path, n_parents=30, variants_per_parent=4)
+    _, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    a = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, max_augmented_per_mail=2, sampling_seed=99
+    )
+    b = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, max_augmented_per_mail=2, sampling_seed=99
+    )
+    assert a == b
+
+
+def test_load_fit_dev_corpus_no_dev_leakage_into_fit(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=60)
+    _write_augmented_jsonl(aug_path, n_parents=60, variants_per_parent=2)
+    _, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    fit_texts, _, dev_texts, _, fit_groups, dev_groups = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, return_groups=True
+    )
+    # Un meme mail d'origine (groupe) ne doit jamais apparaitre des deux cotes.
+    assert set(fit_groups).isdisjoint(set(dev_groups))
+    assert set(fit_texts).isdisjoint(set(dev_texts))
