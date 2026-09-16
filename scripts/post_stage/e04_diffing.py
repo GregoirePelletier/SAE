@@ -118,8 +118,13 @@ def main() -> int:
     query_text = ("What distinguishes panicked/urgent-toned emails (target) from calm-toned emails "
                   "(other), among paraphrased variants of the same original emails?")
     print(f"[e04_diffing] Generation d'au plus {args.num_hypotheses} hypotheses structurees...", flush=True)
+    # max_new_tokens releve de 2048 (defaut) a 4096 : diagnostic (job 48944)
+    # a montre une reponse JSON bien formee mais tronquee avant la fermeture
+    # du tableau -- chaque hypothese "examples" verbeuse (~150-250 tokens),
+    # 8 hypotheses demandees suffisent a depasser 2048 tokens de sortie.
     hypotheses = generate_structured_diff_hypotheses(
         model, tokenizer, features, query=query_text, num_hypotheses=args.num_hypotheses,
+        max_new_tokens=4096,
     )
     print(f"[e04_diffing] {len(hypotheses)} hypotheses generees (gelees avant lecture de CONFIRM) :", flush=True)
     for h in hypotheses:
@@ -139,7 +144,7 @@ def main() -> int:
             features_block=features_block, query=query_text, num_hypotheses=args.num_hypotheses,
         )
         raw_response = _batched_generate(
-            model, tokenizer, [[{"role": "user", "content": prompt}]], max_new_tokens=2048, batch_size=1,
+            model, tokenizer, [[{"role": "user", "content": prompt}]], max_new_tokens=4096, batch_size=1,
         )[0]
         print("[e04_diffing] --- reponse brute (2000 premiers caracteres) ---", flush=True)
         print(raw_response[:2000], flush=True)
