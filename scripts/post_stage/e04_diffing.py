@@ -35,9 +35,11 @@ from src.post_stage.dataset_contract import (  # noqa: E402
     load_fit_dev_corpus_from_manifest, load_confirm_corpus_from_manifest,
 )
 from src.sae.sae_shared import load_all_doc_acts  # noqa: E402
-from src.sae.judge import load_judge_model  # noqa: E402
+from src.sae.judge import load_judge_model, _batched_generate  # noqa: E402
 from src.analysis.cooccurrence import corpus_diff_stats, select_top_diff_features_by_frequency  # noqa: E402
-from src.analysis.diff_hypothesis_generator import generate_structured_diff_hypotheses  # noqa: E402
+from src.analysis.diff_hypothesis_generator import (  # noqa: E402
+    generate_structured_diff_hypotheses, DIFF_HYPOTHESIS_PROMPT, _format_feature_block,
+)
 from src.analysis.hypothesis_verifier import verify_hypotheses, compute_verification_metrics  # noqa: E402
 from src.analysis.stats import proportion_with_ci, two_proportion_test, fdr_bh  # noqa: E402
 
@@ -113,21 +115,40 @@ def main() -> int:
     print("[e04_diffing] Chargement du juge Qwen...", flush=True)
     model, tokenizer = load_judge_model(device=args.judge_device)
 
+    query_text = ("What distinguishes panicked/urgent-toned emails (target) from calm-toned emails "
+                  "(other), among paraphrased variants of the same original emails?")
     print(f"[e04_diffing] Generation d'au plus {args.num_hypotheses} hypotheses structurees...", flush=True)
     hypotheses = generate_structured_diff_hypotheses(
-        model, tokenizer, features,
-        query=f"What distinguishes panicked/urgent-toned emails (target) from calm-toned emails (other), "
-              f"among paraphrased variants of the same original emails?",
-        num_hypotheses=args.num_hypotheses,
+        model, tokenizer, features, query=query_text, num_hypotheses=args.num_hypotheses,
     )
     print(f"[e04_diffing] {len(hypotheses)} hypotheses generees (gelees avant lecture de CONFIRM) :", flush=True)
     for h in hypotheses:
         print(f"    - [{h.get('dataset')}, diff={h.get('percentage_difference', 0):+.2f}, "
               f"conf={h.get('confidence', 0):.2f}] {h.get('description')}", flush=True)
 
+    raw_response = None
+    if not hypotheses:
+        # Diagnostic (0 hypothese generee la premiere fois, plan §9 --
+        # generate_structured_diff_hypotheses avale silencieusement toute
+        # erreur de parsing JSON) : rejoue le MEME prompt hors de la fonction
+        # pour voir la reponse brute avant qu'elle ne soit jetee.
+        print("[e04_diffing] 0 hypothese -- rejeu du prompt pour capturer la reponse brute (diagnostic)...",
+              flush=True)
+        features_block = "\n\n".join(_format_feature_block(f) for f in features)
+        prompt = DIFF_HYPOTHESIS_PROMPT.format(
+            features_block=features_block, query=query_text, num_hypotheses=args.num_hypotheses,
+        )
+        raw_response = _batched_generate(
+            model, tokenizer, [[{"role": "user", "content": prompt}]], max_new_tokens=2048, batch_size=1,
+        )[0]
+        print("[e04_diffing] --- reponse brute (2000 premiers caracteres) ---", flush=True)
+        print(raw_response[:2000], flush=True)
+        print("[e04_diffing] --- fin reponse brute ---", flush=True)
+
     if not hypotheses:
         print("[e04_diffing] Aucune hypothese valide -- arret avant verification.", flush=True)
-        out = {"features_considered": features, "hypotheses": [], "verification": None}
+        out = {"features_considered": features, "hypotheses": [], "verification": None,
+               "raw_response_for_debug": raw_response}
         out_path = os.path.join(args.save_dir, args.out)
         with open(out_path, "w") as f:
             json.dump(out, f, indent=2, ensure_ascii=False)
