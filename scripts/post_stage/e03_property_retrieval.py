@@ -29,7 +29,15 @@ from scipy import sparse as sp
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+_REPO_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
+sys.path.insert(0, _REPO_ROOT)
+# src/sae/saev5.py contient des imports bruts ("from sae_shared import ...",
+# style module plat) qui supposent src/sae/ lui-meme sur sys.path -- vrai
+# quand saev5.py est lance directement (python src/sae/saev5.py, sys.path[0]
+# = son propre dossier), pas quand il est importe comme module depuis un
+# script externe comme celui-ci. Ajoute explicitement plutot que de
+# dupliquer property_based_retrieval ici.
+sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "sae"))
 
 from src.post_stage.dataset_contract import load_confirm_corpus_from_manifest  # noqa: E402
 from src.post_stage.representations import (  # noqa: E402
