@@ -123,6 +123,10 @@ def main() -> int:
     ap.add_argument("--max-augmented-per-mail", type=int, default=13)
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--dense-model-path", default="./models/bge-m3")
+    ap.add_argument("--judge-device", default="cuda",
+                     help='"cuda" (1 GPU, h100/h100-bis) ou "auto" (sharding multi-GPU, '
+                          'necessaire sur a100 -- Qwen3.8-27B ne tient pas sur un seul '
+                          'GPU a100, cf. campaign_policy.yaml).')
     ap.add_argument("--out", default="e03_property_retrieval.json")
     args = ap.parse_args()
 
@@ -177,7 +181,7 @@ def main() -> int:
     bm25_index = LatentTermsIndex(W_confirm)
 
     print("[e03_retrieval] Chargement du juge Qwen (relevance judging)...", flush=True)
-    judge_model, judge_tokenizer = load_judge_model()
+    judge_model, judge_tokenizer = load_judge_model(device=args.judge_device)
 
     all_query_results = []
     for fam in QUERY_FAMILIES:

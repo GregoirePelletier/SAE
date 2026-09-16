@@ -48,6 +48,9 @@ def main() -> int:
     ap.add_argument("--n-extra", type=int, default=150)
     ap.add_argument("--sample-docs", type=int, default=500)
     ap.add_argument("--sae-revision", default="e01_fit_1b_layer13_k5")
+    ap.add_argument("--judge-device", default="cuda",
+                     help='"cuda" (1 GPU, h100/h100-bis) ou "auto" (sharding multi-GPU, '
+                          'necessaire sur a100 -- cf. campaign_policy.yaml).')
     ap.add_argument("--out", default="e02_feature_registry.json")
     args = ap.parse_args()
 
@@ -85,7 +88,7 @@ def main() -> int:
     print(f"[e02_registry] {len(core_ids)} CORE + {len(extra_ids)} EXTRA candidats retenus.", flush=True)
 
     print("[e02_registry] Chargement du juge Qwen...", flush=True)
-    model, tokenizer = load_judge_model()
+    model, tokenizer = load_judge_model(device=args.judge_device)
 
     all_ids = core_ids + extra_ids
     print(f"[e02_registry] Labellisation odd-one-out de {len(all_ids)} features (juge Qwen, exemples FIT)...",

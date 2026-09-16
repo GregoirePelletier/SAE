@@ -8,7 +8,9 @@ head_at_preflight: 68c8e6863013c98905740a56e6491d78d05435cd  # identique -- aucu
 period: relative_J1_J15
 
 max_simultaneous_gpu_jobs: 1
-max_gpus_per_job: 1
+max_gpus_per_job: 2  # releve de 1 a 2 (decision explicite de Gregoire, 2026-09-16) --
+                     # uniquement pour permettre device_map="auto" (sharding Qwen3.8-27B
+                     # sur 2 GPU a100) quand h100/h100-bis sont pleins, cf. note ci-dessous.
 max_simultaneous_cpu_jobs: 1
 max_cpus_per_job: 8
 base_gpu_hours_cap: 120
@@ -26,7 +28,15 @@ freeze_protocol_before_confirmation: true
 partitions_available: [a100, h100, h100-bis]
 account_qos_override_needed: false  # aucun --account/--qos explicite dans les .slurm historiques qui ont tourne
 judge_model_gpu_memory_note: >
-  Qwen3.8-27B bf16 (~52 Go avec cache d'attention) ne tient pas sur a100
-  (39,49 Go reels malgre le nom de partition, cf. job 45724 -- OOM au
-  chargement du juge). Router systematiquement les jobs de juge Qwen vers
-  h100/h100-bis, jamais a100, sans nouvelle mesure au prealable.
+  Qwen3.8-27B bf16 (~52 Go avec cache d'attention) ne tient pas sur UN SEUL
+  GPU a100 (39,49 Go reels malgre le nom de partition, cf. job 45724 -- OOM
+  au chargement du juge). Par defaut, router les jobs de juge Qwen vers
+  h100/h100-bis (1 GPU suffit, ~80 Go reels par GPU). Si les deux nœuds sont
+  pleins (contention cluster partagee -- verifier avec `scontrol show node
+  dgx-h100 dgx-h100-bis`, pas seulement squeue, avant de conclure) : repli
+  sur 2 GPU a100 avec `device_map="auto"` (load_judge_model(device="auto"),
+  cf. src/sae/judge.py) -- ~79 Go cumules, confortable pour ~52 Go. Decision
+  explicite de Gregoire le 2026-09-16 (les deux noeuds h100 pleins par des
+  jobs d'autres utilisateurs au moment de E03). Ne jamais basculer sur a100
+  par habitude/defaut sans avoir d'abord verifie que h100/h100-bis sont
+  reellement pleins.

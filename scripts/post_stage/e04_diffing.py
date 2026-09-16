@@ -57,6 +57,9 @@ def main() -> int:
     ap.add_argument("--top-n-features", type=int, default=200)
     ap.add_argument("--num-hypotheses", type=int, default=8)
     ap.add_argument("--verification-threshold", type=float, default=0.01)
+    ap.add_argument("--judge-device", default="cuda",
+                     help='"cuda" (1 GPU, h100/h100-bis) ou "auto" (sharding multi-GPU, '
+                          'necessaire sur a100 -- cf. campaign_policy.yaml).')
     ap.add_argument("--out", default="e04_diffing.json")
     args = ap.parse_args()
 
@@ -108,7 +111,7 @@ def main() -> int:
     ]
 
     print("[e04_diffing] Chargement du juge Qwen...", flush=True)
-    model, tokenizer = load_judge_model()
+    model, tokenizer = load_judge_model(device=args.judge_device)
 
     print(f"[e04_diffing] Generation d'au plus {args.num_hypotheses} hypotheses structurees...", flush=True)
     hypotheses = generate_structured_diff_hypotheses(
