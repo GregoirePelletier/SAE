@@ -273,3 +273,68 @@ def load_fit_dev_corpus_from_manifest(
     if return_groups:
         return fit_texts, fit_labels, dev_texts, dev_labels, fit_groups, dev_groups
     return fit_texts, fit_labels, dev_texts, dev_labels
+
+
+def load_confirm_corpus_from_manifest(
+    split_assignments_path: str,
+    mails_tsv_path: str,
+    augmented_jsonl_path: str,
+    max_augmented_per_mail: Optional[int] = None,
+    sampling_seed: int = POST_STAGE_SPLIT_SEED,
+    return_groups: bool = False,
+):
+    """Charge UNIQUEMENT CONFIRM depuis le split déjà gelé -- séparée de
+    `load_fit_dev_corpus_from_manifest` à dessein (§4.2 : CONFIRM ne doit
+    jamais entrer dans un encodeur entraîné, une IDF, une PCA
+    d'initialisation, un seuil de regroupement, un choix de requête ou un
+    réglage de sonde). N'appeler cette fonction que pour une évaluation
+    finale sur un modèle/protocole déjà figé -- jamais pour entraîner, choisir
+    un hyperparamètre ou geler une requête.
+
+    Même forme de retour que `load_fit_dev_corpus_from_manifest`, mais un
+    seul ensemble (confirm_texts, confirm_labels[, confirm_groups]) --
+    utilisable comme `diff_texts` de `saev5.py` (corpus tenu à l'écart de
+    l'entraînement, réencodé post-hoc par le SAE déjà figé, même mécanisme
+    que le corpus energy/sports/support historique)."""
+    with open(split_assignments_path) as f:
+        assignments = json.load(f)
+    parent_split_by_hash = {r["parent_sha1"]: r["split"] for r in assignments["parents"]}
+    variant_split_by_aug_id = {r["aug_id"]: r["split"] for r in assignments["variants"]}
+
+    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+
+    confirm_texts, confirm_labels, confirm_groups = [], [], []
+    for i, (h, text) in enumerate(zip(real_hashes, real_texts)):
+        if parent_split_by_hash.get(h) == "confirm":
+            confirm_texts.append(text); confirm_labels.append("original"); confirm_groups.append(i)
+
+    if augmented_jsonl_path and os.path.exists(augmented_jsonl_path):
+        df_aug = load_augmented(augmented_jsonl_path)
+        df_aug = df_aug[df_aug["text"].notna()].copy()
+        df_aug["resolved_split"] = df_aug["aug_id"].map(variant_split_by_aug_id)
+        df_aug = df_aug[df_aug["resolved_split"] == "confirm"]
+
+        if max_augmented_per_mail and len(df_aug):
+            rng = np.random.default_rng(sampling_seed)
+            sampled_frames = [
+                group.loc[rng.choice(group.index.to_numpy(),
+                                      size=min(len(group), max_augmented_per_mail),
+                                      replace=False)]
+                for _, group in df_aug.groupby("parent_id")
+            ]
+            df_aug = pd.concat(sampled_frames)
+
+        for row in df_aug.itertuples(index=False):
+            label = f"{row.aug_axis}__{row.aug_level}"
+            try:
+                parent_idx = int(row.parent_id)
+            except (TypeError, ValueError):
+                parent_idx = -1
+            confirm_texts.append(row.text); confirm_labels.append(label); confirm_groups.append(parent_idx)
+
+        print(f"  [post_stage] Corpus CONFIRM gelé : {len(confirm_texts)} documents "
+              "(FIT/DEV non chargés par cette fonction).")
+
+    if return_groups:
+        return confirm_texts, confirm_labels, confirm_groups
+    return confirm_texts, confirm_labels

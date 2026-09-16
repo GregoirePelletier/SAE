@@ -221,7 +221,7 @@ from src.sae.judge import (
 )
 from src.analysis.clustering_llm import select_latents_union
 from src.analysis.metrics import dead_pct_core_extension
-from src.post_stage.dataset_contract import load_fit_dev_corpus_from_manifest
+from src.post_stage.dataset_contract import load_fit_dev_corpus_from_manifest, load_confirm_corpus_from_manifest
 
 try:
     from src.analysis.cooccurrence import (
@@ -2397,7 +2397,21 @@ if __name__ == "__main__":
         # BASELINE ci-dessous, meme convention), le bloc de preparation plus
         # bas est imbrique dans la branche "else" classique uniquement, pas
         # partage entre les trois branches.
-        diff_texts, diff_labels = [], []
+        # POST_STAGE_INCLUDE_CONFIRM_AS_DIFF (defaut desactive) : reutilise
+        # le "slot" diff_texts (corpus tenu a l'ecart de l'entrainement,
+        # reencode post-hoc par le SAE deja fige -- meme mecanisme que le
+        # corpus energy/sports/support historique) pour evaluer CONFIRM sans
+        # jamais le faire entrer dans un entrainement (§4.2/§6.4 du plan :
+        # E03/E04 evaluent sur CONFIRM une fois le protocole fige). N'a aucun
+        # effet sur train_texts/test_texts (FIT/DEV) deja charges ci-dessus.
+        if os.environ.get("POST_STAGE_INCLUDE_CONFIRM_AS_DIFF", "0") == "1":
+            print("  [POST_STAGE] Inclusion de CONFIRM comme diff_texts (evaluation, jamais entraine).")
+            diff_texts, diff_labels = load_confirm_corpus_from_manifest(
+                POST_STAGE_SPLIT_ASSIGNMENTS_PATH, LOCAL_MAILS_PATH, LOCAL_AUGMENTED_MAILS_PATH,
+                max_augmented_per_mail=MAX_AUGMENTED_PER_MAIL,
+            )
+        else:
+            diff_texts, diff_labels = [], []
     elif CONFIRMATORY_DOMAIN_BASELINE:
         print("  [CONFIRMATORY_DOMAIN_BASELINE=1] Corpus principal = generic "
               "energy/sports/support (réplique n=150 du baseline pré-correctif).")

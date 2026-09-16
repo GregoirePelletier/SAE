@@ -259,3 +259,43 @@ def test_load_fit_dev_corpus_no_dev_leakage_into_fit(tmp_path):
     # Un meme mail d'origine (groupe) ne doit jamais apparaitre des deux cotes.
     assert set(fit_groups).isdisjoint(set(dev_groups))
     assert set(fit_texts).isdisjoint(set(dev_texts))
+
+
+def test_load_confirm_corpus_only_returns_confirm_split(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=100)
+    _write_augmented_jsonl(aug_path, n_parents=100, variants_per_parent=2)
+    manifest, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    from src.post_stage.dataset_contract import load_confirm_corpus_from_manifest
+
+    confirm_texts, confirm_labels, confirm_groups = load_confirm_corpus_from_manifest(
+        split_path, mails_path, aug_path, return_groups=True
+    )
+    n_confirm_parents = manifest["n_parents_by_split"]["confirm"]
+    n_confirm_variants = manifest["n_variants_by_split"]["confirm"]
+    assert len(confirm_texts) == n_confirm_parents + n_confirm_variants
+    assert len(confirm_texts) == len(confirm_labels) == len(confirm_groups)
+    assert n_confirm_parents > 0  # le test doit etre non-trivial
+
+
+def test_load_confirm_corpus_disjoint_from_fit_dev(tmp_path):
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    _write_mails_tsv(mails_path, n=100)
+    _write_augmented_jsonl(aug_path, n_parents=100, variants_per_parent=2)
+    _, split_path = _freeze_and_write(tmp_path, mails_path, aug_path)
+
+    from src.post_stage.dataset_contract import load_confirm_corpus_from_manifest
+
+    fit_texts, _, dev_texts, _, fit_groups, dev_groups = load_fit_dev_corpus_from_manifest(
+        split_path, mails_path, aug_path, return_groups=True
+    )
+    confirm_texts, _, confirm_groups = load_confirm_corpus_from_manifest(
+        split_path, mails_path, aug_path, return_groups=True
+    )
+    assert set(confirm_groups).isdisjoint(set(fit_groups))
+    assert set(confirm_groups).isdisjoint(set(dev_groups))
+    assert set(confirm_texts).isdisjoint(set(fit_texts))
+    assert set(confirm_texts).isdisjoint(set(dev_texts))
