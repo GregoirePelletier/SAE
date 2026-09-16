@@ -59,6 +59,9 @@ def main() -> int:
     ap.add_argument("--top-n-features", type=int, default=200)
     ap.add_argument("--num-hypotheses", type=int, default=8)
     ap.add_argument("--verification-threshold", type=float, default=0.01)
+    ap.add_argument("--max-confirm-per-group", type=int, default=150,
+                     help="Sous-echantillonne CONFIRM a ce nombre max par groupe A/B avant "
+                          "verification (plan §9.1 : cible 150-200) -- 0 desactive (tout verifier).")
     ap.add_argument("--judge-device", default="cuda",
                      help='"cuda" (1 GPU, h100/h100-bis) ou "auto" (sharding multi-GPU, '
                           'necessaire sur a100 -- cf. campaign_policy.yaml).')
@@ -171,6 +174,23 @@ def main() -> int:
     pair_mask_confirm = a_mask_confirm | b_mask_confirm
     confirm_pair_texts = [t for t, m in zip(confirm_texts, pair_mask_confirm) if m]
     confirm_pair_group_mask = a_mask_confirm[pair_mask_confirm]  # True = A (cible), meme convention que compute_verification_metrics
+
+    # Sous-echantillonnage deterministe (plan §9.1 : minimum 100, cible
+    # 150-200 par groupe -- pas besoin des 849/826 disponibles). Necessaire
+    # en pratique : job 48945 a atteint le plafond de 3h sans terminer
+    # 8 hypotheses x 1675 documents (chaque verification = un appel de
+    # generation LLM, cf. verify_hypotheses).
+    if args.max_confirm_per_group and args.max_confirm_per_group > 0:
+        rng = np.random.default_rng(42)
+        idx_a = np.where(confirm_pair_group_mask)[0]
+        idx_b = np.where(~confirm_pair_group_mask)[0]
+        keep_a = rng.choice(idx_a, size=min(len(idx_a), args.max_confirm_per_group), replace=False)
+        keep_b = rng.choice(idx_b, size=min(len(idx_b), args.max_confirm_per_group), replace=False)
+        keep = np.sort(np.concatenate([keep_a, keep_b]))
+        confirm_pair_texts = [confirm_pair_texts[i] for i in keep]
+        confirm_pair_group_mask = confirm_pair_group_mask[keep]
+        print(f"[e04_diffing] Sous-echantillonne a {len(keep_a)} A / {len(keep_b)} B "
+              f"(--max-confirm-per-group={args.max_confirm_per_group}).", flush=True)
 
     hypothesis_texts = [h["description"] for h in hypotheses]
     print(f"[e04_diffing] Verification {len(hypothesis_texts)}x{len(confirm_pair_texts)} sur CONFIRM "
