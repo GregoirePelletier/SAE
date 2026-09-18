@@ -217,6 +217,7 @@ def main() -> int:
             }
 
             metrics = {}
+            top_documents = {}
             for method, ranked in rankings.items():
                 top = [i for i, _ in ranked[:args.top_k]]
                 n_judged = len(top)
@@ -229,11 +230,19 @@ def main() -> int:
                 }
                 print(f"[e03_retrieval]   {method}: P@10 strict={metrics[method]['p_at_10_strict']:.2f} "
                       f"tolerant={metrics[method]['p_at_10_tolerant']:.2f}", flush=True)
+                # Snippets + pertinence jugée persistés pour le mini-pilote E08
+                # (§13 du plan) : un participant doit pouvoir parcourir de vrais
+                # candidats, pas seulement lire un P@10 agrégé.
+                top_documents[method] = [
+                    {"rank": r, "doc_index": i, "score": s,
+                     "text_snippet": confirm_texts[i][:400], "relevance_judged": relevance.get(i, 0)}
+                    for r, (i, s) in enumerate(ranked[:args.top_k])
+                ]
 
             all_query_results.append({
                 "family": fam["family"], "formulation": formulation, "query_id": query_id,
                 "query_text": query_text, "n_union_judged": len(union_idx),
-                "metrics": metrics,
+                "metrics": metrics, "top_documents": top_documents,
             })
 
     del judge_model
