@@ -721,6 +721,39 @@ def page_pilot_e08(run_dir: str) -> None:
         st.info("Aucune piste enregistrée pour l'instant.")
 
 
+def page_correlations_e06(run_dir: str) -> None:
+    st.header("Associations de propriétés (E06)")
+    d = load_json(os.path.join(REPO_ROOT, run_dir, "e06_correlations.json"))
+    if d is None:
+        st.info("e06_correlations.json absent de ce run.")
+        return
+    st.caption(
+        f"Découverte NPMI sur FIT+DEV ({d['n_fit']}+{d['n_dev']} docs, {d['n_candidates_discovery']} "
+        f"paires candidates), 8 paires gelées avant lecture de CONFIRM, vérifiées sur "
+        f"{d['n_confirm_parents_sampled']} parents CONFIRM échantillonnés -- cooccurrence calculée "
+        "sur les jugements Qwen, pas sur les activations SAE brutes."
+    )
+    rows = []
+    for r in d["confirmation"]:
+        rows.append({
+            "propriété A": r["label_a"], "propriété B": r["label_b"],
+            "n_a": r["n_a_confirm"], "n_b": r["n_b_confirm"], "n_ab": r["n_ab_confirm"],
+            "NPMI (FIT+DEV, découverte)": round(r["npmi_discovery_fitdev"], 3),
+            "NPMI (CONFIRM)": round(r["npmi_confirm"], 3) if r["npmi_confirm"] is not None else None,
+            "statut": r["status"],
+            "survit FDR-BH": r.get("fisher_p_fdr_bh", float("nan")) < 0.05 if r.get("fisher_p_fdr_bh") is not None else None,
+        })
+    st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.caption(
+        "`statut=insufficient_support` : table 2×2 trop dégénérée (marge <5) pour un test fiable -- "
+        "ne pas lire son NPMI/odds ratio comme une association établie même s'il semble élevé. Un "
+        "NPMI proche de 1 peut aussi signaler un doublon de concept (deux features SAE distinctes "
+        "convergeant sur le même signal, \"feature splitting\") plutôt qu'une découverte -- vérifier "
+        "les libellés avant de citer une paire comme surprenante. cf. docs/post_stage/e06_results.md "
+        "pour la lecture complète."
+    )
+
+
 def page_urgence_robustesse(run_dir: str) -> None:
     st.header("Détection d'urgence/intention & robustesse du juge")
     col1, col2 = st.columns(2)
@@ -1183,7 +1216,7 @@ def main() -> None:
          "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
          "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
          "Comparaison mail original / augmenté", "Mini-pilote analyste (E08)",
-         "Audit méthodologique (archive)"],
+         "Associations de propriétés (E06)", "Audit méthodologique (archive)"],
     )
 
     if page == "Vue d'ensemble":
@@ -1212,6 +1245,8 @@ def main() -> None:
         page_email_comparison()
     elif page == "Mini-pilote analyste (E08)":
         page_pilot_e08(run_dir)
+    elif page == "Associations de propriétés (E06)":
+        page_correlations_e06(run_dir)
     elif page == "Audit méthodologique (archive)":
         page_audit_2026_08()
 
