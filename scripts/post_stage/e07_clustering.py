@@ -9,7 +9,7 @@ label est deja correct par construction du zip, verifie par
 `tests/post_stage/test_e07_clustering.py::test_select_latents_mapping_survives_unsorted_dict`
 avec un dict volontairement non trie, cf. le doute souleve par le plan
 §12.1 -- pas reproduit ici). CORE et FULL comparent au MEME budget de
-labels (top_k_features=150 chacun). Ecarts corriges par rapport a
+labels (TOP_K_FEATURES chacun). Ecarts corriges par rapport a
 `targeted_clustering_by_axis` (src/sae/saev5.py), qui reste inchangee car
 utilisee ailleurs dans le pipeline principal :
   - pas de repli silencieux "<5 features -> tout le dictionnaire" : statut
@@ -65,6 +65,15 @@ from src.analysis.clustering_llm import generate_cluster_labels, compute_cluster
 N_CLUSTERS = 4
 MIN_MATCHED_FEATURES = 5
 N_RESERVED_FOR_NAMING = 5
+# Doit rester < taille du plus petit catalogue interpretable (CORE=77 sur ce
+# run, cf. e02_feature_registry.json) -- top_k=150 (valeur initiale, calquee
+# sur un catalogue de production bien plus grand) ne restreignait RIEN pour
+# CORE : select_latents_by_similarity retournait le catalogue ENTIER quel
+# que soit l'axe (77<150), rendant les 3 clusterings CORE numeriquement
+# identiques d'un axe a l'autre (memes cluster_sizes exacts, verifie sur un
+# premier run, job 49084) -- l'axe ne discriminait jamais CORE. 40 force une
+# vraie restriction pour CORE (77) ET FULL (197 features interpretables).
+TOP_K_FEATURES = 40
 
 AXES = [
     {"axis_id": "type_probleme",
@@ -219,7 +228,7 @@ def main() -> int:
         axis_result = {"query": query}
 
         for branch, labels_dict in (("core", core_labels), ("full", full_labels)):
-            matched = select_latents_by_similarity(query, labels_dict, top_k=150)
+            matched = select_latents_by_similarity(query, labels_dict, top_k=TOP_K_FEATURES)
             if len(matched) < MIN_MATCHED_FEATURES:
                 print(f"[e07_clustering]   {branch} : {len(matched)} features matchees (<{MIN_MATCHED_FEATURES}) "
                       "-- axis_not_supported, PAS de repli sur tout le dictionnaire.", flush=True)
