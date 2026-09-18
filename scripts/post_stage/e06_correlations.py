@@ -161,6 +161,15 @@ def main() -> int:
         if n_ab < MIN_JOINT_SUPPORT_PARENTS:
             continue
         feat_a, feat_b = catalog[catalog_idx[i]], catalog[catalog_idx[j]]
+        # Labels identiques (a l'insensibilite a la casse pres) : le
+        # dictionnaire SAE decompose souvent un meme concept humain en
+        # plusieurs directions distinctes (feature splitting, cf. les 5
+        # features "Numéro de téléphone" independantes trouvees dans ce
+        # catalogue) -- deux global_index differents avec le MEME libelle ne
+        # sont jamais une association interessante, quelle que soit la
+        # description, a exclure avant meme le calcul de Jaccard.
+        if feat_a["label"].strip().lower() == feat_b["label"].strip().lower():
+            continue
         toks_a, toks_b = _label_tokens(feat_a), _label_tokens(feat_b)
         union = toks_a | toks_b
         jaccard = len(toks_a & toks_b) / len(union) if union else 0.0
