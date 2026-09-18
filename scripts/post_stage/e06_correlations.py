@@ -46,6 +46,15 @@ from src.analysis.stats import bootstrap_ci_by_group, fdr_bh  # noqa: E402
 MIN_JOINT_SUPPORT_PARENTS = 10
 N_FROZEN_PAIRS = 8
 SYNONYM_JACCARD_THRESHOLD = 0.5
+# Bande de frequence individuelle (meme convention que cooccurrence_graph,
+# src/analysis/cooccurrence.py) : sans plafond haut, les features quasi-
+# universelles ("sink", ex. formules de politesse presentes dans ~100% des
+# emails) cooccurrent trivialement avec tout le reste a NPMI~1 -- un signal
+# degenere, pas une association interessante. Sans plancher bas, le support
+# conjoint peut rester >=10 sur un corpus de 2600+ parents tout en restant
+# statistiquement fragile.
+MIN_FEATURE_FREQ = 0.01
+MAX_FEATURE_FREQ = 0.5
 
 
 def _parent_level_presence(acts: np.ndarray, groups: list) -> tuple:
@@ -137,9 +146,17 @@ def main() -> int:
     npmi, cooc = _npmi_pairwise(presence)
     freq = presence.mean(0)
 
-    # Candidats : support conjoint (parents) >= seuil, hors quasi-synonymes.
+    # Candidats : support conjoint (parents) >= seuil, features individuelles
+    # ni trop rares ni quasi-universelles, hors quasi-synonymes.
+    in_band = (freq >= MIN_FEATURE_FREQ) & (freq <= MAX_FEATURE_FREQ)
+    n_excluded_band = int((~in_band).sum())
+    print(f"[e06_correlations] {n_excluded_band}/{len(catalog_idx)} features hors bande de frequence "
+          f"[{MIN_FEATURE_FREQ},{MAX_FEATURE_FREQ}] (rares ou quasi-universelles), exclues des candidats.",
+          flush=True)
     candidates = []
     for i, j in itertools.combinations(range(len(catalog_idx)), 2):
+        if not (in_band[i] and in_band[j]):
+            continue
         n_ab = int(cooc[i, j])
         if n_ab < MIN_JOINT_SUPPORT_PARENTS:
             continue
@@ -157,8 +174,8 @@ def main() -> int:
             "n_joint_parents": n_ab, "npmi_discovery": float(npmi[i, j]),
             "freq_a": float(freq[i]), "freq_b": float(freq[j]),
         })
-    print(f"[e06_correlations] {len(candidates)} paires candidates (support>=10, hors quasi-synonymes) "
-          f"sur {len(catalog_idx)*(len(catalog_idx)-1)//2} possibles.", flush=True)
+    print(f"[e06_correlations] {len(candidates)} paires candidates (bande de frequence, support>=10, "
+          f"hors quasi-synonymes) sur {len(catalog_idx)*(len(catalog_idx)-1)//2} possibles.", flush=True)
 
     candidates.sort(key=lambda c: abs(c["npmi_discovery"]), reverse=True)
     frozen = candidates[:N_FROZEN_PAIRS]
