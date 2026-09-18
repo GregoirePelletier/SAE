@@ -580,6 +580,147 @@ def page_search(run_dir: str) -> None:
                 "scripts/latent_retrieval_precision_eval.py).")
 
 
+_E08_LEADS_PATH = os.path.join(REPO_ROOT, "docs", "post_stage", "e08_pilot_leads.json")
+
+
+def _load_leads() -> list[dict]:
+    if os.path.exists(_E08_LEADS_PATH):
+        with open(_E08_LEADS_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _append_lead(lead: dict) -> None:
+    leads = _load_leads()
+    leads.append(lead)
+    tmp = _E08_LEADS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(leads, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, _E08_LEADS_PATH)
+
+
+def page_pilot_e08(run_dir: str) -> None:
+    st.header("Mini-pilote analyste (E08)")
+    st.caption(
+        "Recette minimale (plan §13) : démarre sans GPU ni réseau externe, lit uniquement les "
+        "artefacts déjà figés d'E01-E04 sur ce run -- aucun job LLM en direct pendant une séance. "
+        "Ceci est l'outil de la séance, pas la séance elle-même : les sessions avec 2-3 participants "
+        "réels (dont Grégoire) restent à mener, ne sont pas simulées ici."
+    )
+
+    e01 = load_json(os.path.join(REPO_ROOT, run_dir, "e01_representation_comparison.json"))
+    e03 = load_json(os.path.join(REPO_ROOT, run_dir, "e03_property_retrieval.json"))
+    e04 = load_json(os.path.join(REPO_ROOT, run_dir, "e04_diffing.json"))
+    missing = [name for name, d in
+               (("e01_representation_comparison.json", e01),
+                ("e03_property_retrieval.json", e03),
+                ("e04_diffing.json", e04)) if d is None]
+    if missing:
+        st.warning(
+            f"Artefacts absents de {run_dir} : {', '.join(missing)}. Les tâches correspondantes "
+            "ci-dessous resteront indisponibles pour ce run -- pas de repli silencieux sur un "
+            "autre run ou une donnée simulée."
+        )
+
+    st.divider()
+    st.subheader("Tâche 1 — Retrouver des emails selon une propriété (E03)")
+    if e03 is None:
+        st.info("e03_property_retrieval.json absent : cette tâche n'est pas disponible pour ce run.")
+    else:
+        queries = e03["per_query_results"]
+        query_ids = [q["query_id"] for q in queries]
+        q_choice = st.selectbox("Requête (propriété)", query_ids, key="e08_query")
+        q = next(q for q in queries if q["query_id"] == q_choice)
+        st.write(f"**Texte de la requête :** {q['query_text']}")
+        methods = list(e03["methods"])
+        method_choice = st.radio("Méthode de retrieval", methods, horizontal=True, key="e08_method")
+        top_docs = q.get("top_documents", {}).get(method_choice)
+        if top_docs is None:
+            st.info(
+                "Pas de documents détaillés persistés pour cette méthode/requête sur ce run "
+                "(champ ajouté après le premier passage d'E03 -- relancer scripts/post_stage/"
+                "e03_property_retrieval.py pour ce run si absent)."
+            )
+        else:
+            st.metric(f"P@10 strict ({method_choice})",
+                      f"{100*q['metrics'][method_choice]['p_at_10_strict']:.0f}%")
+            df = pd.DataFrame(top_docs)
+            df["pertinence"] = df["relevance_judged"].map({0: "non", 1: "partiel", 2: "oui"})
+            st.dataframe(df[["rank", "score", "pertinence", "text_snippet"]], width='stretch')
+            st.caption("Pertinence jugée par Qwen (0/1/2), pas par relecture humaine -- calibration "
+                       "humaine encore en attente (plan §8.3).")
+
+    st.divider()
+    st.subheader("Tâche 2 — Comparer deux sous-populations pour proposer des thèmes (E04)")
+    if e04 is None:
+        st.info("e04_diffing.json absent : cette tâche n'est pas disponible pour ce run.")
+    else:
+        c = e04["contrast"]
+        st.write(f"**Contraste :** `{c['label_a']}` (cible) vs `{c['label_b']}`")
+        stats = pd.DataFrame(e04["verification"]["stats_with_ci_and_fdr"])
+        stats["rate_in_group"] = stats["n_success_a"] / stats["n_a"]
+        stats["rate_out_group"] = stats["n_success_b"] / stats["n_b"]
+        stats_display = stats[["hypothesis", "rate_in_group", "rate_out_group", "diff", "p_fdr_bh"]].copy()
+        stats_display["survit FDR-BH (p<0.05)"] = stats["p_fdr_bh"] < 0.05
+        st.dataframe(stats_display, width='stretch')
+        st.caption(
+            "`diff` positif = plus fréquent dans le groupe cible sur CONFIRM ; un `diff` négatif "
+            "signifie que l'hypothèse, bien que statistiquement vérifiée, l'est dans le sens INVERSE "
+            "de sa génération -- ne pas la retenir comme thème du groupe cible sans relire ce signe."
+        )
+
+    st.divider()
+    st.subheader("Repère : CORE vs FULL (E01)")
+    if e01 is not None:
+        acc = e01.get("accuracies", {})
+        cols = st.columns(len(acc)) if acc else []
+        for col, (rep, v) in zip(cols, acc.items()):
+            col.metric(rep, f"{100*v:.1f}%")
+        st.caption("Sonde d'intention tenue-à-l'écart (held-out DEV), voir docs/post_stage/e01_results.md "
+                   "pour les IC bootstrap et la lecture complète -- ne pas comparer ces chiffres seuls "
+                   "sans les intervalles.")
+
+    st.divider()
+    st.subheader("Catalogue de thèmes — enregistrer une piste")
+    st.caption(
+        "Une piste est un objet structuré (titre, question, populations, propriété, exemples, "
+        "contre-exemples, méthode, statut, commentaire humain) -- exporté même si la piste est "
+        "rejetée, pour garder trace du jugement humain, pas seulement des pistes retenues."
+    )
+    with st.form("e08_lead_form", clear_on_submit=True):
+        title = st.text_input("Titre")
+        question = st.text_area("Question de départ")
+        populations = st.text_input("Populations comparées")
+        prop = st.text_input("Propriété / requête utilisée")
+        examples = st.text_area("Exemples (extraits justificatifs)")
+        counter_examples = st.text_area("Contre-exemples")
+        method_used = st.selectbox("Méthode", ["E03 retrieval", "E04 diffing", "autre"], key="e08_lead_method")
+        status = st.selectbox("Statut", ["retenue", "rejetée", "à creuser"])
+        comment = st.text_area("Commentaire humain")
+        participant = st.text_input("Participant (nom ou rôle, ex. \"utilisateur de recherche 1\")")
+        submitted = st.form_submit_button("Enregistrer la piste")
+        if submitted:
+            if not title.strip():
+                st.error("Titre requis.")
+            else:
+                import datetime
+                _append_lead({
+                    "title": title, "question": question, "populations": populations,
+                    "property": prop, "examples": examples, "counter_examples": counter_examples,
+                    "method": method_used, "status": status, "comment": comment,
+                    "participant": participant, "run_dir": run_dir,
+                    "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+                })
+                st.success("Piste enregistrée.")
+
+    leads = _load_leads()
+    if leads:
+        st.write(f"**{len(leads)} piste(s) enregistrée(s)**")
+        st.dataframe(pd.DataFrame(leads), width='stretch')
+    else:
+        st.info("Aucune piste enregistrée pour l'instant.")
+
+
 def page_urgence_robustesse(run_dir: str) -> None:
     st.header("Détection d'urgence/intention & robustesse du juge")
     col1, col2 = st.columns(2)
@@ -1041,7 +1182,8 @@ def main() -> None:
         ["Vue d'ensemble", "UMAP", "Features", "Diagnostics d'entraînement", "Diffing",
          "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
          "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
-         "Comparaison mail original / augmenté", "Audit méthodologique (archive)"],
+         "Comparaison mail original / augmenté", "Mini-pilote analyste (E08)",
+         "Audit méthodologique (archive)"],
     )
 
     if page == "Vue d'ensemble":
@@ -1068,6 +1210,8 @@ def main() -> None:
         page_urgence_robustesse(run_dir)
     elif page == "Comparaison mail original / augmenté":
         page_email_comparison()
+    elif page == "Mini-pilote analyste (E08)":
+        page_pilot_e08(run_dir)
     elif page == "Audit méthodologique (archive)":
         page_audit_2026_08()
 
