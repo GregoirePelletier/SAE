@@ -721,6 +721,52 @@ def page_pilot_e08(run_dir: str) -> None:
         st.info("Aucune piste enregistrée pour l'instant.")
 
 
+def page_clustering_e07(run_dir: str) -> None:
+    st.header("Regrouper selon une question (E07)")
+    d = load_json(os.path.join(REPO_ROOT, run_dir, "e07_clustering.json"))
+    if d is None:
+        st.info("e07_clustering.json absent de ce run.")
+        return
+    st.caption(
+        f"{d['n_confirm_parents_sampled']} parents CONFIRM échantillonnés, k={d['n_clusters']} fixé pour "
+        "toutes les méthodes/tous les axes. DENSE/TFIDF n'ont pas de mécanisme de restriction par axe -- "
+        "leurs clusters sont IDENTIQUES sur les 3 axes par construction, pas un bug."
+    )
+    axis_id = st.selectbox("Axe", list(d["axes"].keys()))
+    axis = d["axes"][axis_id]
+    st.write(f"**Requête d'axe :** {axis['query']}")
+
+    for branch in ("core", "full", "dense", "tfidf"):
+        b = axis[branch]
+        with st.expander(f"{branch.upper()} — statut : {b.get('status')}", expanded=(branch in ("core", "full"))):
+            if b.get("status") != "ok":
+                st.warning(f"n_matched_features={b.get('n_matched_features', 'n/a')} -- axe non pris en charge "
+                           "pour cette branche (pas de repli sur tout le dictionnaire).")
+                continue
+            col1, col2 = st.columns(2)
+            col1.metric("Couverture", f"{100*b['coverage']:.1f}%",
+                        help=f"{b['n_excluded_no_signal']} documents hors axe / sans signal")
+            if "n_matched_features" in b:
+                col2.metric("Features matchées", b["n_matched_features"])
+            rows = []
+            for cid, size in b["cluster_sizes"].items():
+                rows.append({
+                    "cluster": cid, "taille": size,
+                    "libellé LLM": b["cluster_labels_llm"].get(cid, b["cluster_labels_llm"].get(int(cid), "")),
+                    "accuracy réassignation (secondaire)": b["reassignment_accuracy_secondary"].get(
+                        cid, b["reassignment_accuracy_secondary"].get(int(cid))),
+                    "conductance z-score (espace DENSE)": b["conductance_zscore"].get(
+                        cid, b["conductance_zscore"].get(int(cid))),
+                })
+            st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.caption(
+        "Accuracy de réassignation : diagnostic LLM secondaire (le juge réassigne des documents tenus à "
+        "l'écart de la description du cluster à partir du seul libellé) -- une valeur proche de 0 signale "
+        "un libellé non reproductible, pas un thème établi. Audit humain aveugle de paires intra/inter-"
+        "cluster (plan §12.3) non fait, cf. docs/post_stage/e07_results.md."
+    )
+
+
 def page_correlations_e06(run_dir: str) -> None:
     st.header("Associations de propriétés (E06)")
     d = load_json(os.path.join(REPO_ROOT, run_dir, "e06_correlations.json"))
@@ -1216,7 +1262,8 @@ def main() -> None:
          "Recherche", "Urgence/Robustesse", "Explication (fidélité/plausibilité)",
          "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
          "Comparaison mail original / augmenté", "Mini-pilote analyste (E08)",
-         "Associations de propriétés (E06)", "Audit méthodologique (archive)"],
+         "Associations de propriétés (E06)", "Regrouper selon une question (E07)",
+         "Audit méthodologique (archive)"],
     )
 
     if page == "Vue d'ensemble":
@@ -1247,6 +1294,8 @@ def main() -> None:
         page_pilot_e08(run_dir)
     elif page == "Associations de propriétés (E06)":
         page_correlations_e06(run_dir)
+    elif page == "Regrouper selon une question (E07)":
+        page_clustering_e07(run_dir)
     elif page == "Audit méthodologique (archive)":
         page_audit_2026_08()
 
