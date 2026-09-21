@@ -94,9 +94,15 @@ def _find_decoder(state_dict: dict) -> np.ndarray:
     return state_dict[keys[0]].float().cpu().numpy()
 
 
+QUALITY_KEYS = ("fve_pretrained", "fve_extended", "dead_pct_extension", "rho_sae", "clf_acc_email_axes")
+
+
 class Run:
-    def __init__(self, name, save_dir, d_extra, n_fit, n_dev):
-        self.name, self.save_dir = name, save_dir
+    def __init__(self, name, save_dir, d_extra, n_fit, n_dev, arm="pca"):
+        self.name, self.save_dir, self.arm = name, save_dir, arm
+        with open(os.path.join(save_dir, "results.json")) as f:
+            res = json.load(f)["P1_Gemma3_SAE"]
+        self.quality = {k: res.get(k) for k in QUALITY_KEYS}
         ckpt = torch.load(os.path.join(save_dir, "p1_extended_sae.pt"), map_location="cpu")
         self.W = _find_decoder(ckpt["state_dict"])
         assert self.W.shape[0] == d_extra, (name, self.W.shape)
@@ -130,6 +136,7 @@ class Run:
     def status_counts(self):
         n = len(self.freq_fit)
         return {
+            "arm_decoder_init": self.arm, "training_quality": self.quality,
             "n_extra": n, "n_supported": int(self.supported.sum()),
             "n_insufficient_support(<%d actifs FIT)" % MIN_ACTIVE_FIT: int((self.n_active_fit < MIN_ACTIVE_FIT).sum()),
             "n_near_universal(freq FIT>%.1f)" % MAX_FREQ_FIT: int((self.freq_fit > MAX_FREQ_FIT).sum()),
@@ -277,7 +284,9 @@ def compare_groups(A: Run, B: Run, labels_a, labels_b, nn, rng):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--run", action="append", required=True, help="nom=dossier, 3 fois (ex. seed42=results_...)")
+    ap.add_argument("--run", action="append", required=True,
+                    help="nom=dossier[@arm] (arm = pca|random, defaut pca), 3 fois "
+                         "(ex. seed42=results_...  rand45=results_...@random)")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--mails-tsv-path", default="local_data/emails/Mails.tsv")
     ap.add_argument("--augmented-jsonl-path", default="local_data/emails/augmented_mails.jsonl")
@@ -297,8 +306,11 @@ def main() -> int:
 
     runs = {}
     for spec in args.run:
-        name, path = spec.split("=", 1)
-        runs[name] = Run(name, path, args.d_extra, n_fit, n_dev)
+        name, rest = spec.split("=", 1)
+        path, _, arm = rest.partition("@")
+        arm = arm or "pca"
+        assert arm in ("pca", "random"), arm
+        runs[name] = Run(name, path, args.d_extra, n_fit, n_dev, arm=arm)
         print(f"[e05] {name} : {runs[name].status_counts()}", flush=True)
     names = list(runs)
 
@@ -327,18 +339,18 @@ def main() -> int:
                       f"joint {s['frac_joint_cos0.7_and_corr0.5']:.3f}", flush=True)
 
     ref = names[0]
-    found_in_both = None
     others = [n for n in names if n != ref]
-    if len(others) == 2:
-        j1, j2 = matches[(ref, others[0])]["joint"], matches[(ref, others[1])]["joint"]
-        found_in_both = {
-            "reference": ref, "repetitions": others,
-            "n_reference_supported": int(len(j1)),
-            "n_found_in_both_available_repetitions": int((j1 & j2).sum()),
-            "frac_found_in_both_available_repetitions": float((j1 & j2).mean()),
-            "note": "critere = cos>=0.7 ET correlation de profils>=0.5 dans les DEUX autres graines ; "
-                    "3 graines seulement, pas une preuve de reproductibilite generale",
-        }
+    joint_by_other = {o: matches[(ref, o)]["joint"] for o in others}
+    found = {"reference": ref, "reference_arm": runs[ref].arm, "n_reference_supported": int(len(runs[ref].sup)),
+             "note": "critere = cos>=0.7 ET correlation de profils>=0.5 dans TOUTES les runs du sous-ensemble ; "
+                     "peu de graines, pas une preuve de reproductibilite generale"}
+    for label, subset in (("all_other_runs", others),
+                          ("all_other_pca_runs", [o for o in others if runs[o].arm == "pca"]),
+                          ("all_random_runs", [o for o in others if runs[o].arm == "random"])):
+        if subset:
+            mask = np.logical_and.reduce([joint_by_other[o] for o in subset])
+            found[label] = {"runs": subset, "n_found": int(mask.sum()), "frac_found": float(mask.mean())}
+    found_in_both = found
 
     labels, group_info = {}, {}
     for n_ in names:
@@ -356,6 +368,37 @@ def main() -> int:
                     runs[a], runs[b], labels[a], labels[b], matches[(a, b)]["nn"], rng)
                 agg = group_comparisons[f"{a}->{b}"]["aggregate"]
                 print(f"[e05] groupes {a}->{b} : {agg}", flush=True)
+
+    def _ptype(key):
+        a, b = key.split("->")
+        return f"{runs[a].arm}->{runs[b].arm}"
+
+    for key in pair_summaries:
+        pair_summaries[key]["pair_type"] = _ptype(key)
+    for key in group_comparisons:
+        group_comparisons[key]["pair_type"] = _ptype(key)
+
+    by_type = {}
+    for key, sm in pair_summaries.items():
+        t = by_type.setdefault(sm["pair_type"], {"pairs": [], "ind": [], "grp": []})
+        t["pairs"].append(key)
+        t["ind"].append(sm)
+        t["grp"].append(group_comparisons[key]["aggregate"])
+    summary_by_pair_type = {}
+    for t, v in by_type.items():
+        row = {"pairs": v["pairs"]}
+        for m in ("frac_cos_ge_0.7", "frac_cos_ge_0.5", "null_frac_cos_ge_0.7", "frac_joint_cos0.7_and_corr0.5",
+                  "mean_top20_jaccard", "frac_mutual_nn"):
+            row[m] = float(np.mean([x[m] for x in v["ind"]]))
+        row["median_best_cos_mean_over_pairs"] = float(np.mean([x["best_cos_quantiles"]["q50"] for x in v["ind"]]))
+        row["median_profile_corr_mean_over_pairs"] = float(np.mean([x["profile_corr_quantiles"]["q50"] for x in v["ind"]]))
+        for m in METRICS:
+            row[f"group_{m}_real"] = float(np.mean([g[f"mean_real_{m}"] for g in v["grp"]]))
+            row[f"group_{m}_null"] = float(np.mean([g[f"mean_null_{m}"] for g in v["grp"]]))
+            row[f"group_{m}_n_fdr_lt_0.05_mean_over_pairs"] = float(np.mean([g[f"n_groups_fdr_lt_0.05_{m}"] for g in v["grp"]]))
+        summary_by_pair_type[t] = row
+        print(f"[e05] type {t}: joint={row['frac_joint_cos0.7_and_corr0.5']:.3f} purity={row['group_purity_real']:.2f}/"
+              f"{row['group_purity_null']:.2f} overlap={row['group_overlap_real']:.2f}/{row['group_overlap_null']:.2f}", flush=True)
 
     Wc = runs[ref].W_sup - runs[ref].W_sup.mean(0, keepdims=True)
     _, _, Vt = np.linalg.svd(Wc, full_matrices=False)
@@ -380,13 +423,14 @@ def main() -> int:
                        "min_group_size": MIN_GROUP_SIZE, "n_null_groups": N_NULL_GROUPS,
                        "n_null_dictionaries": N_NULL_DICTS},
         "checkpoints_distinct_diagnostic": distinct,
+        "summary_by_pair_type": summary_by_pair_type,
         "individual_matching": pair_summaries,
-        "found_in_both_available_repetitions": found_in_both,
+        "found_across_runs_reference_side": found_in_both,
         "groups": group_info, "group_comparisons": group_comparisons,
         "feature_matches_reference_side": feature_matches, "map_positions_reference": map_positions,
-        "init_caveat": "decodeur EXTRA initialise par PCA du residu sur le reservoir partage, identique "
-                       "pour les 3 graines (seul l'ordre des mini-lots varie) -- independance a une init "
-                       "aleatoire NON testee",
+        "init_caveat": "les runs d'arm decoder_init=pca partagent l'init PCA du residu sur le reservoir "
+                       "partage (seul l'ordre des mini-lots varie) ; seules les paires random->random "
+                       "melangent init ET ordre (independance a l'init)",
         "human_validation_pending": True,
         "elapsed_seconds": round(time.time() - t0, 1),
     }
