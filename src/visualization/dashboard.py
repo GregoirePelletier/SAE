@@ -721,6 +721,51 @@ def page_pilot_e08(run_dir: str) -> None:
         st.info("Aucune piste enregistrée pour l'instant.")
 
 
+def page_stability_e05(run_dir: str) -> None:
+    st.header("Stabilité inter-graines des features EXTRA (E05)")
+    d = load_json(os.path.join(REPO_ROOT, run_dir, "e05_stability.json"))
+    if d is None:
+        st.info("e05_stability.json absent de ce run.")
+        return
+    st.warning(d["init_caveat"] + ". Les chiffres ci-dessous mesurent la robustesse à l'ordre "
+               "d'entraînement, pas à une initialisation aléatoire.")
+    fb = d.get("found_in_both_available_repetitions")
+    if fb:
+        st.metric("Features retrouvées dans les deux répétitions disponibles",
+                  f"{fb['n_found_in_both_available_repetitions']}/{fb['n_reference_supported']}",
+                  help=fb["note"])
+    st.subheader("Appariement individuel (cosinus signé du décodeur + profils DEV)")
+    rows = []
+    for pair, s in d["individual_matching"].items():
+        rows.append({"paire A→B": pair, "cos médian": s["best_cos_quantiles"]["q50"],
+                     "cos médian (nul anisotrope)": s["null_anisotropic_best_cos_quantiles"]["q50"],
+                     "frac cos≥0,7": s["frac_cos_ge_0.7"], "frac cos≥0,7 (nul)": s["null_frac_cos_ge_0.7"],
+                     "frac cos≥0,7 ET profil≥0,5": s["frac_joint_cos0.7_and_corr0.5"],
+                     "corr. profils médiane": s["profile_corr_quantiles"]["q50"],
+                     "Jaccard@20 moyen": s["mean_top20_jaccard"]})
+    st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.subheader("Groupes : réel vs 100 groupes aléatoires de même taille/strate de fréquence")
+    metric = st.selectbox("Métrique", ["purity", "overlap", "max_spearman", "mean_active_spearman",
+                                       "max_top100_jaccard", "mean_active_top100_jaccard",
+                                       "max_top20_jaccard", "mean_active_top20_jaccard"])
+    rows = []
+    for pair, c in d["group_comparisons"].items():
+        a = c["aggregate"]
+        rows.append({"paire A→B": pair, "réel (moyenne)": a[f"mean_real_{metric}"],
+                     "nul (moyenne)": a[f"mean_null_{metric}"],
+                     "groupes significatifs (FDR<0,05)": a[f"n_groups_fdr_lt_0.05_{metric}"],
+                     "groupes comparés": a["n_groups_compared"]})
+    st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.caption("Les 6 paires partagent les mêmes 3 entraînements : pas 6 confirmations indépendantes. "
+               "Géométrie de groupe stable, mais le haut de classement documentaire ne l'est pas "
+               "(Jaccard@100 significatif pour aucun groupe) -- cf. docs/post_stage/e05_results.md.")
+    st.subheader("Carte 2D des directions de la graine de référence (navigation, pas une preuve)")
+    pos = pd.DataFrame(d["map_positions_reference"])
+    pos["groupe"] = pos["group_id"].astype(str)
+    fig = px.scatter(pos, x="x", y="y", color="groupe", hover_data=["feature_uid", "freq_fit"])
+    st.plotly_chart(fig, width='stretch')
+
+
 def page_clustering_e07(run_dir: str) -> None:
     st.header("Regrouper selon une question (E07)")
     d = load_json(os.path.join(REPO_ROOT, run_dir, "e07_clustering.json"))
@@ -1263,6 +1308,7 @@ def main() -> None:
          "Clustering & Corrélations", "Sweeps (échelle & layer)", "Rapport consolidé",
          "Comparaison mail original / augmenté", "Mini-pilote analyste (E08)",
          "Associations de propriétés (E06)", "Regrouper selon une question (E07)",
+         "Stabilité inter-graines (E05)",
          "Audit méthodologique (archive)"],
     )
 
@@ -1296,6 +1342,8 @@ def main() -> None:
         page_correlations_e06(run_dir)
     elif page == "Regrouper selon une question (E07)":
         page_clustering_e07(run_dir)
+    elif page == "Stabilité inter-graines (E05)":
+        page_stability_e05(run_dir)
     elif page == "Audit méthodologique (archive)":
         page_audit_2026_08()
 
