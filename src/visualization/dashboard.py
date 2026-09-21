@@ -723,17 +723,41 @@ def page_pilot_e08(run_dir: str) -> None:
 
 def page_stability_e05(run_dir: str) -> None:
     st.header("Stabilité inter-graines des features EXTRA (E05)")
-    d = load_json(os.path.join(REPO_ROOT, run_dir, "e05_stability.json"))
-    if d is None:
-        st.info("e05_stability.json absent de ce run.")
+    files = [f for f in ("e05_stability_random_init.json", "e05_stability.json")
+             if os.path.exists(os.path.join(REPO_ROOT, run_dir, f))]
+    if not files:
+        st.info("Aucun e05_stability*.json dans ce run.")
         return
-    st.warning(d["init_caveat"] + ". Les chiffres ci-dessous mesurent la robustesse à l'ordre "
-               "d'entraînement, pas à une initialisation aléatoire.")
-    fb = d.get("found_in_both_available_repetitions")
+    fname = st.selectbox("Analyse", files, format_func=lambda f: {
+        "e05_stability_random_init.json": "4 runs : 2 init PCA + 2 init aléatoire (avec témoin d'indépendance à l'init)",
+        "e05_stability.json": "3 runs, toutes init PCA (graines 42/43/44)"}[f])
+    d = load_json(os.path.join(REPO_ROOT, run_dir, fname))
+    st.warning(d["init_caveat"])
+    fb = d.get("found_across_runs_reference_side")
     if fb:
+        cols = st.columns(3)
+        for col, (k, lab) in zip(cols, (("all_other_pca_runs", "dans les autres runs PCA"),
+                                        ("all_random_runs", "dans les runs init aléatoire"),
+                                        ("all_other_runs", "dans toutes les autres runs"))):
+            if k in fb:
+                col.metric(f"Features de {fb['reference']} retrouvées {lab}",
+                           f"{fb[k]['n_found']}/{fb['n_reference_supported']}", help=fb["note"])
+    fb_old = d.get("found_in_both_available_repetitions")
+    if fb_old:
         st.metric("Features retrouvées dans les deux répétitions disponibles",
-                  f"{fb['n_found_in_both_available_repetitions']}/{fb['n_reference_supported']}",
-                  help=fb["note"])
+                  f"{fb_old['n_found_in_both_available_repetitions']}/{fb_old['n_reference_supported']}",
+                  help=fb_old["note"])
+    if "summary_by_pair_type" in d:
+        st.subheader("Par type de paire (arm de l'init : source → cible)")
+        rows = [{"type": t, "ordres de paires": len(r["pairs"]), "frac cos≥0,7 ET profil≥0,5": r["frac_joint_cos0.7_and_corr0.5"],
+                 "pureté groupes (réel)": r["group_purity_real"], "pureté (nul)": r["group_purity_null"],
+                 "recouvrement (réel)": r["group_overlap_real"], "recouvrement (nul)": r["group_overlap_null"],
+                 "Spearman score max (réel)": r["group_max_spearman_real"],
+                 "Spearman score max (nul)": r["group_max_spearman_null"]}
+                for t, r in d["summary_by_pair_type"].items()]
+        st.dataframe(pd.DataFrame(rows), width='stretch')
+        st.caption("aléatoire→aléatoire = UNE seule paire indépendante (deux sens). Qualité d'entraînement par "
+                   "run dans le JSON (`runs[*].training_quality`).")
     st.subheader("Appariement individuel (cosinus signé du décodeur + profils DEV)")
     rows = []
     for pair, s in d["individual_matching"].items():
