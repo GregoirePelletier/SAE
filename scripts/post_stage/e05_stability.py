@@ -35,6 +35,17 @@ Simplifications assumees, documentees explicitement :
   reencodage token-level des trois SAE).
 - Permutation temoin colonne par colonne sur les documents, non stratifiee
   par longueur/blocs parents.
+- LIMITE STRUCTURELLE : SAEBoostResidualSAE initialise le decodeur EXTRA par
+  les 1024 premieres directions PCA du residu (frozen_core.py::
+  _init_from_residual_pca, "1024 directions PCA injectees" dans les logs) sur
+  le reservoir PARTAGE : l'initialisation est identique pour les 3 graines,
+  qui ne different que par l'ordre des mini-lots. Ce script mesure donc la
+  robustesse a l'ordre d'entrainement depuis une init PCA commune, PAS
+  l'independance a une initialisation aleatoire (bras non disponible sans
+  modifier le pipeline).
+- Score de groupe : max (principal, sature pour les grands groupes) ET
+  moyenne des membres actifs (diagnostic secondaire du plan §10.7), Jaccard
+  @20 et @100 et Spearman sur les 6518 documents DEV.
 - 3 graines seulement : "retrouvee dans les deux repetitions disponibles",
   jamais "reproductible a 100 %" ; les features ne sont PAS des
   entrainements independants (aucun bootstrap de features).
@@ -62,6 +73,7 @@ from src.post_stage.stability import (  # noqa: E402
     subspace_overlap, topk_jaccard,
 )
 from src.sae.sae_shared import load_all_doc_acts  # noqa: E402
+from scipy.stats import spearmanr  # noqa: E402
 
 COS_THRESHOLD = 0.7          # repere de litterature, plan §10.3
 PROFILE_CORR_THRESHOLD = 0.5  # controle de profils declare avec le seuil cosinus
@@ -203,8 +215,18 @@ def build_groups(R: Run, rng):
     }
 
 
-def _group_score(R: Run, members):
-    return (R.dev_sup[:, members] / R.p90_sup[members]).max(axis=1)
+SCORE_TYPES = ("max", "mean_active")
+METRICS = ["purity", "overlap"] + [f"{st}_{m}" for st in SCORE_TYPES for m in ("top20_jaccard", "top100_jaccard", "spearman")]
+
+
+def _group_scores(R: Run, members) -> dict:
+    """Deux scores documentaires de groupe (plan §10.7), fixes a l'avance :
+    max des membres normalises par leur p90 FIT (score principal, sature pour
+    les grands groupes) et moyenne des membres ACTIFS (diagnostic secondaire)."""
+    raw = R.dev_sup[:, members]
+    X = raw / R.p90_sup[members]
+    n_act = (raw > 1e-6).sum(axis=1)
+    return {"max": X.max(axis=1), "mean_active": np.where(n_act > 0, X.sum(axis=1) / np.maximum(n_act, 1), 0.0)}
 
 
 def _evaluate_group(A: Run, B: Run, members, nn, labels_b):
@@ -213,9 +235,15 @@ def _evaluate_group(A: Run, B: Run, members, nn, labels_b):
     QA, _ = subspace_basis(A.W_sup[members])
     QB, _ = subspace_basis(B.W_sup[pm])
     overlap, r = subspace_overlap(QA, QB)
-    jac = topk_jaccard(_group_score(A, members), _group_score(B, pm), JACCARD_K)
-    return {"partner_group": partner, "partner_size": int(len(pm)), "purity": purity,
-            "overlap": overlap, "overlap_rank": int(r), "top20_jaccard": jac}
+    out = {"partner_group": partner, "partner_size": int(len(pm)), "purity": purity,
+           "overlap": overlap, "overlap_rank": int(r)}
+    sa, sb = _group_scores(A, members), _group_scores(B, pm)
+    for st in SCORE_TYPES:
+        out[f"{st}_top20_jaccard"] = topk_jaccard(sa[st], sb[st], 20)
+        out[f"{st}_top100_jaccard"] = topk_jaccard(sa[st], sb[st], 100)
+        rho = spearmanr(sa[st], sb[st]).correlation
+        out[f"{st}_spearman"] = float(rho) if rho == rho else float("nan")
+    return out
 
 
 def compare_groups(A: Run, B: Run, labels_a, labels_b, nn, rng):
@@ -228,18 +256,18 @@ def compare_groups(A: Run, B: Run, labels_a, labels_b, nn, rng):
         null = [_evaluate_group(A, B, resample_group_same_strata(members, A.strata, pool, rng),
                                 nn, labels_b) for _ in range(N_NULL_GROUPS)]
         row = {"group_id_A": int(gid), "size_A": int(len(members)), **real}
-        for m in ("purity", "overlap", "top20_jaccard"):
+        for m in METRICS:
             nv = np.array([x[m] for x in null], dtype=float)
             row[f"null_{m}_mean"] = float(np.nanmean(nv))
             row[f"p_null_{m}"] = float((1 + np.nansum(nv >= real[m])) / (1 + np.sum(~np.isnan(nv))))
         rows.append(row)
-    for m in ("purity", "overlap", "top20_jaccard"):
+    for m in METRICS:
         if rows:
             q = fdr_bh([r[f"p_null_{m}"] for r in rows])
             for r, qq in zip(rows, q):
                 r[f"p_null_{m}_fdr_bh"] = float(qq)
     agg = {"n_groups_compared": len(rows)}
-    for m in ("purity", "overlap", "top20_jaccard"):
+    for m in METRICS:
         if rows:
             agg[f"mean_real_{m}"] = float(np.nanmean([r[m] for r in rows]))
             agg[f"mean_null_{m}"] = float(np.mean([r[f"null_{m}_mean"] for r in rows]))
@@ -356,6 +384,9 @@ def main() -> int:
         "found_in_both_available_repetitions": found_in_both,
         "groups": group_info, "group_comparisons": group_comparisons,
         "feature_matches_reference_side": feature_matches, "map_positions_reference": map_positions,
+        "init_caveat": "decodeur EXTRA initialise par PCA du residu sur le reservoir partage, identique "
+                       "pour les 3 graines (seul l'ordre des mini-lots varie) -- independance a une init "
+                       "aleatoire NON testee",
         "human_validation_pending": True,
         "elapsed_seconds": round(time.time() - t0, 1),
     }
