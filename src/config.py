@@ -109,6 +109,13 @@ SANITY_CHECK_FROZEN_DECODER = os.environ.get("SANITY_CHECK_FROZEN_DECODER", "0")
 # et al., utilisé pour tous leurs résultats Frozen Decoder publiés car plus
 # difficile à battre que iso, cf. frozen_core.py::FrozenDecoderExtendedSAE).
 SANITY_CHECK_FROZEN_DECODER_INIT = os.environ.get("SANITY_CHECK_FROZEN_DECODER_INIT", "iso").strip().lower()
+# Initialisation des directions du décodeur EXTRA de SAEBoostResidualSAE : "pca" (défaut,
+# top-`D_EXTRA` directions PCA du résidu, déterministe sur le réservoir partagé -- SEED ne
+# fait alors varier QUE l'ordre des mini-lots) ou "random" (gaussien isotrope normalisé
+# sous SEED, échelles/biais calibrés à l'identique). "random" sert de bras témoin
+# d'indépendance à l'initialisation (E05) et exige un SAVE_DIR distinct de tout run "pca" :
+# `load_or_train_extended_sae` ne valide pas la config d'un checkpoint existant.
+EXTRA_DECODER_INIT = os.environ.get("EXTRA_DECODER_INIT", "pca").strip().lower()
 N_FEATURES_TO_LABEL  = int(os.environ.get("N_FEATURES_TO_LABEL", "10"))
 
 # ─── Modèle Gemma-3 / GemmaScope ───

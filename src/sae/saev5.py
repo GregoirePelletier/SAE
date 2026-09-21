@@ -317,6 +317,7 @@ from src.config import (
     EMB_MODEL, EMB_POOLING, MATRYOSHKA_DIM, D_SAE, K_SPARSE, EPOCHS, LR, BATCH_TRAIN, MAX_PHRASES_DOC,
     D_EXTRA, K_EXTRA, EPOCHS_EXTRA, LR_EXTRA, USE_FROZEN_CORE, N_TOKENS_EXTRA_TRAIN,
     N_FEATURES_TO_LABEL, SANITY_CHECK_FROZEN_DECODER, SANITY_CHECK_FROZEN_DECODER_INIT, EXTRACTION_BATCH_SIZE,
+    EXTRA_DECODER_INIT,
     EXTRACTION_CHECKPOINT_INTERVAL, BATCH_SIZE_EXTRA, REENCODE_BATCH_SIZE,
     MAX_LENGTH, SIGMA_CLIP, SKIP_FIRST_CONTENT_TOKEN,
 )
@@ -1505,6 +1506,7 @@ def run_llm_max_pool_pipeline(
                     ext_sae = SAEBoostResidualSAE(
                         pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA,
                         domain_residuals=domain_residuals_cpu, domain_inputs=domain_inputs_cpu,
+                        decoder_init=EXTRA_DECODER_INIT,
                     ).to(DEVICE)
 
                 from sae_shared import load_or_train_extended_sae as load_or_train
@@ -1517,7 +1519,7 @@ def run_llm_max_pool_pipeline(
                 )
                 ckpt = {"state_dict": {k: v.cpu() for k, v in ext_sae.state_dict().items()},
                         "config": {"d_extra": D_EXTRA, "k_extra": K_EXTRA, "layer": LAYER,
-                                   "encoder_input": "x"}}
+                                   "encoder_input": "x", "decoder_init": EXTRA_DECODER_INIT}}
                 torch.save(ckpt, frozen_core_path)
                 print(f"  [P1] SAEBoostResidualSAE sauvegardé : {frozen_core_path}")
                 del raw_residuals, domain_residuals_cpu, domain_inputs_cpu

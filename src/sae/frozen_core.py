@@ -254,8 +254,11 @@ class FrozenDecoderExtendedSAE(FrozenCoreResidualSAE):
 
 class SAEBoostResidualSAE(FrozenCoreResidualSAE):
     def __init__(self, core_sae: SAE, d_extra: int = 1024, k_extra: int = 32,
-                 domain_residuals=None, domain_inputs=None):
+                 domain_residuals=None, domain_inputs=None, decoder_init: str = "pca"):
+        if decoder_init not in ("pca", "random"):
+            raise ValueError(f"decoder_init doit valoir 'pca' ou 'random', recu {decoder_init!r}")
         super().__init__(core_sae, d_extra, k_extra)
+        self.decoder_init = decoder_init
         if domain_residuals is not None:
             self._init_from_residual_pca(domain_residuals, domain_inputs)
 
@@ -264,20 +267,33 @@ class SAEBoostResidualSAE(FrozenCoreResidualSAE):
         input_scale (sortie du décodeur) et les directions PCA du décodeur.
         `inputs` (x, échantillons appariés aux mêmes tokens que `residuals`) :
         calibre encoder_input_scale et le biais de l'encodeur, qui lit x
-        (SAE Boost §3.1) -- sans eux, repli dégradé sur l'échelle du résidu."""
-        print("  [SAEBoostResidualSAE] Initialisation PCA sur la distribution d'erreurs locale...")
+        (SAE Boost §3.1) -- sans eux, repli dégradé sur l'échelle du résidu.
+
+        `decoder_init="random"` (bras témoin d'indépendance à l'initialisation,
+        E05) ne remplace PAS les directions : elles restent celles du parent
+        (gaussien isotrope normalisé, `W_enc = W_dec.T`, tirées sous
+        `torch.manual_seed(SEED)`). Tout le reste -- `input_scale`,
+        `encoder_input_scale`, biais de l'encodeur -- est calibré à l'identique,
+        pour qu'aucun autre facteur que les directions initiales ne varie."""
+        random_init = self.decoder_init == "random"
+        print("  [SAEBoostResidualSAE] Initialisation " +
+              ("ALÉATOIRE des directions (échelles calibrées sur le résidu)..." if random_init
+               else "PCA sur la distribution d'erreurs locale..."))
         sample = residuals[:min(8192, len(residuals))].float()
         self.input_scale = sample.norm(dim=-1).median().to(self.input_scale.dtype)
         centered = sample - sample.mean(dim=0)
         try:
-            _, _, Vt = torch.linalg.svd(centered, full_matrices=False)
-            n_comp = min(self.d_extra, Vt.shape[0])
-            W_init = F.normalize(Vt[:n_comp].float(), dim=1)
-            if n_comp < self.d_extra:
-                pad = F.normalize(torch.randn(self.d_extra - n_comp, self.d_in), dim=1)
-                W_init = torch.cat([W_init, pad], dim=0)
-            self.W_dec_extra.data.copy_(W_init.to(self.W_dec_extra.dtype))
-            self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
+            if random_init:
+                n_comp = 0
+            else:
+                _, _, Vt = torch.linalg.svd(centered, full_matrices=False)
+                n_comp = min(self.d_extra, Vt.shape[0])
+                W_init = F.normalize(Vt[:n_comp].float(), dim=1)
+                if n_comp < self.d_extra:
+                    pad = F.normalize(torch.randn(self.d_extra - n_comp, self.d_in), dim=1)
+                    W_init = torch.cat([W_init, pad], dim=0)
+                self.W_dec_extra.data.copy_(W_init.to(self.W_dec_extra.dtype))
+                self.W_enc_extra.data.copy_(W_init.T.to(self.W_enc_extra.dtype))
 
             if inputs is not None:
                 self._calibrate_encoder_scale(inputs)
@@ -290,6 +306,7 @@ class SAEBoostResidualSAE(FrozenCoreResidualSAE):
                 mean_input = sample.mean(dim=0)
             self.b_enc_extra.data.copy_(
                 (-(mean_input / self.encoder_input_scale) @ self.W_enc_extra.data).to(self.b_enc_extra.dtype))
-            print(f"  [SAEBoostResidualSAE] Initialisation réussie : {n_comp} directions PCA injectées.")
+            print(f"  [SAEBoostResidualSAE] Initialisation réussie : {n_comp} directions PCA injectées"
+                  + (" (mode aléatoire : directions parent conservées)." if random_init else "."))
         except Exception as e:
             print(f"  [SAEBoostResidualSAE] Échec SVD ({e}), initialisation pseudo-aléatoire conservée.")
