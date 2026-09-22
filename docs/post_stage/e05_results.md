@@ -36,7 +36,7 @@ paire impliquant une init aléatoire — les inits sont bien indépendantes.
 
 ## Les runs aléatoires sont-ils aussi bien entraînés ?
 
-| Run | init | FVE étendue | features EXTRA mortes | rho_sae | sonde d'intention 14 classes |
+| Run | init | FVE étendue | features EXTRA mortes | rho_sae | sonde 14 classes (axes d'augmentation, cf. E01) |
 |---|---|---:|---:|---:|---:|
 | 42 | PCA | 0,9051 | 4,59 % | 0,950 | 0,877 |
 | 43 | PCA | 0,9053 | 4,69 % | 0,953 | 0,878 |

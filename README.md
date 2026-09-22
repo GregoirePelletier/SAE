@@ -33,16 +33,24 @@ sur un corpus hors-domaine (energy/sports/support), le taux d'interprétabilité
 p≈0,006). Le volume d'entraînement, testé de 100k à 2M tokens à corpus
 identique, n'a lui aucun effet mesurable.
 
-Ces deux chiffres datent de l'ancienne sélection des features par magnitude
-d'activation (systématiquement biaisée vers les features les plus denses,
-non représentative du dictionnaire). Sous la sélection stratifiée retenue
-depuis comme défaut (`FEATURE_SELECTION_METHOD=stratified`), le taux mesuré
-sur le même SAE et le même corpus emails passe à **89,3% (134/150)**
-(`RESULTS_TESTS.md` §79, z=-8,12, p=4,5×10⁻¹⁶) — c'est le chiffre de
-référence actuel. Le corpus générique n'a pas été re-mesuré sous cette
-méthode ; l'effet de domaine lui-même (emails > générique) n'est donc plus
-quantifié dans sa forme actuelle, seule sa direction reste établie. Détail
-du diagnostic et des runs de validation : `RESULTS_TESTS.md` §12, §77-§82.
+Ce chiffre date d'un protocole depuis révisé deux fois : sélection des
+features par magnitude d'activation (biaisée vers les features les plus
+denses), puis juge auto-référent (le même modèle Gemma extrait et juge),
+puis construction du négatif odd-one-out elle-même (le juge pouvait
+distinguer l'intrus par sa seule longueur, indépendamment du concept). Sous
+le protocole intégralement corrigé (sélection stratifiée, juge
+`Qwen3.8-27B` découplé du modèle d'extraction, négatif corrigé,
+déduplication par mail parent), sur la config par défaut de ce dépôt
+(`MODEL_SIZE=12b`, layer 31, `K_EXTRA=5`) : **65,7% (197/300)**, IC95%
+[60,1% ; 70,8%] — c'est **le chiffre de référence actuel** (`RESULTS_TESTS.md`
+§119, run R0, job 46191). Le corpus générique n'a pas été re-mesuré sous ce
+protocole ; l'effet de domaine lui-même (emails > générique) n'est donc plus
+quantifié dans sa forme actuelle, seule sa direction reste établie. Sous ce
+même protocole, l'effet d'échelle du modèle extracteur/juge (1B/4B/12B/27B)
+ne montre plus de tendance monotone détectable (`RESULTS_TESTS.md` §119) —
+ne pas citer une progression avec la taille du modèle comme résultat établi.
+Détail du diagnostic et des runs de validation : `RESULTS_TESTS.md` §12,
+§113-§120, et `CLAUDE.md` (section Diagnostics).
 
 ---
 
@@ -80,7 +88,7 @@ Conditions de référence pour les comparaisons expérimentales : `docs/evaluati
 | `DTYPE` | `bf16` | bf16 obligatoire sur Gemma-3 (activations massives, cf. `docs/architecture.md`) |
 | `LAYER` | dérivé du preset | Couche du residual stream extraite |
 | `USE_FROZEN_CORE` | `1` | Active l'extension `SAEBoostResidualSAE` (Pipeline 1) |
-| `D_EXTRA` / `K_EXTRA` | `1024` / `32` | Dimension / sparsité de l'extension |
+| `D_EXTRA` / `K_EXTRA` | `1024` / `5` | Dimension / sparsité de l'extension |
 | `D_SAE` / `K_SPARSE` | `8192` / `16` | Dimension / sparsité du `PhraseLevelSAE` (Pipeline 2) |
 | `EMB_MODEL` | `codefuse-ai/F2LLM-v2-80M` | Modèle d'embeddings phrase (Pipeline 2) |
 | `SAVE_DIR` | `./results/` | Racine des sorties (résultats + `cache/`) |

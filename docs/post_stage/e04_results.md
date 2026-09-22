@@ -67,14 +67,24 @@ Ne pas citer `verification_rate=1,0`/`coverage=1,0` sans cette précision.
   quasi parfaite de 6/8 hypothèses reflète probablement des marqueurs de
   template plutôt qu'une propriété qui généraliserait à un corpus réel non
   labellisé de cette façon.
-- Vérification 100% Qwen (juge découplé de l'extracteur Gemma, cf.
-  [[project_sae_qwen_judge_policy]]), aucune calibration humaine — audit
-  humain des résultats de diffing (plan §9.2 point 5) toujours en attente,
-  nécessite Grégoire.
+- Vérification 100% Qwen (juge découplé de l'extracteur Gemma, politique
+  juge Qwen-partout — cf. `RESULTS_TESTS.md` §119, `CLAUDE.md` point 6
+  "Indépendance du juge"), aucune calibration humaine — audit humain des
+  résultats de diffing (plan §9.2 point 5) toujours en attente, nécessite
+  Grégoire.
 - `verification_rate`/`coverage` (App K.1) ne distinguent pas le sens de la
   différence — un lecteur pressé pourrait citer "8/8 hypothèses vérifiées"
   en passant sous silence l'inversion de sens de l'hypothèse 5 ; toujours
   lire le tableau par hypothèse, pas seulement le résumé agrégé.
+- Le champ `percentage_difference` produit par `scripts/post_stage/
+  e04_diffing.py` (stade découverte uniquement, ne nourrit aucun chiffre de
+  vérification CONFIRM ci-dessus) reçoit en réalité un `log_odds_ratio`
+  (`src/analysis/cooccurrence.py::corpus_diff_stats`), pas un écart de
+  fréquence en pourcentage — le nom du champ est trompeur pour quiconque le
+  lit directement dans `e04_diffing.json`. Non corrigé ici : un renommage de
+  champ change le schéma de sortie du script et doit être isolé dans un
+  commit dédié (test + impact + nécessité de rejeu), pas mélangé à un
+  nettoyage de passation.
 - CONFIRM sous-échantillonné à 150/groupe (contrainte de fenêtre SLURM, pas
   un choix méthodologique a priori) — dans la fourchette basse de la cible
   du plan (§9.1 : "150-200 par groupe"), pas en dessous.

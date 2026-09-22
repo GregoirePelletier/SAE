@@ -28,13 +28,13 @@ pas sur les activations SAE brutes.
 
 ## Lecture d'ensemble
 
-**5/8 paires "établies" (IC bootstrap excluant zéro, survivent FDR-BH), 2/8
+**4/8 paires "établies" (IC bootstrap excluant zéro, survivent FDR-BH), 3/8
 non établies, 1/8 `insufficient_support`** (n_a=3 — statut correctement
 appliqué plutôt que de citer l'odds ratio brut de 34,2, qui aurait l'air
 spectaculaire sur une table quasi vide).
 
-Parmi les 5 paires établies, **toutes ne sont pas également informatives** —
-à ne pas aplatir en "5 corrélations découvertes" :
+Parmi les 4 paires établies, **toutes ne sont pas également informatives** —
+à ne pas aplatir en "4 corrélations découvertes" :
 
 1. **Réfrigérateur × dysfonctionnement électrique (NPMI=0,35) est la seule
    association vraiment actionnable** : spécifique, non triviale, et

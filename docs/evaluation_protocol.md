@@ -97,6 +97,17 @@ directement la ligne #8 "Détection d'urgence/intention (réelle)" de l'inventai
 ci-dessus : toute lecture de `intent_urgency_probe_results.json` produite avant ce
 correctif utilise des labels de référence faux, pas seulement bruités.
 
+**Écart le plus important, non couvert par ce qui précède** : `RESULTS_TESTS.md`
+§113-120 corrige un troisième biais (construction du négatif odd-one-out, le
+juge distinguait l'intrus par sa longueur) invalidant les taux d'interprétabilité
+de §79/§82/§94-96, et fixe **§119 (run R0, 65,7% (197/300), IC95% [60,1% ; 70,8%])
+comme valeur de référence définitive** sous juge `Qwen3.8-27B` (pas
+`google/gemma-3-12b-it` — la ligne "LLM (extraction + juge)" du tableau
+"Conditions fixées" ci-dessus est donc, elle aussi, dépassée). `CLAUDE.md`
+(section Diagnostics, point 5) tient ce point à jour ; s'y référer plutôt qu'à
+la table ci-dessus pour comparer un nouveau run au taux d'interprétabilité
+actuel du projet.
+
 ## Points ouverts (hygiène et méthodologie)
 
 Items identifiés mais non résolus, à traiter avant de s'appuyer dessus sans réserve :

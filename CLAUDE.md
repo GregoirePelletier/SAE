@@ -251,6 +251,24 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    (N9, AUDIT_SAE_2026-08.md §8) : une nouvelle ablation de seed sous le cache
    partagé mesure un effet plus étroit (init/shuffle SAE seuls, plus le
    réservoir de tokens) que ce chiffre historique.
+
+   **Mise à jour (§113-120)** : un troisième biais protocolaire a depuis été
+   trouvé et corrigé — la construction du négatif odd-one-out laissait le
+   juge distinguer l'intrus par sa seule longueur, indépendamment du
+   concept. Sous protocole intégralement corrigé (stratifié + Qwen3.8-27B +
+   négatif corrigé + déduplication par mail parent), rejugé à n=300 sur
+   toute la campagne (§119, 17/17 jobs) : le vrai "12B" de la famille
+   layer-scalée (`R0`, layer 31, $K_\text{extra}=5$) donne **65,7%
+   (197/300)** — la valeur de référence actuelle du dépôt (remplace §79/§82/
+   §94/§95/§96 ci-dessus). Le sweep d'échelle 1B/4B/12B/27B sous ce protocole
+   (§119, Cochran-Armitage p=0,34) **ne montre plus de tendance monotone** :
+   l'énoncé ci-dessus ("seul le choix de taille du modèle... produit un effet
+   massif et répliqué à chaque palier") ne tient plus et ne doit pas être
+   cité comme résultat central. Seul $K_\text{extra}$ (A1, $p_\text{BH}=0,044$)
+   et le point 4B isolé ($p_\text{BH}=0,044$) survivent la correction BH sur
+   les 15 comparaisons contre R0 — aucune tendance d'échelle interprétable.
+   Le reste du paragraphe ci-dessus (non-réplication du layer, `mlp_out` vs
+   `attn_out`) reste valide : §119 ne distingue plus non plus aucun layer.
 6. **Indépendance du juge** (uniquement si le corpus de test inclut du texte
    généré par le même modèle que le juge, ex. corpus augmenté) : vérifié
    résolu négativement sur ce projet (`RESULTS_TESTS.md` §48/§50/§52) — à
