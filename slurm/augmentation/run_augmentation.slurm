@@ -8,13 +8,15 @@
 #SBATCH --time=1:30:00
 #SBATCH --output=logs/augmentation/augmentation_test_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 # Emplacement canonique des données email (cf. run_augmentation_full.slurm).
 export SAVE_DIR="./local_data/emails/"
 # Run de validation rapide : 60 mails × 13 axes/niveaux ≈ 780 générations
@@ -26,7 +28,7 @@ export AUGMENT_OUT_NAME="augmented_mails_test.jsonl"
 
 mkdir -p logs "${SAVE_DIR}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 # run_augmentation.py est dans scripts/, pas à la racine ; uv run tentait aussi de
 # re-résoudre l'env via le réseau (bloqué sur le cluster) -> échec systématique.
 .venv/bin/python scripts/run_augmentation.py

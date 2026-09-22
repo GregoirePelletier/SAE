@@ -9,6 +9,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/diffing_hypothesis_verification_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -21,11 +23,11 @@ export PYTHONUNBUFFERED=1
 # AUDIT_SAE_2026-08.md §7). h100 obligatoire (Qwen3.8-27B-FP8 OOM sur les
 # a100 40 Go de ce cluster, cf. job 45444).
 export SAVE_DIR="./results_v10_emails_main/"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
 export N_DOCS_PER_DOMAIN=40
 export TOP_K_HYPOTHESES=10
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/diffing_hypothesis_verification_test.py

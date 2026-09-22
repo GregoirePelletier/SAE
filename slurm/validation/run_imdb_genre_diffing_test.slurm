@@ -8,6 +8,8 @@
 #SBATCH --time=05:00:00
 #SBATCH --output=logs/validation/imdb_genre_diffing_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export PYTHONUNBUFFERED=1
@@ -21,6 +23,6 @@ export PYTHONUNBUFFERED=1
 # (le premier est détruit avant le second) -- 1 GPU suffit, pas de partage
 # VRAM concurrent entre les deux modèles.
 
-cd /home/h21486/SAE/
-/home/h21486/SAE/external/interp_embed/.venv/bin/python \
-    /home/h21486/SAE/scripts/imdb_genre_diffing_test.py
+cd "${SAE_ROOT}/"
+${SAE_ROOT}/external/interp_embed/.venv/bin/python \
+    ${SAE_ROOT}/scripts/imdb_genre_diffing_test.py

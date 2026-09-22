@@ -9,6 +9,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/clustering_llm_verification_r0_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -26,7 +28,7 @@ export AXIS_QUERY="type de réclamation client"
 export N_CLUSTERS=4
 export N_DOCS=300
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/clustering_llm_test.py

@@ -22,7 +22,7 @@ CORPUS_SPLIT_SEED = int(os.environ.get("CORPUS_SPLIT_SEED", "42"))
 # ("codefuse-ai/F2LLM-v2-330M") : vérifié cette session, aucune entrée F2LLM dans
 # ~/.cache/huggingface/hub -- un ID Hub échouerait sur un nœud de calcul offline
 # (HF_HUB_OFFLINE=1) malgré les poids déjà présents localement. Toujours surchargeable.
-EMB_MODEL      = os.environ.get("EMB_MODEL", "/home/h21486/SAE/models/F2LLM-v2-330M")
+EMB_MODEL      = os.environ.get("EMB_MODEL", "./models/F2LLM-v2-330M")
 # "last_token" (défaut) : backbone décodeur causal (F2LLM). "cls" : backbone
 # encodeur bidirectionnel entraîné pour ce pooling (bge-m3) -- cf.
 # src/sae/phrase_sae.py::extract_f2llm_embeddings.
@@ -176,7 +176,7 @@ LOCAL_SAE_ROOT = os.environ.get("LOCAL_SAE_DIR", f"./local_data/saes/{RELEASE_ID
 # échoue sur les deux chemins possibles avec torch==2.6.0 (pin du dépôt),
 # aucun rapport avec un paquet manquant -- cf. docstring de
 # src/sae/judge.py::load_judge_model pour le détail des deux échecs.
-JUDGE_MODEL_ID = os.environ.get("JUDGE_MODEL_ID", "/home/h21486/SAE/models/Qwen3.8-27B")
+JUDGE_MODEL_ID = os.environ.get("JUDGE_MODEL_ID", "./models/Qwen3.8-27B")
 SAE_SNAPSHOT   = os.environ.get("SAE_SNAPSHOT", "0" * 40)
 
 # ─── Précision ───

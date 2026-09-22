@@ -7,6 +7,8 @@
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/validation/interp_embed_tutorial_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export PYTHONUNBUFFERED=1
@@ -16,6 +18,6 @@ export PYTHONUNBUFFERED=1
 # précalculées -- ce job ne fait que désérialiser + calculer une diff de
 # fréquences (numpy/pandas), zéro inférence modèle.
 
-cd /home/h21486/SAE/
-/home/h21486/SAE/external/interp_embed/.venv/bin/python \
-    /home/h21486/SAE/scripts/validate_interp_embed_tutorial.py
+cd "${SAE_ROOT}/"
+${SAE_ROOT}/external/interp_embed/.venv/bin/python \
+    ${SAE_ROOT}/scripts/validate_interp_embed_tutorial.py

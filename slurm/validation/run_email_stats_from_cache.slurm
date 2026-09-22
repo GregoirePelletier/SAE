@@ -7,6 +7,8 @@
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/validation/email_stats_from_cache_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export PYTHONUNBUFFERED=1
 
 # CPU-only : recalcule les stats du job 44413 depuis le pickle déjà encodé,
@@ -14,6 +16,6 @@ export PYTHONUNBUFFERED=1
 # Aucun GPU nécessaire -- Dataset.load_from_file(resume=False) ne relance pas
 # l'encodage SAE.
 
-cd /home/h21486/SAE/
-/home/h21486/SAE/external/interp_embed/.venv/bin/python \
-    /home/h21486/SAE/scripts/email_interp_embed_stats_from_cache.py
+cd "${SAE_ROOT}/"
+${SAE_ROOT}/external/interp_embed/.venv/bin/python \
+    ${SAE_ROOT}/scripts/email_interp_embed_stats_from_cache.py

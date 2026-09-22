@@ -42,7 +42,7 @@ from src.data.preparation import build_email_train_test_corpus
 from src.storage.fragment_store import resolve_extension_fragments_dir
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "/home/h21486/SAE/models/Qwen3.8-27B")
+ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "./models/Qwen3.8-27B")
 SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")

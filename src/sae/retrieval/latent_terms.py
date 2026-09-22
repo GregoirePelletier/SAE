@@ -43,7 +43,7 @@ projet ne permettant pas 30B tokens / dictionnaire 32768 / 5 graines :
 
 Usage (cluster, offline) :
   uv run python src/sae/retrieval/latent_terms.py \
-      --mails /home/h21486/SAE/local_data/emails/Mails.tsv \
+      --mails ./local_data/emails/Mails.tsv \
       --query "contestation facture Linky trop-perçu"
 """
 from __future__ import annotations

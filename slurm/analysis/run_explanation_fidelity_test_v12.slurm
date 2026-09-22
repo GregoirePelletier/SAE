@@ -8,16 +8,18 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/analysis/explanation_fidelity_v12_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
 # Zéro calcul GPU (réutilise activations + labels juge déjà en cache), rejoué sur
 # le run v12 pour alimenter l'onglet Explication (fidélité/plausibilité).
 export SAVE_DIR="./results_v12_scaled_65k/"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/explanation_fidelity_test.py

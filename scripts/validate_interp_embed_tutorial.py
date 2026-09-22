@@ -4,8 +4,12 @@ de external/interp_embed/examples/diff_models.ipynb sur les .pkl précomputés
 local. Aucune inférence modèle -- valide seulement que interp_embed s'importe et
 se comporte comme documenté sur des activations SAE déjà calculées. CPU-only.
 """
+import os
 import sys
-sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
+from pathlib import Path
+
+SAE_ROOT = os.environ.get("SAE_ROOT", str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, f"{SAE_ROOT}/external/interp_embed")
 
 import numpy as np
 import pandas as pd

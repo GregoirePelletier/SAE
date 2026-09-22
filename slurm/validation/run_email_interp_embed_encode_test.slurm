@@ -8,6 +8,8 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/validation/email_interp_embed_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export PYTHONUNBUFFERED=1
@@ -18,6 +20,6 @@ export PYTHONUNBUFFERED=1
 # descriptive, pas de ground-truth) -- 1 GPU dédié a100 (40 Go), suffisant
 # pour Llama-3.1-8B seul (~16 Go).
 
-cd /home/h21486/SAE/
-/home/h21486/SAE/external/interp_embed/.venv/bin/python \
-    /home/h21486/SAE/scripts/email_interp_embed_encode_test.py
+cd "${SAE_ROOT}/"
+${SAE_ROOT}/external/interp_embed/.venv/bin/python \
+    ${SAE_ROOT}/scripts/email_interp_embed_encode_test.py

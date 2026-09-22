@@ -7,8 +7,10 @@
 #SBATCH --mem=96G
 #SBATCH --time=08:00:00
 #SBATCH --signal=USR1@600
-#SBATCH --output=/home/h21486/SAE/logs/post_stage/e01_encode_confirm_%j.out
-#SBATCH --error=/home/h21486/SAE/logs/post_stage/e01_encode_confirm_%j.err
+#SBATCH --output=logs/post_stage/e01_encode_confirm_%j.out
+#SBATCH --error=logs/post_stage/e01_encode_confirm_%j.err
+
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
 
 # Encode CONFIRM a travers le SAE deja entraine (checkpoint fige, job 48585)
 # -- necessaire pour evaluer E03/E04 sur CONFIRM sans jamais l'entrainer.
@@ -36,14 +38,14 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export TOKENIZERS_PARALLELISM=false
 export CLUSTER_OFFLINE_MODE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
 
-export POST_STAGE_SPLIT_ASSIGNMENTS_PATH="/home/h21486/SAE/configs/post_stage/split_assignments.json"
+export POST_STAGE_SPLIT_ASSIGNMENTS_PATH="${SAE_ROOT}/configs/post_stage/split_assignments.json"
 export POST_STAGE_INCLUDE_CONFIRM_AS_DIFF=1
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-1b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-1b-it"
 export MODEL_SIZE=1b
 export DTYPE=bf16
 export PIPELINES=p1
@@ -53,12 +55,12 @@ export D_EXTRA=1024
 export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
-export SAVE_DIR="/home/h21486/SAE/results_post_stage_e01_fit_1b_layer13_k5/"
+export SAVE_DIR="${SAE_ROOT}/results_post_stage_e01_fit_1b_layer13_k5/"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH:-}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 
-mkdir -p /home/h21486/SAE/logs/post_stage "${SAVE_DIR}/cache"
-cd /home/h21486/SAE
+mkdir -p "${SAE_ROOT}/logs/post_stage" "${SAVE_DIR}/cache"
+cd "${SAE_ROOT}"
 
 srun --ntasks=1 .venv/bin/python scripts/post_stage/profile_run.py \
   --out "${SAVE_DIR}/cache/resources_profile_confirm.jsonl" \

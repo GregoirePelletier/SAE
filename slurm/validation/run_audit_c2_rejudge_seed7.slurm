@@ -8,6 +8,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/validation/audit_c2_rejudge_seed7_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Audit 2026-08 round 2, B.17 : c2_original_only_rejudge.py maintenant
 # seede (SEED env var), rejoue avec seed=7 pour mesurer la variance
 # inter-graine sur le resultat C2 (§52, reference 44.7%).
@@ -17,9 +19,9 @@ export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 export SEED=7
 export SAVE_DIR="./results_v10_emails_main/"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export DTYPE=bf16
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/c2_original_only_rejudge.py

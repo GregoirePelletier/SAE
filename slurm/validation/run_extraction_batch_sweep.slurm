@@ -8,17 +8,19 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/validation/extraction_batch_sweep_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Balayage EXTRACTION_BATCH_SIZE (benchmarks/extraction_batch_size_sweep.py) --
 # à relancer à chaque changement de GPU, de modèle ou de couche.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export LAYER=24
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python benchmarks/extraction_batch_size_sweep.py

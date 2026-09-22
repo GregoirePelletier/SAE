@@ -8,6 +8,8 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/analysis/sae_multilingual_bias_r0_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Biais multilingue du juge sous R0 (RESULTS_TESTS.md §22 réutilisait le juge
 # auto-référent MODEL_ID=Gemma-3-12b-it sur la sélection historique par
 # magnitude -- corrigé ici : juge/traducteur Qwen3.8-27B découplé,
@@ -21,7 +23,7 @@ export PYTHONUNBUFFERED=1
 export SAVE_DIR="./results_v27_ablation_classic_setup_k5_25m_layer31/"
 export SEED=42
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/multilingual_judge_bias_test_r0.py

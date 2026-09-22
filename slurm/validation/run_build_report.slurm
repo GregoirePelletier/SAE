@@ -8,12 +8,14 @@
 #SBATCH --time=00:10:00
 #SBATCH --output=logs/validation/build_report_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Régénération de report/dist/RAPPORT_DE_STAGE.md -- soumis via sbatch plutôt
 # qu'exécuté sur le nœud frontal, cf. CLAUDE.md ("Cluster SLURM").
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
 mkdir -p logs/validation
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 PYTHONPATH=. .venv/bin/python scripts/build_report.py

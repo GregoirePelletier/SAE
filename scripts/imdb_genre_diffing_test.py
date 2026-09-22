@@ -52,8 +52,9 @@ import random
 import importlib.util
 from pathlib import Path
 
-sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
-sys.path.insert(0, "/home/h21486/SAE")  # src.sae.judge (load_judge_model partagé)
+SAE_ROOT = Path(os.environ.get("SAE_ROOT", Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(SAE_ROOT / "external/interp_embed"))
+sys.path.insert(0, str(SAE_ROOT))  # src.sae.judge (load_judge_model partagé)
 
 import numpy as np
 import pandas as pd
@@ -63,17 +64,17 @@ import pandas as pd
 # appeler leur diff_features telle quelle, sans la réécrire.
 _spec = importlib.util.spec_from_file_location(
     "interp_embed_examples_functions",
-    "/home/h21486/SAE/external/interp_embed/examples/functions.py",
+    str(SAE_ROOT / "external/interp_embed/examples/functions.py"),
 )
 interp_functions = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(interp_functions)
 import torch
 from huggingface_hub import hf_hub_download
 
-OUT_DIR = Path("/home/h21486/SAE/local_data/imdb_genre_diffing")
+OUT_DIR = SAE_ROOT / "local_data/imdb_genre_diffing"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-JUDGE_MODEL_PATH = "/home/h21486/SAE/models/Qwen3.8-27B"
+JUDGE_MODEL_PATH = str(SAE_ROOT / "models/Qwen3.8-27B")
 GENRES = ["action", "romance", "horror", "comedy", "sci-fi", "thriller"]
 N_IN_GENRE_MAX = 500
 N_OUT_GENRE = 500

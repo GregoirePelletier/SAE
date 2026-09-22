@@ -8,11 +8,13 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/analysis/intent_urgency_r0_tfidf_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
 # D1 (AUDIT_SAE_2026-08.md) : sondes d'intention + baseline TF-IDF+LogReg sur
 # les codes de R0 (results_v27_ablation_classic_setup_k5_25m_layer31, référence
@@ -23,8 +25,8 @@ export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
 # p1_all_doc_acts_ext_d1024.pt pèse ~40,7 Go sur disque, --mem=32G a fait
 # tourner ce job en OOM (job 45955).
 export SAVE_DIR="./results_v27_ablation_classic_setup_k5_25m_layer31/"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/intent_urgency_probe.py

@@ -9,6 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_50m_270m_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Extension de la courbe d'échelle en dessous de 1B (jamais testé sur ce
 # projet) + interaction volume x taille de modèle (cf. run_ablation_volume50m_
 # model_scale_1b.slurm). GemmaScope-2 270M (layer_12_width_65k_l0_medium,
@@ -28,14 +30,14 @@ export PYTHONUNBUFFERED=1
 export SEED=42
 export SAVE_DIR="./results_v44_ablation_volume50m_model_scale_270m/"
 export USE_FROZEN_CORE="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-80M"
 
 export MODEL_SIZE=270m
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-270m-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-270m-it"
 export DTYPE=bf16
 export LAYER=12
 export SAE_ID="layer_12_width_65k_l0_medium"
@@ -48,7 +50,7 @@ export K_EXTRA=5
 export N_TOKENS_EXTRA_TRAIN=50000000
 export N_VOLUME_FILLER_TARGET_CHUNKS=1200000
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

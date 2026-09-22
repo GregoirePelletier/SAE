@@ -6,8 +6,10 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
 #SBATCH --time=03:00:00
-#SBATCH --output=/home/h21486/SAE/logs/post_stage/e07_clustering_%j.out
-#SBATCH --error=/home/h21486/SAE/logs/post_stage/e07_clustering_%j.err
+#SBATCH --output=logs/post_stage/e07_clustering_%j.out
+#SBATCH --error=logs/post_stage/e07_clustering_%j.err
+
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
 
 # E07 -- clustering cible reellement compare aux alternatives (plan §12).
 # Depend de : 04_e02_feature_registry.slurm (labels CORE/EXTRA),
@@ -22,9 +24,9 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export TOKENIZERS_PARALLELISM=false
 export CLUSTER_OFFLINE_MODE=1
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH:-}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 
-cd /home/h21486/SAE
+cd "${SAE_ROOT}"
 mkdir -p logs/post_stage
 
 .venv/bin/python -u scripts/post_stage/e07_clustering.py \

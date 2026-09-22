@@ -8,6 +8,8 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=logs/validation/audit_b24_compare_pipeline_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Audit 2026-08, B.24 : premier essai du module src/sae/compare/ (jamais
 # execute). Compare F2LLM-v2-80M (backbone Pipeline 2 en production) a
 # bge-m3 (deja local, utilise ailleurs dans ce depot pour l'embedding de
@@ -22,12 +24,12 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 export COMPARE_PIPELINE_OUT="./results_audit_2026_08_b24_compare/"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python -m src.sae.compare.pipeline \
-    --mails /home/h21486/SAE/local_data/emails/Mails.tsv \
+    --mails ${SAE_ROOT}/local_data/emails/Mails.tsv \
     --mode compare \
-    --model-a /home/h21486/SAE/models/F2LLM-v2-80M \
-    --model-b /home/h21486/SAE/models/bge-m3
+    --model-a ${SAE_ROOT}/models/F2LLM-v2-80M \
+    --model-b ${SAE_ROOT}/models/bge-m3

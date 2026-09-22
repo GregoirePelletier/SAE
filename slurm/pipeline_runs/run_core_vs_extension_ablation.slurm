@@ -7,6 +7,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/pipeline_runs/core_vs_extension_ablation_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # ── Phase 1 (diagnostics/reproduction initiative) : core seul vs core+extension
 # ("pollution" de l'extension résiduelle sur le signal du core) ─────────────────
 # Script CPU-only (aucun GPU requis, réutilise les activations denses déjà en
@@ -30,7 +32,7 @@ export OMP_NUM_THREADS=32
 export OPENBLAS_NUM_THREADS=32
 export MKL_NUM_THREADS=32
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/core_vs_extension_ablation.py

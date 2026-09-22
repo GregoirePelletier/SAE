@@ -8,6 +8,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/pipeline_runs/sae_v10_p2_stratified_qwen_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -29,12 +31,12 @@ export PYTHONUNBUFFERED=1
 export SEED=42
 export SAVE_DIR="./results_v10_emails_main/"
 export USE_FROZEN_CORE="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-80M"
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export MODEL_SIZE=12b
 export DTYPE=bf16
 export PIPELINES=p2
@@ -42,7 +44,7 @@ export PIPELINES=p2
 export FEATURE_SELECTION_METHOD=stratified
 export N_FEATURES_TO_LABEL=150
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

@@ -8,13 +8,15 @@
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/validation/pytest_check_docs_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Smoke-test CPU-only (tests unitaires + garde-fou documentaire) -- soumis via
 # sbatch plutôt qu'exécuté sur le nœud frontal, cf. CLAUDE.md ("Cluster SLURM").
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
 mkdir -p logs/validation
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python scripts/check_docs.py

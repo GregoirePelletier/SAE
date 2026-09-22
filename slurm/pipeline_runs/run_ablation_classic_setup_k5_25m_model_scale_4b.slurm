@@ -9,6 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_25m_4b_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Ablation taille du modèle extracteur/juge (1B vs 4B vs 12B référence) --
 # remplace results_v13_ablation_model_scale_4b (archivée, docs/archived_runs_manifest.md,
 # antérieure au correctif juge B.3/B.5/B.6/B.11). Setup classique du papier
@@ -24,14 +26,14 @@ export PYTHONUNBUFFERED=1
 export SEED=42
 export SAVE_DIR="./results_v30_ablation_classic_setup_k5_25m_model_scale_4b/"
 export USE_FROZEN_CORE="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-80M"
 
 export MODEL_SIZE=4b
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-4b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-4b-it"
 export DTYPE=bf16
 export LAYER=17
 export SAE_ID="layer_17_width_16k_l0_medium"
@@ -44,7 +46,7 @@ export K_EXTRA=5
 export N_TOKENS_EXTRA_TRAIN=25000000
 export N_VOLUME_FILLER_TARGET_CHUNKS=540000
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

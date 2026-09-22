@@ -9,6 +9,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/judge_model_separation_qwen_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -23,12 +25,12 @@ export PYTHONUNBUFFERED=1
 # (RESULTS_TESTS.md) ne pouvaient pas distinguer (comparaison intra-famille
 # gemma-3-4b-it seulement).
 export SAVE_DIR="./results_v10_emails_main/"
-export ALT_JUDGE_MODEL_ID="/home/h21486/SAE/models/Qwen3.8-27B"
+export ALT_JUDGE_MODEL_ID="${SAE_ROOT}/models/Qwen3.8-27B"
 export DTYPE=bf16
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/judge_model_separation_test.py

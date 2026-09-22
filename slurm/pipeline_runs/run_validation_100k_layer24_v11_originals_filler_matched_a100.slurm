@@ -8,6 +8,8 @@
 #SBATCH --time=04:00:00
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val100k_l24_v11_originals_filler_matched_a100_%j.log
+
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
 # --signal=B:USR1@600 : cf. run_validation_25m_layer24.slurm (R1, AUDIT_SAE_2026-08.md §2.3/§4.3).
 
 # B.1, reprise contrôlée de v9 (job 44833, RESULTS_TESTS.md §76). v9 confondait
@@ -29,12 +31,12 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export SEED=42
 export SAVE_DIR="./results_v25b_validation_100k_layer24_v11_originals_filler_matched_a100/"
 export USE_FROZEN_CORE="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
 export LOCAL_AUGMENTED_MAILS_PATH=""
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export MODEL_SIZE=12b
 export DTYPE=bf16
 export PIPELINES=p1
@@ -49,7 +51,7 @@ export D_EXTRA=1024
 export N_TOKENS_EXTRA_TRAIN=100000
 export N_VOLUME_FILLER_TARGET_CHUNKS=294
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

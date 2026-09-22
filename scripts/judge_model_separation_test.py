@@ -33,7 +33,7 @@ from src.data.preparation import build_email_train_test_corpus
 from src.storage.fragment_store import resolve_extension_fragments_dir
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "/home/h21486/SAE/models/gemma-3-4b-it")
+ALT_JUDGE_MODEL_ID = os.environ.get("ALT_JUDGE_MODEL_ID", "./models/gemma-3-4b-it")
 # SEED ajouté (audit 2026-08 round 2, §1, B.17) : cf. c2_original_only_rejudge.py
 # pour la justification -- ce script n'était jamais seedé avant ce correctif.
 SEED = int(os.environ.get("SEED", "42"))

@@ -7,6 +7,8 @@
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/validation/n3_stratified_bin_rates_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export PYTHONUNBUFFERED=1
 
 # CPU-only, aucun GPU : recalcule les métadonnées de bin (fréquence, taille de
@@ -14,10 +16,10 @@ export PYTHONUNBUFFERED=1
 # results_v10_emails_main/cache/b2_stratified_selection_rejudge.json (§79) --
 # aucun juge relancé, aucune extraction. N3, AUDIT_SAE_2026-08.md §8.
 export SAVE_DIR="./results_v10_emails_main/"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/n3_stratified_bin_rates.py

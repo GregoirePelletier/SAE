@@ -8,6 +8,8 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/analysis/sae_judge_robustness_r0_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # Robustesse au réordonnancement sous R0 (RESULTS_TESTS.md §13.1 réutilisait
 # le juge auto-référent MODEL_ID=Gemma-3-12b-it sur la sélection historique par
 # magnitude -- corrigé ici : juge Qwen3.8-27B découplé, doc_groups=train_groups
@@ -22,7 +24,7 @@ export SAVE_DIR="./results_v27_ablation_classic_setup_k5_25m_layer31/"
 export N_REPEATS=5
 export SEED=42
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/judge_robustness_check_r0_test.py

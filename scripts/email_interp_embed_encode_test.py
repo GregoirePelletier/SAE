@@ -18,19 +18,21 @@ descriptive uniquement, via LEUR API (`dataset.latents`, `dataset.feature_labels
 
 Sortie : JSON dans local_data/email_interp_embed/results.json.
 """
+import os
 import sys
 import csv
 import json
 import random
 from pathlib import Path
 
-sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
+SAE_ROOT = Path(os.environ.get("SAE_ROOT", Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(SAE_ROOT / "external/interp_embed"))
 
 import numpy as np
 import pandas as pd
 import torch
 
-OUT_DIR = Path("/home/h21486/SAE/local_data/email_interp_embed")
+OUT_DIR = SAE_ROOT / "local_data/email_interp_embed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 N_EMAILS = 1500
@@ -44,7 +46,7 @@ np.random.seed(SEED)
 
 def load_email_sample() -> pd.DataFrame:
     rows = []
-    with open("/home/h21486/SAE/local_data/emails/Mails.tsv", encoding="utf-8") as f:
+    with open(SAE_ROOT / "local_data/emails/Mails.tsv", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
         for row in reader:
             text = (row.get("document") or "").strip()

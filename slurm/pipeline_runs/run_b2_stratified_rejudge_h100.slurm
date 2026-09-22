@@ -8,6 +8,8 @@
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/pipeline_runs/sae_b2_rejudge_h_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -19,15 +21,15 @@ export HF_DATASETS_OFFLINE=1
 # réentraînement ni nouvelle extraction. Décide si `FEATURE_SELECTION_METHOD
 # =stratified` (judge.py) devient le défaut.
 export SAVE_DIR="./results_v10_emails_main/"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export DTYPE=bf16
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 # N_FEATURES_TO_LABEL défaut = 10 (src/config.py) : sans cet export, le premier
 # essai (jobs 44997/44998) a comparé 9/10 vs 68/150 -- pas comparable, refait.
 export N_FEATURES_TO_LABEL=150
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/b2_stratified_selection_rejudge.py

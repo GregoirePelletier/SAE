@@ -8,6 +8,8 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/analysis/p2_negative_length_audit_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -19,11 +21,11 @@ export PYTHONUNBUFFERED=1
 # jugée (RESULTS_TESTS.md §93/§115). Soumis sur `a100` (idle, sans lien avec
 # la campagne de rejugement en h100/h100-bis) pour ne pas rivaliser avec elle.
 export SEED=42
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-80M"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/p2_negative_length_audit.py

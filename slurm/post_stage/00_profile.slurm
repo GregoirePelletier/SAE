@@ -7,8 +7,10 @@
 #SBATCH --mem=96G
 #SBATCH --time=02:00:00
 #SBATCH --signal=USR1@600
-#SBATCH --output=/home/h21486/SAE/logs/post_stage/e00_profile_%j.out
-#SBATCH --error=/home/h21486/SAE/logs/post_stage/e00_profile_%j.err
+#SBATCH --output=logs/post_stage/e00_profile_%j.out
+#SBATCH --error=logs/post_stage/e00_profile_%j.err
+
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
 
 # E00 -- validation du correctif C1 (docs/post_stage/memory_diagnosis.md),
 # apres le premier profilage (job 48515, correctif pas encore applique a
@@ -38,12 +40,12 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export TOKENIZERS_PARALLELISM=false
 export CLUSTER_OFFLINE_MODE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-1b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-1b-it"
 export MODEL_SIZE=1b
 export DTYPE=bf16
 export PIPELINES=p1
@@ -59,12 +61,12 @@ export D_EXTRA=1024
 export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
-export SAVE_DIR="/home/h21486/SAE/results_post_stage_e00_profile_1b_v2/"
+export SAVE_DIR="${SAE_ROOT}/results_post_stage_e00_profile_1b_v2/"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH:-}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 
-mkdir -p /home/h21486/SAE/logs/post_stage "${SAVE_DIR}/cache"
-cd /home/h21486/SAE
+mkdir -p "${SAE_ROOT}/logs/post_stage" "${SAVE_DIR}/cache"
+cd "${SAE_ROOT}"
 
 srun --ntasks=1 .venv/bin/python scripts/post_stage/profile_run.py \
   --out "${SAVE_DIR}/cache/resources_profile.jsonl" \

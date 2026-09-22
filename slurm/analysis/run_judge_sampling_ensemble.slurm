@@ -9,6 +9,8 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/judge_sampling_ensemble_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -17,16 +19,16 @@ export HF_DATASETS_OFFLINE=1
 # déjà testé par run_judge_robustness.slurm. Réutilise les activations/fragments déjà
 # calculés (job 39660) -- aucune réextraction Gemma-3.
 export SAVE_DIR="./results_v10_emails_main/"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export MODEL_SIZE=12b
 export DTYPE=bf16
 export N_REPEATS=5
 export JUDGE_TEMPERATURE=0.7
 export SEED=42
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/judge_sampling_ensemble_test.py

@@ -580,10 +580,39 @@ def page_search(run_dir: str) -> None:
                 "scripts/latent_retrieval_precision_eval.py).")
 
 
-_E08_LEADS_PATH = os.path.join(REPO_ROOT, "docs", "post_stage", "e08_pilot_leads.json")
+# Écritures utilisateur (pistes E08) hors du dépôt Git -- docs/post_stage/
+# n'est qu'un template versionné, pas un espace d'écriture partagé (sinon
+# chaque piste enregistrée par un utilisateur apparaîtrait comme un fichier
+# suivi modifié, avec écrasement silencieux si deux personnes lancent le
+# dashboard en parallèle). Racine configurable via SAE_DASHBOARD_STATE_DIR
+# (défaut : local_data/, déjà ignoré par .gitignore).
+_E08_LEADS_LEGACY_PATH = os.path.join(REPO_ROOT, "docs", "post_stage", "e08_pilot_leads.json")
+_E08_STATE_DIR = os.environ.get(
+    "SAE_DASHBOARD_STATE_DIR", os.path.join(REPO_ROOT, "local_data", "dashboard_state")
+)
+_E08_LEADS_PATH = os.path.join(_E08_STATE_DIR, "e08_pilot_leads.json")
+
+
+def _migrate_legacy_leads() -> None:
+    """Copie non destructive, une seule fois : si des pistes existent déjà dans
+    l'ancien emplacement suivi par Git et qu'aucun fichier local n'existe encore,
+    les reporter dans le nouvel emplacement local. N'écrase jamais un fichier
+    local déjà présent, ne supprime jamais l'ancien fichier."""
+    if os.path.exists(_E08_LEADS_PATH):
+        return
+    if not os.path.exists(_E08_LEADS_LEGACY_PATH):
+        return
+    with open(_E08_LEADS_LEGACY_PATH, encoding="utf-8") as f:
+        legacy = json.load(f)
+    if not legacy:
+        return
+    os.makedirs(_E08_STATE_DIR, exist_ok=True)
+    with open(_E08_LEADS_PATH, "w", encoding="utf-8") as f:
+        json.dump(legacy, f, indent=2, ensure_ascii=False)
 
 
 def _load_leads() -> list[dict]:
+    _migrate_legacy_leads()
     if os.path.exists(_E08_LEADS_PATH):
         with open(_E08_LEADS_PATH, encoding="utf-8") as f:
             return json.load(f)
@@ -685,7 +714,10 @@ def page_pilot_e08(run_dir: str) -> None:
     st.caption(
         "Une piste est un objet structuré (titre, question, populations, propriété, exemples, "
         "contre-exemples, méthode, statut, commentaire humain) -- exporté même si la piste est "
-        "rejetée, pour garder trace du jugement humain, pas seulement des pistes retenues."
+        "rejetée, pour garder trace du jugement humain, pas seulement des pistes retenues. "
+        "Stocké localement (hors Git) : lecture-modification-écriture non verrouillée -- deux "
+        "personnes enregistrant une piste au même instant peuvent s'écraser l'une l'autre, non "
+        "testé à ce jour."
     )
     with st.form("e08_lead_form", clear_on_submit=True):
         title = st.text_input("Titre")

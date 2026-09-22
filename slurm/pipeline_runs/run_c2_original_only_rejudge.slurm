@@ -8,6 +8,8 @@
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/pipeline_runs/sae_c2_rejudge_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -23,10 +25,10 @@ export HF_DATASETS_OFFLINE=1
 # génération (pas d'extraction, pas d'entraînement) -- coût attendu très
 # inférieur à un run complet.
 export SAVE_DIR="./results_v10_emails_main/"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export DTYPE=bf16
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/c2_original_only_rejudge.py

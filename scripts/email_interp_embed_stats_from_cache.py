@@ -4,15 +4,17 @@ avec le correctif filter_na_rows() -- pas de GPU nécessaire, l'encodage SAE ne
 se relance pas (Dataset.load_from_file(resume=False) ne recalcule rien,
 compute_activations=False). CPU-only.
 """
+import os
 import sys
 import json
 from pathlib import Path
 
-sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
+SAE_ROOT = Path(os.environ.get("SAE_ROOT", Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(SAE_ROOT / "external/interp_embed"))
 
 import numpy as np
 
-OUT_DIR = Path("/home/h21486/SAE/local_data/email_interp_embed")
+OUT_DIR = SAE_ROOT / "local_data/email_interp_embed"
 TOP_K_FEATURES_TO_INSPECT = 15
 TOP_DOCS_PER_FEATURE = 5
 

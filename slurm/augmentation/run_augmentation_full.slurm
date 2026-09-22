@@ -9,13 +9,15 @@
 #SBATCH --array=0-7
 #SBATCH --output=logs/augmentation/augmentation_full_%A_%a.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 # Écrit directement dans l'emplacement canonique des données email (pas un
 # results_*/ -- corrigé après la réorganisation des données : un jeu de données
 # d'entrée ne doit pas vivre sous un dossier de résultats d'expérience). Ce job a
@@ -39,7 +41,7 @@ export AUGMENT_OUT_NAME="augmented_mails.jsonl"
 
 mkdir -p logs "${SAVE_DIR}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 # uv run tentait de re-résoudre l'env (réseau bloqué sur le cluster) -> échec
 # systématique ; .venv/bin/python bypass ce problème, comme dans run_sae.slurm.
 .venv/bin/python scripts/run_augmentation.py

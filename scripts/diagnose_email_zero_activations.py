@@ -3,14 +3,18 @@ job 44413) a rapporté 0/65536 features actives sur 1500 mails -- trop extrême
 pour être plausible même sous forte dérive de domaine. Inspecte le pickle
 sauvegardé (activations RAW par token, pas l'agrégat) pour localiser si le
 problème vient de l'encodage lui-même (SAE) ou de l'agrégation/binarize."""
+import os
 import sys
-sys.path.insert(0, "/home/h21486/SAE/external/interp_embed")
+from pathlib import Path
+
+SAE_ROOT = Path(os.environ.get("SAE_ROOT", Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(SAE_ROOT / "external/interp_embed"))
 
 import numpy as np
 
 from interp_embed.utils.helpers import safe_load_pkl
 
-path = "/home/h21486/SAE/local_data/email_interp_embed/encoded_emails.pkl"
+path = str(SAE_ROOT / "local_data/email_interp_embed/encoded_emails.pkl")
 d = safe_load_pkl(path)
 
 print("Keys:", list(d.keys()))

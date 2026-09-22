@@ -9,6 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_c1_frozen_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # C1 (AUDIT_SAE_2026-08.md, campagne finale) : sanity check Korznikov et al. (décodeur
 # W_dec_extra figé à une init ALÉATOIRE, jamais entraîné) rejoué sous méthodologie
 # finale (sélection stratifiée + juge Qwen3.8-27B, tous deux DÉFAUTS du dépôt --
@@ -33,13 +35,13 @@ export SEED=42
 export SAVE_DIR="./results_v37_ablation_c1_sanity_frozen_decoder_stratified_qwen/"
 export USE_FROZEN_CORE="1"
 export SANITY_CHECK_FROZEN_DECODER="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-80M"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-80M"
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export MODEL_SIZE=12b
 export DTYPE=bf16
 export LAYER=31
@@ -53,7 +55,7 @@ export K_EXTRA=5
 export N_TOKENS_EXTRA_TRAIN=25000000
 export N_VOLUME_FILLER_TARGET_CHUNKS=540000
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

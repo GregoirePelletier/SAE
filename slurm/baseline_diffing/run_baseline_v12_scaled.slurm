@@ -8,16 +8,18 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/baseline_diffing/baseline_v12_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export LOCAL_AUGMENTED_MAILS_PATH="/home/h21486/SAE/local_data/emails/augmented_mails.jsonl"
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
-export LOCAL_SAE_DIR="/home/h21486/SAE/saes/gemma-scope-2-12b-it-res"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export LOCAL_AUGMENTED_MAILS_PATH="${SAE_ROOT}/local_data/emails/augmented_mails.jsonl"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
+export LOCAL_SAE_DIR="${SAE_ROOT}/saes/gemma-scope-2-12b-it-res"
 export SAE_ID="layer_24_width_65k_l0_medium"
 
 # Diffing par axe (original vs chaque axe d'augmentation) dans le MÊME SAVE_DIR
@@ -31,5 +33,5 @@ export CACHE_DIR="${SAVE_DIR}cache_baseline_full"
 
 mkdir -p logs "${CACHE_DIR}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/baseline_gemmascope.py "${LOCAL_MAILS_PATH}" "${LOCAL_AUGMENTED_MAILS_PATH}"

@@ -9,6 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val500k_l24_v12_originals_filler_matched_n150_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 # B.1, réplication à pleine puissance statistique de v11 (job 44983/44985,
 # RESULTS_TESTS.md §77) : à n=20, mails originaux seuls + filler FineWeb2
 # recalibré (N_VOLUME_FILLER_TARGET_CHUNKS=294, même valeur qu'en v11 -- ne
@@ -29,12 +31,12 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export SEED=42
 export SAVE_DIR="./results_v26_validation_layer24_v12_originals_filler_matched_n150/"
 export USE_FROZEN_CORE="1"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
 export LOCAL_AUGMENTED_MAILS_PATH=""
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
-export VOLUME_FILLER_DATASET_GLOB="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export VOLUME_FILLER_DATASET_GLOB="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_0000*.parquet"
 
-export MODEL_ID="/home/h21486/SAE/models/gemma-3-12b-it"
+export MODEL_ID="${SAE_ROOT}/models/gemma-3-12b-it"
 export MODEL_SIZE=12b
 export DTYPE=bf16
 export PIPELINES=p1
@@ -49,7 +51,7 @@ export D_EXTRA=1024
 export N_TOKENS_EXTRA_TRAIN=500000
 export N_VOLUME_FILLER_TARGET_CHUNKS=294
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python src/sae/saev5.py

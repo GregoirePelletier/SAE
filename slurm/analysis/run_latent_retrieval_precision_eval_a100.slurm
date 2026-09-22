@@ -8,6 +8,8 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/analysis/latent_retrieval_precision_eval_a100_%j.log
 
+SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
@@ -50,11 +52,11 @@ export PYTHONUNBUFFERED=1
 # avant d'investir dans un mécanisme de reprise. h100-bis (partition d'origine)
 # down (sinfo) -- basculé sur h100.
 export SAVE_DIR="./results_v10_emails_main_a100dup/"
-export LOCAL_MAILS_PATH="/home/h21486/SAE/local_data/emails/Mails.tsv"
-export EMB_MODEL="/home/h21486/SAE/models/F2LLM-v2-330M"
-export LOCAL_DATASET_PATH="/home/h21486/SAE/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
+export LOCAL_MAILS_PATH="${SAE_ROOT}/local_data/emails/Mails.tsv"
+export EMB_MODEL="${SAE_ROOT}/models/F2LLM-v2-330M"
+export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"
 
-export PYTHONPATH="/home/h21486/SAE:${PYTHONPATH}"
+export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-cd /home/h21486/SAE/
+cd "${SAE_ROOT}/"
 .venv/bin/python scripts/latent_retrieval_precision_eval.py
