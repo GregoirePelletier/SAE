@@ -110,6 +110,58 @@ def test_build_corpus_manifest_variants_use_positional_fallback(tmp_path):
         assert v["split"] == parent_split_by_hash[v["parent_sha1"]]
 
 
+def test_build_corpus_manifest_positional_fallback_survives_extra_filter(tmp_path):
+    """load_and_clean_emails applique un filtre SUPPLEMENTAIRE a celui de
+    load_mails_tsv (ligne devenant vide apres strip_leading_objet_line est
+    ecartee ICI, pas dans load_mails_tsv -- 6 lignes sur 3480 sur le corpus
+    reel). parent_id (ecrit par run_augmentation.py) vit dans l'espace
+    load_mails_tsv : pos_to_hash doit etre cle sur la position d'origine,
+    pas sur un enumerate() 0..n-1 des lignes survivantes -- sinon une
+    variante dont le parent suit une ligne filtree en plus est rattachee au
+    MAUVAIS parent (silencieusement, pas juste ecartee)."""
+    mails_path = str(tmp_path / "Mails.tsv")
+    aug_path = str(tmp_path / "augmented_mails.jsonl")
+    lines = ["\tdocument\tsegments"]
+    lines.append("0\tBonjour mail A, ceci est un message assez long pour le filtre.\t[]")
+    lines.append("1\tBonjour mail B, ceci est un message assez long pour le filtre.\t[]")
+    # Devient vide apres strip_leading_objet_line -- survit a load_mails_tsv
+    # (>= 30 caracteres) mais pas au filtre supplementaire de
+    # load_and_clean_emails.
+    lines.append("2\tObjet: ceci est un sujet suffisamment long pour le filtre.\t[]")
+    lines.append("3\tBonjour mail C, ceci est un message assez long pour le filtre.\t[]")
+    lines.append("4\tBonjour mail D, ceci est un message assez long pour le filtre.\t[]")
+    with open(mails_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    # parent_id=3 (position BRUTE de mail C dans load_mails_tsv), pas de
+    # parent_sha1 -> repli positionnel.
+    with open(aug_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps({
+            "aug_id": "3_v0", "parent_id": 3, "corpus": "mail_reel",
+            "axis": "registre", "level": "formel", "rejected": None,
+            "text": "Variante augmentee du mail C, sur le meme sujet.",
+        }) + "\n")
+
+    manifest, parent_records, variant_records = build_corpus_manifest(
+        mails_path, aug_path, fit=0.6, dev=0.15, seed=42
+    )
+    assert manifest["n_parents"] == 4  # mail_objet_only exclu (texte vide apres nettoyage)
+    assert manifest["n_variants_unmatched"] == 0
+    assert len(variant_records) == 1
+
+    from src.data.augmentation import _sha1
+    mail_c_raw = "Bonjour mail C, ceci est un message assez long pour le filtre."
+    mail_d_raw = "Bonjour mail D, ceci est un message assez long pour le filtre."
+    # Comparaison par hash de contenu (C et D ont la meme longueur : n_chars ne
+    # distinguerait pas un rattachement correct d'un rattachement decale).
+    assert variant_records[0]["parent_sha1"] == _sha1(mail_c_raw), (
+        "La variante (parent_id=3, position brute = mail C) doit se rattacher "
+        "a mail C, pas a mail D (ce que donnerait un enumerate() naif des "
+        "lignes survivantes apres exclusion de la ligne 'Objet-only')."
+    )
+    assert variant_records[0]["parent_sha1"] != _sha1(mail_d_raw)
+
+
 def test_build_corpus_manifest_out_of_range_parent_id_is_unmatched(tmp_path):
     mails_path = str(tmp_path / "Mails.tsv")
     aug_path = str(tmp_path / "augmented_mails.jsonl")

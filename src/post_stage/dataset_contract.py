@@ -86,7 +86,8 @@ def build_corpus_manifest(
     Aucune lecture de tenseur/modele -- CPU pur sur du texte deja en memoire,
     borne par la taille du corpus emails (quelques dizaines de Mo), compatible
     avec une verification de configuration frontale (CLAUDE.md)."""
-    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+    real_texts, _, real_hashes, real_positions = load_and_clean_emails(
+        mails_tsv_path, return_hashes=True, return_positions=True)
     n_parents = len(real_texts)
 
     n_duplicate_parent_hashes = len(real_hashes) - len(set(real_hashes))
@@ -110,10 +111,17 @@ def build_corpus_manifest(
     # Repli positionnel (meme convention que build_email_train_test_corpus,
     # AUDIT_SAE_2026-08.md item B.7) : augmented_mails.jsonl actuel n'ecrit
     # PAS parent_sha1 (verifie sur le corpus reel malgre le support cote
-    # code) -- pos_to_hash traduit son parent_id (index Mails.tsv) vers le
-    # hash de contenu deja assigne a un split ci-dessus, plutot que de
-    # traiter ce cas comme un echec de jointure.
-    pos_to_hash = {i: h for i, h in enumerate(real_hashes)}
+    # code) -- pos_to_hash traduit son parent_id (index dans l'espace
+    # load_mails_tsv, celui ou run_augmentation.py numerote parent_id) vers
+    # le hash de contenu deja assigne a un split ci-dessus. Cle sur
+    # real_positions (PAS un enumerate() 0..n-1 frais) : load_and_clean_emails
+    # applique un filtre supplementaire a celui de load_mails_tsv (6 lignes
+    # sur 3480 sur le corpus reel, verifie) -- enumerer les lignes survivantes
+    # desynchronise pos_to_hash de l'espace ou parent_id a ete ecrit des la
+    # premiere ligne filtree en plus, un decalage systematique touchant la
+    # quasi-totalite des positions, pas un cas rare (confirme lors du
+    # nettoyage de passation post-soutenance, docs/RESULTS_STATUS.md).
+    pos_to_hash = {pos: h for pos, h in zip(real_positions, real_hashes)}
     positional_join_fallback = False
     if augmented_jsonl_path and os.path.exists(augmented_jsonl_path):
         df_aug = load_augmented(augmented_jsonl_path)
@@ -218,7 +226,14 @@ def load_fit_dev_corpus_from_manifest(
     parent_split_by_hash = {r["parent_sha1"]: r["split"] for r in assignments["parents"]}
     variant_split_by_aug_id = {r["aug_id"]: r["split"] for r in assignments["variants"]}
 
-    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+    real_texts, _, real_hashes, real_positions = load_and_clean_emails(
+        mails_tsv_path, return_hashes=True, return_positions=True)
+    # parent_id (variantes augmentees) vit dans l'espace load_mails_tsv, PAS
+    # dans l'espace interne 0..n_real-1 utilise ci-dessous pour fit_groups/
+    # dev_groups des mails originaux -- meme traduction que build_email_
+    # train_test_corpus, necessaire pour que le "groupe" (CV group-aware)
+    # d'une variante coincide reellement avec celui de son mail parent.
+    orig_pos_to_i = {pos: i for i, pos in enumerate(real_positions)}
 
     fit_texts, fit_labels, fit_groups = [], [], []
     dev_texts, dev_labels, dev_groups = [], [], []
@@ -259,7 +274,7 @@ def load_fit_dev_corpus_from_manifest(
         for row in df_aug.itertuples(index=False):
             label = f"{row.aug_axis}__{row.aug_level}"
             try:
-                parent_idx = int(row.parent_id)
+                parent_idx = orig_pos_to_i.get(int(row.parent_id), -1)
             except (TypeError, ValueError):
                 parent_idx = -1
             if row.resolved_split == "fit":
@@ -301,7 +316,9 @@ def load_confirm_corpus_from_manifest(
     parent_split_by_hash = {r["parent_sha1"]: r["split"] for r in assignments["parents"]}
     variant_split_by_aug_id = {r["aug_id"]: r["split"] for r in assignments["variants"]}
 
-    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+    real_texts, _, real_hashes, real_positions = load_and_clean_emails(
+        mails_tsv_path, return_hashes=True, return_positions=True)
+    orig_pos_to_i = {pos: i for i, pos in enumerate(real_positions)}
 
     confirm_texts, confirm_labels, confirm_groups = [], [], []
     for i, (h, text) in enumerate(zip(real_hashes, real_texts)):
@@ -327,7 +344,7 @@ def load_confirm_corpus_from_manifest(
         for row in df_aug.itertuples(index=False):
             label = f"{row.aug_axis}__{row.aug_level}"
             try:
-                parent_idx = int(row.parent_id)
+                parent_idx = orig_pos_to_i.get(int(row.parent_id), -1)
             except (TypeError, ValueError):
                 parent_idx = -1
             confirm_texts.append(row.text); confirm_labels.append(label); confirm_groups.append(parent_idx)

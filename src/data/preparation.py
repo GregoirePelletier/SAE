@@ -314,9 +314,15 @@ def build_email_train_test_corpus(
     permet une CV group-aware (GroupKFold/StratifiedGroupKFold) en aval,
     `RESULTS_TESTS.md` §57.
     """
-    real_texts, _, real_hashes = load_and_clean_emails(mails_tsv_path, return_hashes=True)
+    real_texts, _, real_hashes, real_positions = load_and_clean_emails(
+        mails_tsv_path, return_hashes=True, return_positions=True)
     if not real_texts:
         return ([], [], [], [], [], []) if return_groups else ([], [], [], [])
+    # Position d'origine (espace load_mails_tsv, celui où run_augmentation.py
+    # numerote parent_id) -> index interne i (0..n_real-1, l'espace de
+    # real_texts/real_hashes apres le filtre supplementaire de
+    # load_and_clean_emails) -- necessaire au repli positionnel ci-dessous.
+    orig_pos_to_i = {pos: i for i, pos in enumerate(real_positions)}
 
     rng = np.random.default_rng(seed)
     n_real = len(real_texts)
@@ -356,10 +362,21 @@ def build_email_train_test_corpus(
         else:
             # Repli rétrocompatible : JSONL généré avant l'ajout de parent_sha1,
             # jointure positionnelle (fragile, cf. AUDIT_SAE_2026-08.md item B.7).
+            # `parent_id` vit dans l'espace load_mails_tsv (celui où
+            # run_augmentation.py le numérote), PAS directement dans l'espace
+            # real_texts/real_hashes (load_and_clean_emails filtre 6 lignes de
+            # plus sur le corpus réel, cf. docstring de load_and_clean_emails
+            # et docs/RESULTS_STATUS.md) -- traduire via orig_pos_to_i plutôt
+            # que d'utiliser parent_id tel quel comme index interne.
             print("  [corpus] parent_sha1 absent du JSONL augmenté -- jointure positionnelle "
                   "de repli (regénérer le corpus augmenté pour la jointure par contenu).")
-            df_aug["parent_idx"] = df_aug["parent_id"].astype(int)
-            df_aug = df_aug[df_aug["parent_idx"] < n_real]  # ignore parents hors plage courante
+            df_aug["parent_idx"] = df_aug["parent_id"].astype(int).map(orig_pos_to_i)
+            n_unmatched = int(df_aug["parent_idx"].isna().sum())
+            if n_unmatched:
+                print(f"  [corpus] {n_unmatched} variante(s) augmentée(s) sans mail parent "
+                      f"correspondant dans l'espace load_mails_tsv actuel -- écartées.")
+            df_aug = df_aug[df_aug["parent_idx"].notna()].copy()
+            df_aug["parent_idx"] = df_aug["parent_idx"].astype(int)
 
         if max_augmented_per_mail and len(df_aug):
             sampled_idx = np.concatenate([
@@ -391,7 +408,7 @@ def build_email_train_test_corpus(
     return train_texts, train_labels, test_texts, test_labels
 
 
-def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
+def load_and_clean_emails(tsv_path: str, return_hashes: bool = False, return_positions: bool = False):
     """Retourne (texts, labels). Le parsing TSV délègue à dataset.load_mails_tsv
     (implémentation unique, quoting-aware, dédupliquée) ; ne subsiste ici que
     l'extraction de l'Objet comme label faible.
@@ -402,12 +419,37 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
     (même `load_mails_tsv(tsv_path)`, même colonne, avant tout nettoyage
     supplémentaire). Permet à `build_email_train_test_corpus` de rattacher
     une variante augmentée à son mail parent par CONTENU plutôt que par
-    position (AUDIT_SAE_2026-08.md, item B.7)."""
-    texts, categories, hashes = [], [], []
-    empty = ([], [], []) if return_hashes else ([], [])
+    position (AUDIT_SAE_2026-08.md, item B.7).
+
+    `return_positions=True` (défaut False, RÉTROCOMPATIBLE) : retourne en plus
+    `positions`, l'index de chaque ligne conservée dans le DataFrame issu de
+    `load_mails_tsv` -- PAS un ré-énumérage 0..N-1 des lignes survivantes.
+    Cette fonction applique un filtre SUPPLÉMENTAIRE à celui de `load_mails_tsv`
+    (une ligne dont le texte devient vide après `strip_leading_objet_line` +
+    suppression du motif `[{"start"...}]` est écartée ici, pas dans
+    `load_mails_tsv`) -- sur le corpus réel, 6 lignes sur 3480 sont dans ce cas
+    (positions 43/707/1243/1344/1366/2149, vérifié). `run_augmentation.py`
+    numérote `doc_id`/`parent_id` directement sur la sortie de `load_mails_tsv`
+    (`.reset_index()`, AVANT ce filtre supplémentaire) : ré-énumérer les lignes
+    survivantes 0..N-1 ici désynchronise silencieusement `pos_to_hash` de
+    l'espace où `parent_id` a réellement été écrit dès la première des 6 lignes
+    écartées -- décalage systématique touchant ~99% des positions du corpus,
+    confirmé lors du nettoyage de passation post-soutenance (`docs/
+    RESULTS_STATUS.md`). `positions[i]` est l'index à utiliser comme clé pour
+    retrouver `hashes[i]`/`texts[i]` depuis un `parent_id` positionnel."""
+    texts, categories, hashes, positions = [], [], [], []
+
+    def _empty():
+        out = [[], []]
+        if return_hashes:
+            out.append([])
+        if return_positions:
+            out.append([])
+        return tuple(out)
+
     if not os.path.exists(tsv_path):
         print(f"  [sae_shared] Fichier d'emails introuvable : {tsv_path}")
-        return empty
+        return _empty()
     try:
         try:
             from src.data.dataset import load_mails_tsv, strip_leading_objet_line
@@ -423,7 +465,7 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
                 raise ValueError()
         except Exception:
             df = pd.read_csv(tsv_path, sep=',')
-        for _, row in df.iterrows():
+        for row_idx, row in df.iterrows():
             if 'document' not in row or pd.isna(row['document']):
                 continue
             raw_text = str(row['document'])
@@ -435,8 +477,14 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False):
                 texts.append(clean_text)
                 categories.append(cat)
                 hashes.append(_sha1(raw_text))
+                positions.append(int(row_idx))
         print(f"  [sae_shared] {len(texts)} emails chargés depuis {tsv_path}")
-        return (texts, categories, hashes) if return_hashes else (texts, categories)
+        out = [texts, categories]
+        if return_hashes:
+            out.append(hashes)
+        if return_positions:
+            out.append(positions)
+        return tuple(out)
     except Exception as e:
         print(f"  [sae_shared] Erreur lecture TSV : {e}")
-        return empty
+        return _empty()
