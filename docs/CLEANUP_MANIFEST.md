@@ -163,3 +163,64 @@ nettoyage, pas par l'audit d'origine.
   Provient de la modification en cours de ce fichier, non suivie et non
   touchée par ce nettoyage (déjà modifié avant cette passe de nettoyage) —
   à corriger avant de committer ce fichier.
+
+## Lot 4 — réconciliation avec l'audit externe (`docs/01-04_*.md`)
+
+Ces quatre documents (audit indépendant, même commit de référence
+`2f6fc241` que cette mission) sont apparus dans `docs/` après les lots 1-3
+ci-dessus, non suivis par Git. Confrontés au travail déjà fait :
+
+**Déjà couvert par les lots 1-3, sans écart** : README (89,3%/K_EXTRA=32
+périmés), écriture E08 hors Git, incohérence E06 "4 vs 5". L'audit et ce
+nettoyage convergent indépendamment sur ces trois points.
+
+**Réclamation de l'audit obsolète par rapport au HEAD actuel** : doc 01 §4.5
+et doc 03 §8 décrivent le bras "init aléatoire" d'E05 (seeds 45/46) comme
+non restitué ("aucune restitution chiffrée... n'apparaît dans les documents
+de résultats lus"). `docs/post_stage/e05_results.md` contient déjà, au
+moment de cette réconciliation, un tableau chiffré complet pour ce bras
+(FVE, features mortes, rho_sae, sonde) et une analyse par type de paire —
+l'audit travaillait sur une lecture antérieure à la rédaction complète de
+ce document. Statut correct : "fait", pas "à récupérer".
+
+**Nouveau, confirmé par ce nettoyage au-delà de ce que l'audit soupçonnait**
+(doc 01 §3, doc 02 §4.3, doc 03 §3, checklist C) : la jointure positionnelle
+variante→parent n'est pas seulement une limitation documentée mais un
+désalignement systématique **mesuré** (`load_mails_tsv` : 3480 lignes ;
+`load_and_clean_emails` : 3474 ; 6 positions exactes identifiées : 43, 707,
+1243, 1344, 1366, 2149) — détail dans `docs/RESULTS_STATUS.md`, section
+Corpus. L'audit avait deviné le bon ordre de grandeur ("six parents
+nettoyés/dédupliqués", doc 02 §4.3) sans le vérifier par le code ; ce
+nettoyage confirme le mécanisme exact et son ampleur (~99% des positions du
+corpus concernées par un décalage). **Non corrigé ici** (scientifique, hors
+mandat) : reste le point le plus déterminant avant de présenter E01/E03/
+E04/E06/E07 comme reposant sur une séparation FIT/DEV/CONFIRM fiable.
+
+**Précondition d'encodage CONFIRM documentée** (mission d'origine, section
+7 ; doc 02 §6.5) : ajoutée à `docs/HANDOVER.md`, avec citation exacte du
+garde-fou `RuntimeError` de `saev5.py:965-971` (SAVE_DIR réutilisé avec une
+clé de cache différente) — absente des lots 1-3, comblée dans ce lot.
+
+**Empreintes SHA-256 des petits artefacts** (checklist D, mission section
+8) : calculées pour les 12 JSON du run canonique, ajoutées à
+`docs/HANDOVER.md` — absentes des lots 1-3, comblées dans ce lot.
+
+**Signalé, non résolu par ce nettoyage** (nécessite une décision de
+Grégoire, pas une action de nettoyage) :
+
+- `percentage_difference` (E04) : l'audit le classe "correction bloquante"
+  (checklist E). Ce nettoyage le documente (lot 1) sans le corriger dans le
+  code, conformément à la règle de la mission d'origine sur l'isolement des
+  correctifs scientifiques — tension explicite entre les deux, à trancher :
+  corriger maintenant en commit isolé et testé, ou laisser pour un patch
+  dédié séparé.
+- Dépendance de parents partagés entre groupes A/B dans l'échantillonnage
+  E04 (doc 01 §4.4, doc 03 §5) et déduplication par parent du top-10 dans
+  E03 (doc 01 §4.3, doc 02 §4.2) : découvertes par l'audit, non vérifiées
+  ni corrigées par ce nettoyage.
+- Révisions exactes des poids (Gemma, GemmaScope, bge-m3, juge Qwen) non
+  consignées dans un manifeste (checklist B) — non fait.
+- Le paquet d'audit référence `SOURCES.md` (codes S01-S27) et
+  `outils/preflight_passation_sae.py` : **ni l'un ni l'autre n'existe dans
+  le dépôt** au moment de cette réconciliation — liens internes cassés du
+  paquet de passation lui-même, à signaler à la source de ces documents.
