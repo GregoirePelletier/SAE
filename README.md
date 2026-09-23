@@ -125,11 +125,19 @@ pytest tests/ -v
 
 ## Rapport et résultats
 
+- `docs/RESULTS_STATUS.md` : statut actuel de chaque expérience post-soutenance
+  (E00-E09), ce qui est établi, ce qui ne l'est pas, ce qui attend encore une
+  vérification humaine — point d'entrée recommandé pour "où en est le projet
+  aujourd'hui".
 - `report/` : rapport de stage (chapitres numérotés `00_*` à `07_*`, sources
   uniques ; `RAPPORT_STAGE_UNIVERSITE.tex` et `RAPPORT_STAGE_ENTREPRISE.tex`
   sont les livrables). Limites connues et pistes pour la suite :
   `report/04_limites_et_perspectives.md`.
-- `RESULTS_TESTS.md` : cahier de laboratoire (une section par question posée,
-  avec méthode statistique et résultat).
+- `RESULTS_TESTS.md` : cahier de laboratoire historique (une section par
+  question posée, avant la soutenance), `docs/post_stage/eNN_results.md` :
+  même format pour la campagne post-soutenance.
+- `docs/HANDOVER.md` : carte du dépôt pour la reprise (parcours actif vs
+  référence historique vs exploration archivée, artefacts nécessaires pour
+  ouvrir le dashboard vs pour reproduire un calcul, environnement).
 - `docs/evaluation_protocol.md` : configuration de référence pour comparer
   les runs entre eux.

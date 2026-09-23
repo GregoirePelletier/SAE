@@ -3,6 +3,9 @@
 Instructions pour un agent travaillant sur ce dépôt. Ne duplique pas
 `RESULTS_TESTS.md` (journal d'expériences numéroté) ni `docs/` (référence
 technique) — les complète avec ce qui doit être vu avant de les lire.
+Orientation générale (parcours actif vs historique, artefacts, points
+d'entrée) : `docs/HANDOVER.md`. Statut des expériences en cours : `docs/
+RESULTS_STATUS.md`.
 
 ## Projet
 
