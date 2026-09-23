@@ -622,6 +622,7 @@ def _load_leads() -> list[dict]:
 def _append_lead(lead: dict) -> None:
     leads = _load_leads()
     leads.append(lead)
+    os.makedirs(_E08_STATE_DIR, exist_ok=True)
     tmp = _E08_LEADS_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(leads, f, indent=2, ensure_ascii=False)
