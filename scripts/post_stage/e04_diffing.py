@@ -44,6 +44,23 @@ from src.analysis.hypothesis_verifier import verify_hypotheses, compute_verifica
 from src.analysis.stats import proportion_with_ci, two_proportion_test, fdr_bh  # noqa: E402
 
 
+def build_feature_diff_blocks(selected: pd.DataFrame) -> list:
+    """Construit les blocs `{feature_id, label, percentage_difference}` passés
+    au générateur d'hypothèses. `percentage_difference` doit être un écart de
+    fréquence borné entre -1 et 1 (contrat du prompt, `diff_hypothesis_
+    generator.py::DIFF_HYPOTHESIS_PROMPT`, "the percentage difference, between
+    -1 and 1") -- `selected["freq_diff"]` (déjà calculé par
+    `select_top_diff_features_by_frequency`, `freq_A - freq_B`) est la bonne
+    colonne, PAS `selected["log_odds_ratio"]` (non borné, mesure différente).
+    Extrait de `main()` pour être testable sans GPU/juge
+    (tests/post_stage/test_e04_diffing_feature_blocks.py)."""
+    return [
+        {"feature_id": int(row["feature_id"]), "label": row["label"],
+         "percentage_difference": float(row["freq_diff"])}
+        for _, row in selected.iterrows()
+    ]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--save-dir", required=True)
@@ -109,11 +126,7 @@ def main() -> int:
         diff_df, threshold=args.freq_diff_threshold, top_n=args.top_n_features)
     print(f"[e04_diffing] {len(selected)} features au-dessus du seuil {args.freq_diff_threshold} "
           f"(top {args.top_n_features}).", flush=True)
-    features = [
-        {"feature_id": int(row["feature_id"]), "label": row["label"],
-         "percentage_difference": float(row["log_odds_ratio"])}
-        for _, row in selected.iterrows()
-    ]
+    features = build_feature_diff_blocks(selected)
 
     print("[e04_diffing] Chargement du juge Qwen...", flush=True)
     model, tokenizer = load_judge_model(device=args.judge_device)

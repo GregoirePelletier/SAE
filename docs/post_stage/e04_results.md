@@ -78,13 +78,22 @@ Ne pas citer `verification_rate=1,0`/`coverage=1,0` sans cette précision.
   lire le tableau par hypothèse, pas seulement le résumé agrégé.
 - Le champ `percentage_difference` produit par `scripts/post_stage/
   e04_diffing.py` (stade découverte uniquement, ne nourrit aucun chiffre de
-  vérification CONFIRM ci-dessus) reçoit en réalité un `log_odds_ratio`
-  (`src/analysis/cooccurrence.py::corpus_diff_stats`), pas un écart de
-  fréquence en pourcentage — le nom du champ est trompeur pour quiconque le
-  lit directement dans `e04_diffing.json`. Non corrigé ici : un renommage de
-  champ change le schéma de sortie du script et doit être isolé dans un
-  commit dédié (test + impact + nécessité de rejeu), pas mélangé à un
-  nettoyage de passation.
+  vérification CONFIRM ci-dessus) recevait un `log_odds_ratio`
+  (`src/analysis/cooccurrence.py::corpus_diff_stats`) au lieu d'un écart de
+  fréquence borné entre -1 et 1, alors que le prompt du générateur
+  d'hypothèses promet explicitement cette borne
+  (`diff_hypothesis_generator.py::DIFF_HYPOTHESIS_PROMPT`). **Corrigé** (
+  `build_feature_diff_blocks` utilise désormais `freq_diff = freq_A -
+  freq_B`, déjà calculé par `select_top_diff_features_by_frequency`, testé
+  par `tests/post_stage/test_e04_diffing_feature_blocks.py`). N'affecte que
+  la description des features envoyée au générateur d'hypothèses au stade
+  découverte — ne change rétroactivement aucun compte de présence
+  `verification_rate`/`coverage` déjà mesuré sur CONFIRM ci-dessus pour les
+  8 hypothèses de ce run (générées avant ce correctif). Un nouveau run de
+  `e04_diffing.py` peut générer des hypothèses différentes (signal de
+  découverte désormais correctement borné) — à rejouer si une nouvelle
+  campagne de diffing est lancée, pas nécessaire pour relire les résultats
+  déjà gelés ci-dessus.
 - CONFIRM sous-échantillonné à 150/groupe (contrainte de fenêtre SLURM, pas
   un choix méthodologique a priori) — dans la fourchette basse de la cible
   du plan (§9.1 : "150-200 par groupe"), pas en dessous.

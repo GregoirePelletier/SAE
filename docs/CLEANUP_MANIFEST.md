@@ -57,12 +57,10 @@ modifié. Uniquement des pointeurs vers des résultats déjà calculés et déj�
   (et les IC bootstrap + FDR-BH du JSON `e06_correlations.json`, vérifiés
   directement) n'en soutiennent que 4/8 — table déjà correcte, seule la
   prose a été corrigée (arbitré depuis le JSON, comme demandé).
-- `docs/post_stage/e04_results.md` : ajout d'une mise en garde documentée
-  (pas de correctif de code) sur `percentage_difference` — reçoit un
-  log-odds, pas un écart de fréquence, stade découverte uniquement.
-  **Non corrigé dans le code** : un renommage de champ change le schéma de
-  sortie d'un script scientifique, à isoler dans un patch dédié avec test
-  et décision de rejeu, pas à mélanger à un nettoyage. Suppression au
+- `docs/post_stage/e04_results.md` : mise en garde documentée sur
+  `percentage_difference` — reçoit un log-odds, pas un écart de fréquence,
+  stade découverte uniquement. **Corrigé séparément dans le lot 5** (voir
+  plus bas), pas mélangé à cette passe de documentation. Suppression au
   passage d'un artefact de syntaxe de liaison mémoire (`[[project_sae_qwen_
   judge_policy]]`) laissé par erreur dans ce fichier par une session
   antérieure — sans rapport avec le contenu scientifique.
@@ -143,9 +141,6 @@ nettoyage, pas par l'audit d'origine.
 
 ## Ce qui nécessite un accord explicite avant d'aller plus loin
 
-- **Renommage du champ `percentage_difference`** (E04, `scripts/post_stage/
-  e04_diffing.py`) en un nom reflétant qu'il s'agit d'un log-odds ratio —
-  patch isolé, avec test et décision sur la nécessité d'un rejeu.
 - **Rééquilibrage du budget candidat CORE/FULL d'E06** — nécessiterait un
   nouveau rerun (coût GPU), pas fait ici.
 - **Purge de `external/interp_embed/.venv/` (8,4 Go, non suivi, non
@@ -205,15 +200,41 @@ clé de cache différente) — absente des lots 1-3, comblée dans ce lot.
 8) : calculées pour les 12 JSON du run canonique, ajoutées à
 `docs/HANDOVER.md` — absentes des lots 1-3, comblées dans ce lot.
 
-**Signalé, non résolu par ce nettoyage** (nécessite une décision de
-Grégoire, pas une action de nettoyage) :
+## Lot 5 — correctif scientifique isolé : `percentage_difference` (E04)
 
-- `percentage_difference` (E04) : l'audit le classe "correction bloquante"
-  (checklist E). Ce nettoyage le documente (lot 1) sans le corriger dans le
-  code, conformément à la règle de la mission d'origine sur l'isolement des
-  correctifs scientifiques — tension explicite entre les deux, à trancher :
-  corriger maintenant en commit isolé et testé, ou laisser pour un patch
-  dédié séparé.
+L'audit classe ce champ "correction bloquante" (checklist E) ; le lot 1
+l'avait documenté sans le corriger, par prudence (isolement des correctifs
+scientifiques demandé par la mission d'origine). Confirmation explicite
+reçue : correctif fait dans un commit séparé des lots de nettoyage.
+
+- `scripts/post_stage/e04_diffing.py` : la construction de la liste
+  `features` (auparavant en ligne dans `main()`) extraite dans
+  `build_feature_diff_blocks(selected)`, seule sa colonne source change —
+  `row["freq_diff"]` (déjà calculée par `select_top_diff_features_by_
+  frequency`, `freq_A - freq_B`, bornée [-1,1] par construction) au lieu de
+  `row["log_odds_ratio"]` (non borné). Extraction justifiée par le besoin
+  d'un test sans GPU/juge (règle CLAUDE.md sur l'extraction ciblée), pas une
+  réécriture.
+- Test de non-régression :
+  `tests/post_stage/test_e04_diffing_feature_blocks.py` (3 tests : valeur
+  correcte à `freq_A=0.8`/`freq_B=0.2` → `+0.6` et non le log-odds ; le
+  signe s'inverse si A/B sont échangés ; la valeur reste dans [-1,1] même
+  pour un écart extrême où le log-odds ne le serait pas).
+- Impact : ne touche que le signal de découverte transmis au générateur
+  d'hypothèses (stade FIT, avant gel). Ne modifie aucun JSON déjà écrit —
+  les 8 comptes de vérification CONFIRM déjà mesurés dans `e04_diffing.json`
+  restent valides tels quels (jugements déjà faits sur les hypothèses déjà
+  gelées, pas recalculés). **Nécessité de rejeu** : uniquement si une
+  nouvelle campagne de diffing (nouveau contraste, ou reprise de
+  panique/calme) est lancée — le signal de découverte corrigé peut alors
+  produire des hypothèses différentes de celles de ce run.
+- `docs/post_stage/e04_results.md` et `docs/RESULTS_STATUS.md` mis à jour
+  pour refléter le correctif et son périmètre exact.
+
+## Reste ouvert, non résolu par ce nettoyage
+
+Nécessite une décision de Grégoire, pas une action de nettoyage :
+
 - Dépendance de parents partagés entre groupes A/B dans l'échantillonnage
   E04 (doc 01 §4.4, doc 03 §5) et déduplication par parent du top-10 dans
   E03 (doc 01 §4.3, doc 02 §4.2) : découvertes par l'audit, non vérifiées

@@ -127,12 +127,15 @@ la propriété, pas un résultat. Calibration humaine **non faite**. Write-up :
 **Fait.** 6/8 hypothèses confirmées dans le sens attendu, 1/8 confirmée mais
 **inversée par rapport au signe de découverte** (`RESULTS_TESTS.md`-style
 mise en garde : toujours lire le tableau par hypothèse, jamais le résumé
-`verification_rate`/`coverage` seul), 1/8 ne survit pas FDR-BH. **Connu, non
-corrigé (isolé pour un patch dédié)** : le champ `percentage_difference` de
-`e04_diffing.py` reçoit en réalité un log-odds ratio, pas un écart de
-fréquence — stade découverte uniquement, ne touche aucun chiffre CONFIRM
-ci-dessus. Audit humain **non fait**. Write-up : `docs/post_stage/
-e04_results.md`.
+`verification_rate`/`coverage` seul), 1/8 ne survit pas FDR-BH. **Corrigé** :
+le champ `percentage_difference` de `e04_diffing.py` recevait un log-odds
+ratio au lieu d'un écart de fréquence borné [-1,1] (patch isolé et testé,
+commit dédié — n'affecte que le signal de découverte envoyé au générateur
+d'hypothèses, ne change rétroactivement aucun des 8 comptes CONFIRM
+ci-dessus). Un nouveau run de diffing (autre contraste, ou rejeu de
+panique/calme) bénéficiera du signal corrigé ; les résultats déjà gelés
+ci-dessus restent valides tels quels. Audit humain **non fait**. Write-up :
+`docs/post_stage/e04_results.md`.
 
 ## E05 — Stabilité inter-graines de l'extension
 
