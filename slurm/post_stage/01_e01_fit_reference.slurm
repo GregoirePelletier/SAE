@@ -60,7 +60,7 @@ export D_EXTRA=1024
 export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
-export SAVE_DIR="${SAE_ROOT}/results_post_stage_e01_fit_1b_layer13_k5/"
+export SAVE_DIR="${SAE_ROOT}/results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-}/"
 
 export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 

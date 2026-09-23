@@ -49,7 +49,7 @@ export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
 export SEED=44
-export SAVE_DIR="${SAE_ROOT}/results_post_stage_e05_seed44/"
+export SAVE_DIR="${SAE_ROOT}/results_post_stage_e05_seed44${RUN_SUFFIX:-}/"
 
 export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 

@@ -25,10 +25,10 @@ cd "${SAE_ROOT}"
 mkdir -p logs/post_stage
 
 .venv/bin/python -u scripts/post_stage/e05_stability.py \
-  --run seed42=results_post_stage_e01_fit_1b_layer13_k5 \
-  --run seed43=results_post_stage_e05_seed43 \
-  --run seed44=results_post_stage_e05_seed44 \
-  --out-dir results_post_stage_e01_fit_1b_layer13_k5 \
+  --run seed42=results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-} \
+  --run seed43=results_post_stage_e05_seed43${RUN_SUFFIX:-} \
+  --run seed44=results_post_stage_e05_seed44${RUN_SUFFIX:-} \
+  --out-dir results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-} \
   --mails-tsv-path local_data/emails/Mails.tsv \
   --augmented-jsonl-path local_data/emails/augmented_mails.jsonl \
   --split-assignments configs/post_stage/split_assignments.json \

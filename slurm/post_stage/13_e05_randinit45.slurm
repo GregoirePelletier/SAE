@@ -55,7 +55,7 @@ export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
 export SEED=45
 export EXTRA_DECODER_INIT=random
-export SAVE_DIR="${SAE_ROOT}/results_post_stage_e05_randinit45/"
+export SAVE_DIR="${SAE_ROOT}/results_post_stage_e05_randinit45${RUN_SUFFIX:-}/"
 
 export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 

@@ -30,11 +30,11 @@ cd "${SAE_ROOT}"
 mkdir -p logs/post_stage
 
 .venv/bin/python -u scripts/post_stage/e07_clustering.py \
-  --save-dir results_post_stage_e01_fit_1b_layer13_k5 \
+  --save-dir results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-} \
   --mails-tsv-path local_data/emails/Mails.tsv \
   --augmented-jsonl-path local_data/emails/augmented_mails.jsonl \
   --split-assignments configs/post_stage/split_assignments.json \
-  --registry-path results_post_stage_e01_fit_1b_layer13_k5/e02_feature_registry.json \
+  --registry-path results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-}/e02_feature_registry.json \
   --d-extra 1024 \
   --n-confirm-parents 400 \
   --dense-model-path ./models/bge-m3 \
