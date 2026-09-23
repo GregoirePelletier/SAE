@@ -12,13 +12,11 @@ e01_fit_1b_layer13_k5/` (1B, layer 13, K_EXTRA=5, FIT/DEV/CONFIRM figés dans
 `configs/post_stage/`). E00 (profilage mémoire) a ses propres répertoires
 séparés (`results_post_stage_e00_profile_1b*/`), non lus par E01-E07.
 
-**Réserve la plus importante de ce document, à lire avant tout le reste** :
-la jointure variante→parent du split FIT/DEV/CONFIRM présente un
-désalignement positionnel systématique confirmé (pas seulement suspecté) —
-section "Corpus" ci-dessous. Tant qu'elle n'est pas résolue, traiter
-l'indépendance FIT/DEV/CONFIRM comme non garantie pour les variantes
-augmentées (les splits par PARENT, eux, restent corrects — c'est le
-rattachement des variantes à leur parent qui est en cause).
+**Réserve la plus importante, à lire avant tout le reste** : les
+résultats E01-E07 ont été calculés sous un split FIT/DEV/CONFIRM dont le
+rattachement des variantes était décalé (corrigé depuis, cf. section
+« Corpus »). Ils sont à rejouer avant d'être cités comme évalués hors
+entraînement.
 
 ## Taux d'interprétabilité de référence (tout le dépôt, pas seulement post-soutenance)
 
@@ -41,61 +39,38 @@ corrigé** — nécessite d'auditer 20 scripts consommateurs avant de le
 toucher sans casser leur indexation. Détail : `docs/post_stage/
 memory_diagnosis.md`.
 
-## Corpus — freeze FIT/DEV/CONFIRM — **désaccord positionnel confirmé, pas seulement documenté**
+## Corpus — freeze FIT/DEV/CONFIRM — jointure corrigée, résultats E01-E07 à rejouer
 
-`configs/post_stage/{corpus.yaml,corpus_manifest.json,split_assignments.json}`
-(3474 parents → 2084/521/869). Le manifeste affiche `"method":
-"positional_via_parent_id"`, `"positional_join_fallback": true`,
-`"n_variants_unmatched": 70` — jusqu'ici documenté comme une limitation
-acceptée. Une vérification bornée (CPU, texte déjà en local, aucun modèle
-chargé, ~40s) faite pendant ce nettoyage va plus loin et **confirme un
-désalignement systématique, pas seulement un risque théorique** :
+**Cause (confirmée, corrigée)** : `load_mails_tsv` renvoie 3480 lignes,
+`load_and_clean_emails` en garde 3474 (6 lignes vides après retrait de
+l'objet : positions 43, 707, 1243, 1344, 1366, 2149).
+`run_augmentation.py` numérote `parent_id` sur les 3480 ; le repli positionnel
+(`parent_sha1` absent du JSONL gelé) énumérait les 3474 survivantes, donc
+tout `parent_id >= 44` était rattaché à un parent décalé de 1 à 6 rangs,
+sans erreur visible. Code corrigé (`return_positions`, commit dédié + tests) ;
+les splits par PARENT sont inchangés (3474 parents, 2084/521/869, identiques
+à l'octet près), seul le rattachement des variantes change.
 
-- `src/data/dataset.py::load_mails_tsv` (utilisé par les deux côtés de la
-  jointure) renvoie **3480** lignes après son propre filtre
-  (`min_chars=30` + `drop_duplicates("text")`). `scripts/run_augmentation.py`
-  numérote `doc_id` directement sur cette sortie (`.reset_index()`), donc
-  `parent_id` dans `augmented_mails.jsonl` vit dans cet espace à 3480
-  positions.
-- `src/data/preparation.py::load_and_clean_emails` (utilisé par
-  `dataset_contract.py` pour construire `pos_to_hash`) part du même
-  `load_mails_tsv`, puis applique un filtre **supplémentaire**
-  (`strip_leading_objet_line` + suppression d'un motif `[{"start"...}]`,
-  ligne supprimée si le résultat est vide) — sortie à **3474** lignes.
-- Les deux comptes ne coïncident pas : **6 lignes** (positions 43, 707,
-  1243, 1344, 1366, 2149 dans l'espace à 3480) deviennent vides sous ce
-  filtre supplémentaire et disparaissent de `real_hashes`, mais restent
-  comptées dans l'espace `doc_id` de l'augmentation.
-- `pos_to_hash = {i: h for i, h in enumerate(real_hashes)}` (`dataset_
-  contract.py`) énumère donc un espace **plus court de 6** que celui dans
-  lequel `parent_id` a été écrit. Conséquence directement calculable :
-  pour tout `parent_id >= 44` (soit ~99% des positions du corpus, le
-  premier écart tombant à la position 43/3480), `pos_to_hash.get(int(
-  parent_id))` résout un index décalé de 1 à 6 rangs selon combien des 6
-  positions le précèdent — **pas une erreur qui se voit** (le lookup
-  réussit, avec un hash de parent différent de celui qui a réellement
-  généré la variante), silencieuse par construction.
+**Impact mesuré** (variantes : 39 879 avant, 39 949 après — les 70 « non
+rattachées » l'étaient uniquement par dépassement de plage) :
 
-**Ce que ça n'établit pas** : ce n'est pas la preuve qu'une variante a
-changé de split (le décalage peut aussi bien retomber dans le même split
-que le vrai parent) — seulement que le mécanisme de rattachement n'est,
-pour l'écrasante majorité des variantes, pas celui que le code croit
-utiliser. `n_variants_unmatched: 70` (des `parent_id` complètement hors
-plage ou `None`) est probablement sous-compté du vrai problème : un
-`parent_id` décalé qui retombe sur un index valide ne remonte **aucune**
-erreur.
+- 21 817 variantes (54,7 %) changent de split.
+- Ancien FIT (23 886 variantes, celui de l'entraînement du SAE de référence,
+  de TF-IDF et des sondes) : 14 496 sont réellement FIT, **5 803 réellement
+  CONFIRM (24,3 %) et 3 587 réellement DEV** — soit 39,3 % du corpus
+  d'entraînement hors FIT.
+- Ancien CONFIRM (9 996 variantes, évalué en E03/E04/E06/E07) : seulement
+  2 645 réellement CONFIRM, 5 909 réellement FIT, 1 442 DEV.
 
-**Ne pas regeler les splits pour faire disparaître cet avertissement.**
-Correctif possible mais non fait ici (scientifique, hors mandat de ce
-nettoyage) : faire écrire `parent_id` par `run_augmentation.py` dans le
-même espace de positions que `load_and_clean_emails` (ou, mieux, s'appuyer
-sur `parent_sha1` — déjà calculé et écrit par le code actuel de
-`src/data/augmentation.py`, mais absent du fichier `augmented_mails.jsonl`
-actuellement gelé, généré par une version antérieure du pipeline qui ne
-l'écrivait pas encore) puis réévaluer si les checkpoints/splits actuels
-restent valides ou doivent être régénérés. Nécessite Grégoire — c'est le
-point P0 le plus déterminant avant de présenter les résultats E01/E03/E04/
-E06/E07 comme reposant sur une séparation FIT/DEV/CONFIRM fiable.
+**Conséquence** : la séparation FIT/DEV/CONFIRM revendiquée pour les
+variantes n'était pas effective ; E01, E03, E04, E06, E07 (et le SAE de
+référence, E05, E02 qui en dépendent) ont été produits sous l'ancien split
+(archivé : `configs/post_stage/legacy_pre_parent_join_fix/`). Leurs chiffres
+sont à traiter comme « split antérieur, contamination FIT↔CONFIRM » tant
+qu'un rejeu (GPU, non lancé ici, autorisation requise) n'a pas été fait avec
+`configs/post_stage/split_assignments.json` corrigé. Les checkpoints FIT
+existants ne sont pas réutilisables comme « FIT-only ». Le sens des
+conclusions n'est pas préjugé — seule leur validité méthodologique l'est.
 
 ## E01 — Représentations comparables (FIT→DEV)
 

@@ -245,3 +245,24 @@ Nécessite une décision de Grégoire, pas une action de nettoyage :
   `outils/preflight_passation_sae.py` : **ni l'un ni l'autre n'existe dans
   le dépôt** au moment de cette réconciliation — liens internes cassés du
   paquet de passation lui-même, à signaler à la source de ces documents.
+
+## Lot 6 — correction de la jointure parent (variantes → parent)
+
+Correction demandée explicitement après la découverte du lot 4.
+
+- Code (commit `9397895`) : `load_and_clean_emails(return_positions=True)` ;
+  `build_email_train_test_corpus` et `dataset_contract.py` traduisent
+  `parent_id` via la position d'origine au lieu d'un `enumerate()` décalé.
+  Deux tests de non-régression (ligne « Objet seul » reproduisant l'écart).
+  Les 5 scripts `replicate_load_and_clean_emails_with_index` étaient déjà
+  corrects (dupliqués, non factorisés ici).
+- Données : `configs/post_stage/{corpus_manifest,split_assignments}.json`
+  régénérés (même graine, parents identiques, 70 variantes auparavant
+  « non rattachées » désormais rattachées). Anciennes versions conservées
+  dans `configs/post_stage/legacy_pre_parent_join_fix/` (manifeste + assignations gzip).
+- Impact et nécessité de rejeu : `docs/RESULTS_STATUS.md`, section Corpus
+  (54,7 % des variantes déplacées ; 24,3 % de l'ancien FIT était CONFIRM).
+  Aucun rejeu lancé (GPU) ; aucun JSON de résultat réécrit.
+- `parent_sha1` reste absent du `augmented_mails.jsonl` gelé (généré avant
+  son ajout) : la jointure reste positionnelle, désormais correcte ; la
+  régénérer avec `parent_sha1` supprimerait cette dépendance.

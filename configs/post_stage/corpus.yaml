@@ -14,11 +14,14 @@ split:
   unit: parent_email  # parent-aware : une variante augmentee suit toujours son mail d'origine
 
 join:
-  # augmented_mails.jsonl reel ne porte PAS parent_sha1 (verifie -- seul le
-  # chemin positionnel via parent_id, index dans Mails.tsv, est exerce en
-  # pratique). dataset_contract.py supporte les deux ; ceci documente lequel
-  # s'applique au corpus actuel, a re-verifier si le corpus augmente est
-  # regenere avec parent_sha1.
+  # augmented_mails.jsonl reel ne porte PAS parent_sha1 (verifie) : jointure
+  # positionnelle via parent_id, qui vit dans l'espace load_mails_tsv (3480
+  # lignes) et non dans l'espace load_and_clean_emails (3474 lignes, 6 lignes
+  # de plus filtrees : positions 43/707/1243/1344/1366/2149). Le manifeste
+  # actuel traduit parent_id via load_and_clean_emails(return_positions=True) ;
+  # l'ancien manifeste (enumeration 0..n-1, decalee) est archive dans
+  # configs/post_stage/legacy_pre_parent_join_fix/ -- 54,7% des variantes y
+  # etaient dans le mauvais split (docs/RESULTS_STATUS.md).
   method: positional_via_parent_id
 
 rules:

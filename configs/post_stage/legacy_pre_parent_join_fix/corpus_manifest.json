@@ -1,5 +1,5 @@
 {
-  "generated_at_unix": 1790171117.4726667,
+  "generated_at_unix": 1789461065.6770926,
   "join": {
     "method": "positional_via_parent_id",
     "positional_join_fallback": true
@@ -12,12 +12,12 @@
     "fit": 2084
   },
   "n_variants_by_split": {
-    "confirm": 9971,
-    "dev": 5950,
-    "fit": 24028
+    "confirm": 9996,
+    "dev": 5997,
+    "fit": 23886
   },
   "n_variants_total_accepted": 39949,
-  "n_variants_unmatched": 0,
+  "n_variants_unmatched": 70,
   "parent_char_length_stats_by_split": {
     "confirm": {
       "max": 10963,
@@ -56,25 +56,25 @@
   "token_length_stats_by_split": null,
   "variant_char_length_stats_by_split": {
     "confirm": {
-      "max": 3521,
-      "mean": 1282.5618293049845,
-      "n": 9971,
+      "max": 3395,
+      "mean": 1283.7930172068827,
+      "n": 9996,
       "p50": 1248.0,
-      "p90": 1883.0
+      "p90": 1880.0
     },
     "dev": {
-      "max": 3212,
-      "mean": 1270.1606722689075,
-      "n": 5950,
+      "max": 3087,
+      "mean": 1264.9654827413706,
+      "n": 5997,
       "p50": 1231.0,
-      "p90": 1863.1000000000004
+      "p90": 1871.0
     },
     "fit": {
-      "max": 3381,
-      "mean": 1268.919177626103,
-      "n": 24028,
+      "max": 3521,
+      "mean": 1270.0196767981245,
+      "n": 23886,
       "p50": 1233.0,
-      "p90": 1877.2999999999993
+      "p90": 1877.0
     }
   }
 }
