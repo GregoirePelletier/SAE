@@ -106,6 +106,17 @@ modifié. Uniquement des pointeurs vers des résultats déjà calculés et déj�
   écrasé. Limite de concurrence non résolue, documentée dans l'UI (caption
   du formulaire) plutôt que silencieusement laissée non dite.
 
+### Lot 3 — correctif de validation (commit `119f182`)
+
+Un test isolé (fixture synthétique, répertoire temporaire, jamais le vrai
+`docs/post_stage/e08_pilot_leads.json`) reproduisant le scénario réel de ce
+dépôt — template legacy vide `[]`, migration donc un no-op — a trouvé que
+`_append_lead()` plantait (`FileNotFoundError`) à la toute première piste
+enregistrée : `local_data/dashboard_state/` n'était créé que par le chemin
+de migration, jamais par le chemin d'écriture direct. Corrigé (`os.makedirs`
+ajouté dans `_append_lead`), revalidé sur le même scénario. Trouvé par ce
+nettoyage, pas par l'audit d'origine.
+
 ### Non fait — identifié, laissé en l'état
 
 - **Archivage des scripts d'audit ponctuels** (`scripts/*.py`, hors
