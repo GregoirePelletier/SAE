@@ -7,7 +7,9 @@ base_commit_audited: 68c8e6863013c98905740a56e6491d78d05435cd
 head_at_preflight: 68c8e6863013c98905740a56e6491d78d05435cd  # identique -- aucune derive de code depuis l'audit
 period: relative_J1_J15
 
-max_simultaneous_gpu_jobs: 1
+max_simultaneous_gpu_jobs: 4  # releve de 1 (decision explicite de Gregoire, 2026-09-23) : repartir
+                              # les jobs sur a100 (jobs sans Qwen), h100 et h100-bis pour le rejeu
+                              # de la campagne sous le split corrige.
 max_gpus_per_job: 2  # releve de 1 a 2 (decision explicite de Gregoire, 2026-09-16) --
                      # uniquement pour permettre device_map="auto" (sharding Qwen3.8-27B
                      # sur 2 GPU a100) quand h100/h100-bis sont pleins, cf. note ci-dessous.
