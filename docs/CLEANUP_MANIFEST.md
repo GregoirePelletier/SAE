@@ -141,15 +141,14 @@ modifié. Uniquement des pointeurs vers des résultats déjà calculés et déj�
   ignoré)** — probablement un venv de développement local du sous-module,
   jamais confirmé indispensable ni obsolète dans cette passe.
 - **Balayage complet des scripts d'audit restants** pour un archivage
-  réellement complet (voir ci-dessus) — je recommande de le faire en une
-  passe dédiée plutôt que dans ce nettoyage, avec un budget de vérification
-  par script (imports, Slurm, tests, docs) suffisant pour ne pas se fier à
-  un échantillon.
+  réellement complet (voir ci-dessus) — recommandé en une passe dédiée
+  plutôt que dans ce nettoyage, avec un budget de vérification par script
+  (imports, Slurm, tests, docs) suffisant pour ne pas se fier à un
+  échantillon.
 - **`report/RAPPORT_STAGE_ENTREPRISE.tex`** : `pytest tests/ -q` échoue sur
   `test_docs.py::test_check_docs_clean` (5 liens relatifs morts, ligne 949,
   labels `s2`-`s6`) — confirmé pré-existant à ce nettoyage (même échec
   reproduit en isolant les modifications de ce nettoyage via `git stash`).
-  Provient de la modification en cours de ce fichier, non suivie, non
-  touchée par ce nettoyage (fichier déjà modifié par vous avant cette
-  session — je ne l'ai pas édité). À corriger de votre côté avant de
-  committer ce fichier.
+  Provient de la modification en cours de ce fichier, non suivie et non
+  touchée par ce nettoyage (déjà modifié avant cette passe de nettoyage) —
+  à corriger avant de committer ce fichier.
