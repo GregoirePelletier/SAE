@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_c1b_frozen_cov_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # C1b (pdf/sanitychecks.pdf, Korznikov et al. 2026) : réplique leur baseline
 # Frozen Decoder sous le schéma d'initialisation PRINCIPAL de leur papier --

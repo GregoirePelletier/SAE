@@ -1,6 +1,6 @@
 """
 scripts/post_stage/profile_run.py -- Superviseur de profilage E00
-(Plan_execution_SAE_15_jours_Claude_Code.md §5.4/§5.7).
+(docs/post_stage/PLAN_E00-E09.md §5.4/§5.7).
 
 Lance la pipeline reelle (ex. `.venv/bin/python src/sae/saev5.py`) en
 subprocess et echantillonne sa memoire/cgroup/GPU pendant qu'elle tourne, SANS

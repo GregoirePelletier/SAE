@@ -14,7 +14,7 @@ directement et correspondent exactement aux lignes citees par le plan.
 
 Etat non commite (laisse en l'etat, hors perimetre de cette campagne) :
 - `report/RAPPORT_STAGE_ENTREPRISE.tex` : diff important (1364+/1639-),
-  correspond a la reprise en cours documentee dans `AUDIT_SAE_2026-08.md` §9
+  correspond a la reprise en cours documentee dans `docs/archive/audits/AUDIT_SAE_2026-08.md` §9
   ("reste avant remise finale" -- pas encore repasse). Ne pas toucher : ce
   n'est ni le rapport defendu ni le dossier oral au sens strict de
   l'interdiction §1.3, mais c'est un travail de redaction en cours qui
@@ -22,7 +22,7 @@ Etat non commite (laisse en l'etat, hors perimetre de cette campagne) :
 - `external/interp_embed` (submodule) : seul `.gitignore` differe, sans effet.
 - `archive/dual_pipeline_sae.py` (untracked) et une capture d'ecran
   (untracked) : provenance non identifiee par cet audit, laisses en l'etat.
-- `Plan_execution_SAE_15_jours_Claude_Code.md` (untracked) : le document
+- `docs/post_stage/PLAN_E00-E09.md` (untracked) : le document
   source de cette campagne lui-meme.
 
 ## 2. Tests
@@ -58,7 +58,7 @@ nouveau profilage E00, mais confirme/complete la citation C10 du plan)
 | 45803 | 12B, layer12, K5, ~25M tokens | 500G | **358,43 Go** | COMPLETED (5h12) |
 | 45874 | 1B, meme famille (resoumis h100) | 200G | **128,30 Go** | COMPLETED (2h59) |
 | 45724 | 1B, meme run, tentative a100 | 200G | 47,11 Go (avant OOM) | FAILED -- OOM au chargement du juge Qwen, pas a l'extraction |
-| 45725 | 12B, layer12, 1re tentative | 500G | 6,45 Go (avant crash) | FAILED -- cache legacy orphelin (cf. AUDIT_SAE_2026-08.md §9), pas un probleme memoire |
+| 45725 | 12B, layer12, 1re tentative | 500G | 6,45 Go (avant crash) | FAILED -- cache legacy orphelin (cf. docs/archive/audits/AUDIT_SAE_2026-08.md §9), pas un probleme memoire |
 
 Le 358,43 Go de 45803 confirme quasi exactement le chiffre "358,5 Go" cite en
 commentaire par le plan (C10) -- ici lu directement dans `sacct`, pas

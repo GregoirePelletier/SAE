@@ -10,9 +10,9 @@
 #SBATCH --output=logs/post_stage/e01_fit_reference_%j.out
 #SBATCH --error=logs/post_stage/e01_fit_reference_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# E01 -- run de reference sur FIT SEUL (Plan_execution_SAE_15_jours_Claude_Code.md
+# E01 -- run de reference sur FIT SEUL (docs/post_stage/PLAN_E00-E09.md
 # §6.1) : 1B/layer13 (preset MODEL_SIZE=1b), coeur 16k, extension D_EXTRA=1024/
 # K_EXTRA=5, MEME BATCH_SIZE_EXTRA/EPOCHS_EXTRA que le defaut du depot (pas de
 # changement silencieux). DEV joue le role "test" de saev5.py (validation

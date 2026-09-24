@@ -23,6 +23,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGET_DIRS = ["docs", "report"]
 TARGET_FILES = ["README.md", "CLAUDE.md", "RESULTS_TESTS.md"]
 EXCLUDE_DIRS = {"dist"}  # report/dist/ est généré, gitignoré, non versionné
+# docs/archive/ : instantanés conservés tels quels (audits, ancien CLAUDE.md, extraction de
+# papier), non maintenus -- non reformulés, liens internes non garantis (SOURCES.md de l'audit
+# externe jamais livré). PLAN_E00-E09.md : plan externe cité tel quel (« plan §N »).
+EXCLUDE_REL_DIRS = {os.path.join("docs", "archive")}
+EXCLUDE_REL_FILES = {os.path.join("docs", "post_stage", "PLAN_E00-E09.md")}
 
 # Chaînes connues à masquer avant la recherche de motif de version interne --
 # ce sont des noms de produit/modèle contenant un chiffre après "v", pas une
@@ -78,7 +83,7 @@ LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 
 FIRST_PERSON_SCOPE = {"README.md"}  # + tout fichier sous docs/
 
-# N12 (AUDIT_SAE_2026-08.md §8) : ces deux fichiers sous docs/ sont exclus du
+# N12 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : ces deux fichiers sous docs/ sont exclus du
 # contrôle "première personne" -- décision tranchée, pas un oubli. Les deux
 # sont des analyses comparatives explicitement à la première personne par
 # nature ("mon pipeline" vs. le code d'un dépôt tiers, ou la méthodologie de
@@ -103,11 +108,13 @@ def iter_target_files():
     for d in TARGET_DIRS:
         full_dir = os.path.join(REPO_ROOT, d)
         for root, dirs, files in os.walk(full_dir):
-            dirs[:] = [x for x in dirs if x not in EXCLUDE_DIRS]
+            dirs[:] = [x for x in dirs if x not in EXCLUDE_DIRS
+                       and os.path.relpath(os.path.join(root, x), REPO_ROOT) not in EXCLUDE_REL_DIRS]
             for f in files:
                 if f.endswith((".md", ".tex")):
-                    path = os.path.join(root, f)
-                    yield os.path.relpath(path, REPO_ROOT)
+                    rel = os.path.relpath(os.path.join(root, f), REPO_ROOT)
+                    if rel not in EXCLUDE_REL_FILES:
+                        yield rel
 
 
 def strip_code(text: str) -> str:

@@ -1,5 +1,5 @@
 """Teste src/storage/fragment_store.py::AsyncFragmentWriter (audit perf G2,
-AUDIT_SAE_2026-08.md §2.2) -- écriture de fragments en arrière-plan. La
+docs/archive/audits/AUDIT_SAE_2026-08.md §2.2) -- écriture de fragments en arrière-plan. La
 propriété critique n'est pas "ça écrit" (torch.save est déjà testé ailleurs)
 mais "flush() garantit que tout ce qui a été soumis avant est bien sur
 disque" : c'est l'invariant dont dépend la reprise (R1) pour ne jamais avancer

@@ -1,4 +1,4 @@
-"""Teste le stockage shardé des fragments (item 3, AUDIT_SAE_2026-08.md
+"""Teste le stockage shardé des fragments (item 3, docs/archive/audits/AUDIT_SAE_2026-08.md
 §2.2/§2.9) : ShardedFragmentWriter (SHARD_SIZE documents par fichier au lieu
 d'un par document, utilisé côté extraction) et la lecture transparente
 (load_fragment/list_fragment_ids/fragment_exists) qui doit voir aussi bien

@@ -98,7 +98,7 @@ def _sha1(s: str) -> str:
 
 def _batch_seed(seed: int, aug_ids: list[str]) -> int:
     """Graine déterministe dérivée du CONTENU d'un lot de génération (B.12,
-    AUDIT_SAE_2026-08.md) -- `sorted()` rend le résultat indépendant de
+    docs/archive/audits/AUDIT_SAE_2026-08.md) -- `sorted()` rend le résultat indépendant de
     l'ordre d'itération du lot, pas seulement de son contenu."""
     return int(_sha1(f"{seed}:{'|'.join(sorted(aug_ids))}"), 16) % (2**31)
 
@@ -201,7 +201,7 @@ def generate_variants(
     model.eval()
     for i in range(0, len(jobs), batch_size):
         batch = jobs[i:i + batch_size]
-        # Graine dérivée du CONTENU du lot (B.12, AUDIT_SAE_2026-08.md) plutôt
+        # Graine dérivée du CONTENU du lot (B.12, docs/archive/audits/AUDIT_SAE_2026-08.md) plutôt
         # que de l'état séquentiel du générateur global : un `torch.manual_seed`
         # unique en tête de fonction rend le "seed" écrit dans chaque
         # enregistrement JSONL trompeur -- une reprise (do_sample=True, lots
@@ -240,7 +240,7 @@ def generate_variants(
                 # que par index positionnel dans un recalcul indépendant de
                 # load_and_clean_emails -- deux calculs de filtrage légèrement
                 # désynchronisés feraient sinon fuir le split group-aware sans
-                # aucun signal (AUDIT_SAE_2026-08.md, item B.7).
+                # aucun signal (docs/archive/audits/AUDIT_SAE_2026-08.md, item B.7).
                 "parent_sha1": _sha1(row.text),
                 "corpus": getattr(row, "corpus", "mail_reel"),
                 "axis": spec.axis,
@@ -274,7 +274,7 @@ def load_augmented(jsonl_path: str) -> pd.DataFrame:
     de formatage."""
     # Un seul passage, filtré au vol -- pas de liste intermédiaire de TOUS les
     # enregistrements (acceptés + rejetés) tenue en RAM en plus de la liste
-    # filtrée puis du DataFrame final (AUDIT_SAE_2026-08.md, item A6 : ce
+    # filtrée puis du DataFrame final (docs/archive/audits/AUDIT_SAE_2026-08.md, item A6 : ce
     # process tient déjà le réservoir memmap et all_doc_sae_acts).
     accepted = []
     with open(jsonl_path, encoding="utf-8") as f:

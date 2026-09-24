@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e02_registry_%j.out
 #SBATCH --error=logs/post_stage/e02_registry_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E02 -- registre de 300 features (150 CORE + 150 EXTRA) labellisees par le
 # juge Qwen (plan §7). Depend du checkpoint/fragments deja produits par

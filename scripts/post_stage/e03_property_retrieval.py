@@ -1,6 +1,6 @@
 """
 scripts/post_stage/e03_property_retrieval.py -- Retrieval par propriete sur
-CONFIRM (Plan_execution_SAE_15_jours_Claude_Code.md §8). Compare CORE, FULL,
+CONFIRM (docs/post_stage/PLAN_E00-E09.md §8). Compare CORE, FULL,
 DENSE (bge-m3), TFIDF, BM25 (LatentTermsIndex reutilise en mode lexical
 generique) sur 6 proprietes x 2 formulations (lexicale + paraphrase) = 12
 requetes -- correspond au budget "12 CONFIRM" du plan.

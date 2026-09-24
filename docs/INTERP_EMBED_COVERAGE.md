@@ -64,7 +64,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
 4. **App. K contient bien K.1–K.4** (contrairement au doute initial de la recherche par
    regex) : K.3 CLUSTERING et K.4 RETRIEVAL existent, courts (4-6 lignes chacun) —
    cf. `docs/archive/references/PDF_APPENDICES_EXTRACT.md` §K.3/§K.4 (citation par ancre de section, pas
-   par ligne, N13 AUDIT_SAE_2026-08.md §8 — la ligne exacte peut bouger si ce fichier
+   par ligne, N13 docs/archive/audits/AUDIT_SAE_2026-08.md §8 — la ligne exacte peut bouger si ce fichier
    est un jour réduit/reformulé, l'ancre de section non). Les prompts de jugement
    clustering et retrieval de l'étape "À CONSTRUIRE" ont donc une spécification texte
    complète.

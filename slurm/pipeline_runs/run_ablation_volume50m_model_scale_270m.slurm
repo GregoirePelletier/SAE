@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_50m_270m_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Extension de la courbe d'échelle en dessous de 1B (jamais testé sur ce
 # projet) + interaction volume x taille de modèle (cf. run_ablation_volume50m_

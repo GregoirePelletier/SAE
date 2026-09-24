@@ -1,6 +1,6 @@
 """
 src/post_stage/resources.py -- Instrumentation memoire/IO pour l'audit E00
-(Plan_execution_SAE_15_jours_Claude_Code.md §5.4).
+(docs/post_stage/PLAN_E00-E09.md §5.4).
 
 Aucune dependance sur saev5.py : ce module observe un PROCESSUS EXTERNE (pid
 d'un job lance en subprocess) via /proc et cgroup, sans jamais importer ni

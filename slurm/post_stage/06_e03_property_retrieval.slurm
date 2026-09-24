@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e03_retrieval_%j.out
 #SBATCH --error=logs/post_stage/e03_retrieval_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E03 -- retrieval par propriete sur CONFIRM (plan §8). Depend de :
 #  - 05_e01_encode_confirm.slurm (CONFIRM encode via le SAE deja fige)

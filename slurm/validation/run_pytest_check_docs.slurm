@@ -8,7 +8,7 @@
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/validation/pytest_check_docs_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Smoke-test CPU-only (tests unitaires + garde-fou documentaire) -- soumis via
 # sbatch plutôt qu'exécuté sur le nœud frontal, cf. CLAUDE.md ("Cluster SLURM").

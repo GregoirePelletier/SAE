@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e01_pool_len_%j.out
 #SBATCH --error=logs/post_stage/e01_pool_len_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E01 -- complement (plan §6.3) : pooling top-k-moyenne vs max-pooling deja
 # en cache, baseline longueur seule, accuracy par tranche de longueur.

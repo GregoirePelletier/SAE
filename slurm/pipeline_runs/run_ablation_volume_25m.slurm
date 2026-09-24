@@ -9,13 +9,13 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_vol25m_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation volume ~25M tokens (SAE Boost, Koriagin et al. COLM 2025) -- calibrage
 # timing/ablations post-correctifs perf+data-science de cette session (G1/G2/G7,
 # reprise, protocole juge). Réservoir de résidus en RAM hôte, 25M*3840*2o≈192 Go
 # (--mem=500G, marge confortable). Filler FineWeb2-fr SANS filtre thématique
-# (comportement actuel de sample_fineweb2_chunks, cf. AUDIT_SAE_2026-08.md) --
+# (comportement actuel de sample_fineweb2_chunks, cf. docs/archive/audits/AUDIT_SAE_2026-08.md) --
 # ajouté uniquement au réservoir résiduel, jamais à train_texts (sélection de
 # features et sonde de classification restent sur emails+augmentés seuls).
 # LAYER=24 explicite : le défaut de src/config.py a été relevé à 31 depuis

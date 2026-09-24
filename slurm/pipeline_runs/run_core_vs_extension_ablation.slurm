@@ -7,7 +7,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/pipeline_runs/core_vs_extension_ablation_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # ── Phase 1 (diagnostics/reproduction initiative) : core seul vs core+extension
 # ("pollution" de l'extension résiduelle sur le signal du core) ─────────────────

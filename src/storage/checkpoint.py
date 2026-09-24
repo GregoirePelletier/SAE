@@ -1,5 +1,5 @@
 """
-src/storage/checkpoint.py — Reprise après coupure (R1, AUDIT_SAE_2026-08.md
+src/storage/checkpoint.py — Reprise après coupure (R1, docs/archive/audits/AUDIT_SAE_2026-08.md
 §2.3/§4.3), partagé entre Pipeline 1 (saev5.py, extraction Gemma-3) et
 Pipeline 2 (phrase_sae.py, extraction F2LLM). Deux briques génériques :
 

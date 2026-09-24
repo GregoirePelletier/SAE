@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_50m_1b_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Interaction volume x taille de modèle : R0/S1/S2 (25M tokens) ne montrent
 # aucun effet d'échelle significatif (RESULTS_TESTS.md §97) -- teste si un

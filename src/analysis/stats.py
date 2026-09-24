@@ -163,7 +163,7 @@ class ChanceCorrectedResult:
 def chance_corrected_rate(scores: list[int] | np.ndarray,
                            n_items: list[int] | np.ndarray) -> ChanceCorrectedResult:
     """Taux d'interprétabilité corrigé du hasard variable (N6,
-    AUDIT_SAE_2026-08.md §8) : le protocole odd-one-out d'`odd_one_out_judge`
+    docs/archive/audits/AUDIT_SAE_2026-08.md §8) : le protocole odd-one-out d'`odd_one_out_judge`
     (src/sae/judge.py) ne fixe PAS le nombre d'items présentés au juge -- une
     feature rare peut n'atteindre que 3 positifs + 1 négatif (4 items, hasard
     25%), une feature dense les 9+1=10 prévus (hasard 10%), confondu avec le
@@ -193,7 +193,7 @@ def horvitz_thompson_mean(values: list[float] | np.ndarray,
                            inclusion_probs: list[float] | np.ndarray) -> float:
     """Estimateur de Horvitz-Thompson de la moyenne populationnelle à partir
     d'un échantillon à probabilités d'inclusion inégales (N3,
-    AUDIT_SAE_2026-08.md §8) : ŷ = (Σ y_i/π_i) / (Σ 1/π_i). Se réduit à la
+    docs/archive/audits/AUDIT_SAE_2026-08.md §8) : ŷ = (Σ y_i/π_i) / (Σ 1/π_i). Se réduit à la
     moyenne stratifiée classique (Σ_h N_h·ȳ_h / N) quand π_i est constant au
     sein de chaque strate -- exactement le cas de
     `feature_selection_stratified_by_frequency` (src/sae/judge.py), qui

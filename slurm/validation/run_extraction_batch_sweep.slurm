@@ -8,7 +8,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/validation/extraction_batch_sweep_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Balayage EXTRACTION_BATCH_SIZE (benchmarks/extraction_batch_size_sweep.py) --
 # à relancer à chaque changement de GPU, de modèle ou de couche.

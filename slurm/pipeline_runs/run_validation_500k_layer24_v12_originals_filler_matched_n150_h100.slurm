@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val500k_l24_v12_originals_filler_matched_n150_h_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # B.1, réplication à pleine puissance statistique de v11 (job 44983/44985,
 # RESULTS_TESTS.md §77) : à n=20, mails originaux seuls + filler FineWeb2

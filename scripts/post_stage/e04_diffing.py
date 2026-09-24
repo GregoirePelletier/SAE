@@ -1,7 +1,7 @@
 """
 scripts/post_stage/e04_diffing.py -- Diffing dans le domaine cible
-(Plan_execution_SAE_15_jours_Claude_Code.md §9). Reutilise integralement
-l'infrastructure App D.2/K.1 deja auditee et validee (AUDIT_SAE_2026-08.md :
+(docs/post_stage/PLAN_E00-E09.md §9). Reutilise integralement
+l'infrastructure App D.2/K.1 deja auditee et validee (docs/archive/audits/AUDIT_SAE_2026-08.md :
 "Diffing structure... confirme sain, verification_rate=80%") plutot que
 d'en ecrire une nouvelle -- corpus_diff_stats, select_top_diff_features_by_
 frequency, generate_structured_diff_hypotheses, verify_hypotheses,

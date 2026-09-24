@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e07_clustering_%j.out
 #SBATCH --error=logs/post_stage/e07_clustering_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E07 -- clustering cible reellement compare aux alternatives (plan §12).
 # Depend de : 04_e02_feature_registry.slurm (labels CORE/EXTRA),

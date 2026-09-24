@@ -1,13 +1,13 @@
 """
 src/post_stage/dataset_contract.py -- Gel du corpus de la campagne
-post-soutenance (Plan_execution_SAE_15_jours_Claude_Code.md §4.1-4.2).
+post-soutenance (docs/post_stage/PLAN_E00-E09.md §4.1-4.2).
 
 Un seul contrat de donnees pour toute la campagne : split FIT/DEV/CONFIRM
 PARENT-AWARE (un mail d'origine et toutes ses variantes augmentees tombent
 du meme cote), identifie par le sha1 de CONTENU du mail parent (jamais par
 numero de ligne -- reutilise load_and_clean_emails(return_hashes=True),
 deja construit ainsi dans src/data/preparation.py pour la meme raison,
-AUDIT_SAE_2026-08.md item B.7). CONFIRM ne doit jamais entrer dans un
+docs/archive/audits/AUDIT_SAE_2026-08.md item B.7). CONFIRM ne doit jamais entrer dans un
 encodeur entraine, une IDF, une PCA d'initialisation, un seuil de
 regroupement, un choix de requete ou un reglage de sonde -- §4.2 du plan.
 
@@ -109,7 +109,7 @@ def build_corpus_manifest(
     n_variants_unmatched = 0
     variant_char_lengths_by_split = {s: [] for s in SPLIT_NAMES}
     # Repli positionnel (meme convention que build_email_train_test_corpus,
-    # AUDIT_SAE_2026-08.md item B.7) : augmented_mails.jsonl actuel n'ecrit
+    # docs/archive/audits/AUDIT_SAE_2026-08.md item B.7) : augmented_mails.jsonl actuel n'ecrit
     # PAS parent_sha1 (verifie sur le corpus reel malgre le support cote
     # code) -- pos_to_hash traduit son parent_id (index dans l'espace
     # load_mails_tsv, celui ou run_augmentation.py numerote parent_id) vers

@@ -1,6 +1,6 @@
 """
 src/post_stage/representations.py -- Construction des baselines
-independantes E01 (Plan_execution_SAE_15_jours_Claude_Code.md §6.3). CORE/
+independantes E01 (docs/post_stage/PLAN_E00-E09.md §6.3). CORE/
 EXTRA/FULL viennent du SAE deja entraine par saev5.py -- ce module construit
 les baselines TFIDF/DENSE sur les MEMES documents, avec tous les parametres
 explicitement journalises plutot qu'implicites dans le code d'un script.

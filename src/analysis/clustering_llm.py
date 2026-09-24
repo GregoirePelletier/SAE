@@ -8,7 +8,7 @@ space relative to a random sample (lower = tighter)"). Complète
 `src/sae/saev5.py::targeted_clustering_by_axis`, qui ne fait aujourd'hui que
 la sélection par UN SEUL `axis_query` (App. F.1 prévoit une union de latents
 sur PLUSIEURS mots-clés, éventuellement générés par LLM) et n'a ni étiquetage
-de cluster, ni accuracy, ni z-score de conductance (AUDIT_SAE_2026-08.md §1/§7).
+de cluster, ni accuracy, ni z-score de conductance (docs/archive/audits/AUDIT_SAE_2026-08.md §1/§7).
 
 Adaptateur du juge local du projet (`src.sae.judge._batched_generate`), même
 raison que les autres modules `*_verified`/`hypothesis_verifier` : le code des

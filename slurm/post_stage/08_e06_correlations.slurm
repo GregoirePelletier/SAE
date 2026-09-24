@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e06_correlations_%j.out
 #SBATCH --error=logs/post_stage/e06_correlations_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E06 -- correlations entre proprietes, confirmees hors decouverte (plan §11).
 # Depend de : 04_e02_feature_registry.slurm (catalogue interpretable),

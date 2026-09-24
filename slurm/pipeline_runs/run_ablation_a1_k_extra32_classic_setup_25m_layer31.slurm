@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_a1_k32_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# A1 (AUDIT_SAE_2026-08.md, campagne finale) : K_EXTRA=32 (défaut historique du
+# A1 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : K_EXTRA=32 (défaut historique du
 # dépôt avant l'ablation "setup classique du papier" qui a introduit K_EXTRA=5,
 # jamais retesté sous méthodologie finale) contre R0 (K_EXTRA=5). Copie exacte
 # de R0 (results_v27_ablation_classic_setup_k5_25m_layer31), SEUL K_EXTRA change.

@@ -8,7 +8,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/validation/audit_judge_sep_seed7_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Audit 2026-08 round 2, B.17 (suite) : judge_model_separation_test.py
 # maintenant seede, rejoue avec seed=7 pour mesurer la variance inter-graine

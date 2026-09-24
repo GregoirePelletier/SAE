@@ -1,7 +1,7 @@
 """Smoke-teste src/visualization/dashboard.py (Streamlit) : chaque page,
 sur plusieurs runs réels, ne doit jamais lever d'exception. Persiste en test
 ce qui n'était vérifié jusqu'ici qu'à la main (`streamlit.testing.v1.AppTest`,
-AUDIT_SAE_2026-08.md) -- CPU-only, lit uniquement des artefacts déjà sur
+docs/archive/audits/AUDIT_SAE_2026-08.md) -- CPU-only, lit uniquement des artefacts déjà sur
 disque, aucun modèle chargé. Ne vérifie PAS que les chiffres affichés sont
 corrects (cf. test_dashboard_judge_sources.py pour ça), seulement que rien ne
 plante."""

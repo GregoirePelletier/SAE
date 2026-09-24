@@ -1,6 +1,6 @@
 """
 scripts/post_stage/e02_feature_registry.py -- Registre de features CORE/EXTRA
-labellisées (Plan_execution_SAE_15_jours_Claude_Code.md §7). Réutilise
+labellisées (docs/post_stage/PLAN_E00-E09.md §7). Réutilise
 l'infrastructure de labellisation déjà auditée (`src/sae/judge.py::
 odd_one_out_judge`, `feature_selection_stratified_by_frequency`) plutôt que
 d'en réécrire une -- CLAUDE.md interdit de dupliquer une fonctionnalité déjà

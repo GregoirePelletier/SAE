@@ -10,7 +10,7 @@
 #SBATCH --output=logs/post_stage/e00_profile_%j.out
 #SBATCH --error=logs/post_stage/e00_profile_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E00 -- validation du correctif C1 (docs/post_stage/memory_diagnosis.md),
 # apres le premier profilage (job 48515, correctif pas encore applique a

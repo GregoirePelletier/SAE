@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_v2_seed7_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# V2 (AUDIT_SAE_2026-08.md, campagne finale) : second point de variabilité
+# V2 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : second point de variabilité
 # run-à-run de R0, en complément de V1 (seed123) -- trois seeds (42/123/7) donnent
 # un plancher de bruit bien mieux posé qu'un seul écart. Copie exacte de R0
 # (results_v27_ablation_classic_setup_k5_25m_layer31), SEED=7 au lieu de 42.

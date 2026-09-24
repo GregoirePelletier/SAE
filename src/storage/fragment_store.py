@@ -30,7 +30,7 @@ import torch
 
 class AsyncFragmentWriter:
     """Écriture de fragments en arrière-plan (audit perf G2,
-    AUDIT_SAE_2026-08.md §2.2) : `torch.save` est libérateur du GIL (I/O), un
+    docs/archive/audits/AUDIT_SAE_2026-08.md §2.2) : `torch.save` est libérateur du GIL (I/O), un
     seul thread consommateur suffit -- le débit est dominé par la latence de
     métadonnées d'un volume réseau partagé (~1-5 ms/fichier), pas par le CPU
     d'écriture. Le GPU ne doit jamais attendre le disque pour continuer.
@@ -86,7 +86,7 @@ def _pt_path(d: str, i: int) -> str:  return os.path.join(d, f"doc_{i:05d}.pt")
 def _pkl_path(d: str, i: int) -> str: return os.path.join(d, f"doc_{i:05d}.pkl")
 
 
-# ─── shards (audit perf item 3, AUDIT_SAE_2026-08.md §2.2) ───
+# ─── shards (audit perf item 3, docs/archive/audits/AUDIT_SAE_2026-08.md §2.2) ───
 #
 # Un fichier par document (doc_*.pt) coûte ~1-5 ms de latence de métadonnées
 # par création sur le volume réseau partagé -- 432k créations + fsync
@@ -104,7 +104,7 @@ SHARD_SIZE = 1000
 def resolve_extension_fragments_dir(cache_dir: str) -> str:
     """Répertoire de fragments à lire pour les features EXTENSION (idx >=
     d_core) -- `<cache_dir>/p1_token_fragments_ext` si présent (run postérieur
-    au correctif N1, AUDIT_SAE_2026-08.md §8 : le ré-encodage écrit désormais
+    au correctif N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8 : le ré-encodage écrit désormais
     dans un répertoire privé, jamais dans le cache d'extraction PARTAGÉ) ;
     repli sur `<cache_dir>/p1_token_fragments` sinon (run "legacy", antérieur
     au cache d'extraction partagé -- ex. `results_v10_emails_main/` -- où les
@@ -200,7 +200,7 @@ def _dense_to_csr(acts: torch.Tensor, eps: float = 1e-6):
 
 class ShardedFragmentWriter:
     """Écrit les fragments par lots de SHARD_SIZE documents dans un seul
-    fichier (audit perf item 3, AUDIT_SAE_2026-08.md §2.2/§2.9) au lieu d'un
+    fichier (audit perf item 3, docs/archive/audits/AUDIT_SAE_2026-08.md §2.2/§2.9) au lieu d'un
     fichier par document -- réduit 432k créations de fichiers/fsync à ~432
     sur le run de référence. Utilisée UNIQUEMENT côté extraction (saev5.py) ;
     le ré-encodage continue d'écrire un fichier par document via
@@ -376,7 +376,7 @@ def doc_maxpool(frag: dict) -> torch.Tensor:
 
 def doc_topk_mean_pool(frag: dict, k: int = 3) -> torch.Tensor:
     """Moyenne des `k` plus fortes activations par feature -- alternative au
-    max-pooling (E01, Plan_execution_SAE_15_jours_Claude_Code.md §6.3) qui
+    max-pooling (E01, docs/post_stage/PLAN_E00-E09.md §6.3) qui
     teste la domination d'un pic isolé plutôt que de la mesurer implicitement.
     Zéros implicites inclus dans la moyenne (une feature non-nulle sur moins
     de `k` tokens du document a des zéros parmi ses `k` plus fortes valeurs --

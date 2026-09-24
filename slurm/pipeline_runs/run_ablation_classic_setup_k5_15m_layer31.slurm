@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_15m_layer31_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Sweep volume de tokens, point 2/3 : 15M tokens, N_VOLUME_FILLER_TARGET_CHUNKS=0
 # -- proche de la taille totale estimée du corpus réel (mails originaux +

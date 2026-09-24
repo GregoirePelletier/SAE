@@ -19,7 +19,7 @@ Ce module fournit UNIQUEMENT le calcul F1 + l'agrégation par palier de
 taille -- l'orchestration (activation réelle par document, nécessite les
 fragments token-level du corpus étudié) reste du ressort de l'appelant :
 aucune extraction/lecture de fragments faite ici, pour rester utilisable
-indépendamment de l'état du cache d'extraction (N1, AUDIT_SAE_2026-08.md §8)."""
+indépendamment de l'état du cache d'extraction (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8)."""
 from __future__ import annotations
 
 from dataclasses import dataclass

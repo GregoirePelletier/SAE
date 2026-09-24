@@ -8,7 +8,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/validation/email_interp_embed_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

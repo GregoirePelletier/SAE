@@ -109,7 +109,7 @@ def compute_verification_metrics(
       fréquence vérifiée |rate_in_group - rate_out_group| dépasse `threshold`
       (>1% dans le papier, Figure 11) -- métrique de fidélité comparable au
       papier pour le diffing (aucune autre ne l'est dans ce dépôt à ce jour,
-      cf. AUDIT_SAE_2026-08.md §7).
+      cf. docs/archive/audits/AUDIT_SAE_2026-08.md §7).
     - `coverage` : fraction des documents du groupe cible (`group_mask`)
       couverts par AU MOINS une hypothèse valide dans le sens
       target > reste, vérifiée vraie sur ce document précis (Figure 12 :

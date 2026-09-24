@@ -8,7 +8,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/validation/audit_c2_rejudge_seed7_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Audit 2026-08 round 2, B.17 : c2_original_only_rejudge.py maintenant
 # seede (SEED env var), rejoue avec seed=7 pour mesurer la variance

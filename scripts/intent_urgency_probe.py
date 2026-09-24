@@ -11,7 +11,7 @@ RÉELLES des mails originaux (détectées par regex sur le texte brut,
 indépendamment de toute perturbation artificielle), un test plus proche du
 cas d'usage final.
 
-Baseline TF-IDF+LogReg (AUDIT_SAE_2026-08.md, D1) : les labels d'intention
+Baseline TF-IDF+LogReg (docs/archive/audits/AUDIT_SAE_2026-08.md, D1) : les labels d'intention
 sont eux-mêmes construits par mots-clés (INTENT_KEYWORDS_FR) -- une baseline
 purement lexicale est donc structurellement favorisée et doit être rapportée,
 pas seulement la comparaison à la classe majoritaire. Les deux sondes

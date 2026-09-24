@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_a2_d2048_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# A2 (AUDIT_SAE_2026-08.md, campagne finale) : D_EXTRA=2048 (capacité doublée de
+# A2 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : D_EXTRA=2048 (capacité doublée de
 # l'extension) contre R0 (D_EXTRA=1024). Copie exacte de R0
 # (results_v27_ablation_classic_setup_k5_25m_layer31), SEUL D_EXTRA change.
 # Cache d'extraction partagé réutilisé (D_EXTRA hors clé de cache) -- coût limité

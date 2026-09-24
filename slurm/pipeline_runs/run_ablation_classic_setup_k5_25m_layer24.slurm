@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_25m_layer24_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Complète le sweep layer "setup classique" (K_EXTRA=5/25M/stratifié/Qwen/
 # déduplication) avec layer 24 -- le défaut historique du dépôt (couverture

@@ -77,7 +77,7 @@ class FrozenCoreResidualSAE(nn.Module):
         # plus nécessaire ici (contrairement à avant ce correctif) : un decode
         # complet du core en moins à chaque encode(), ce qui supprime aussi le
         # besoin de decode_core_sparse au ré-encodage (audit perf, cause racine
-        # du doublon de stockage raw_acts documentée dans AUDIT_SAE_2026-08.md §1.3).
+        # du doublon de stockage raw_acts documentée dans docs/archive/audits/AUDIT_SAE_2026-08.md §1.3).
         extra_acts = self._encode_extra_acts(x_bf16.float())
         return torch.cat([core_acts.float(), extra_acts.float()], dim=-1)
 

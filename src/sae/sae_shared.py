@@ -193,7 +193,7 @@ def compute_activation_cache_key(
     puisque ces artefacts ne dépendent que du modèle, de la couche, du hook,
     du SAE core, du budget de tokens, du corpus VU à l'extraction (après
     troncature -- `max_length` fait partie du payload pour cette raison
-    précise, N8, AUDIT_SAE_2026-08.md §8 : le hash du corpus ci-dessous porte
+    précise, N8, docs/archive/audits/AUDIT_SAE_2026-08.md §8 : le hash du corpus ci-dessous porte
     sur le texte AVANT troncature, `max_length` est le seul signal qui
     distingue deux runs dont le texte tronqué diffère à texte source
     identique) et du masquage des tokens (`sigma_clip`,
@@ -228,7 +228,7 @@ def shared_activation_cache_dir(key: str) -> str:
 
 
 def save_doc_acts_sparse_filler(tensor: "torch.Tensor", n_train: int, n_filler: int, path: str) -> None:
-    """Sauvegarde compacte de `all_doc_sae_acts` (N10, AUDIT_SAE_2026-08.md
+    """Sauvegarde compacte de `all_doc_sae_acts` (N10, docs/archive/audits/AUDIT_SAE_2026-08.md
     §8) : la plage filler `[n_train, n_train+n_filler)` est connue a priori
     et n'est JAMAIS lue en aval (aucun consommateur n'indexe cette plage, cf.
     saev5.py -- placeholders "jamais lus en aval") -- son contenu ne mérite
@@ -298,7 +298,7 @@ def load_all_doc_acts(path: str) -> "torch.Tensor":
     compacté -- les lignes filler n'y sont jamais matérialisées, cf.
     `build_reencode_targets`) ou au format compact filler-creux
     (`p1_all_doc_acts.pt`, cache d'extraction PARTAGÉ, N10,
-    AUDIT_SAE_2026-08.md §8). Dispatché sur le CONTENU du fichier (dict vs
+    docs/archive/audits/AUDIT_SAE_2026-08.md §8). Dispatché sur le CONTENU du fichier (dict vs
     tenseur), pas sur son nom -- un appelant qui suit la convention de
     repli `p1_all_doc_acts_ext_d*.pt` puis `p1_all_doc_acts.pt` (une
     dizaine de scripts d'analyse) n'a pas besoin de savoir laquelle des deux
@@ -338,7 +338,7 @@ def acquire_shared_cache_lock(
 ):
     """Verrou de création exclusive (`atomic_create_exclusive`, équivalent
     `O_EXCL` sans fenêtre de contenu partiel, cf. `src/storage/checkpoint.py`)
-    sur `cache_dir/.extraction.lock` (N2, AUDIT_SAE_2026-08.md §8) -- la
+    sur `cache_dir/.extraction.lock` (N2, docs/archive/audits/AUDIT_SAE_2026-08.md §8) -- la
     méthode de travail de ce dépôt lance
     délibérément des jobs de MÊME clé de cache en parallèle sur plusieurs
     partitions (course, l'utilisateur annulant le perdant une fois qu'un des
@@ -515,7 +515,7 @@ def load_or_train_extended_sae(
     # batch_size affecte aussi le régime de sparsité BatchTopK (budget partagé
     # sur le batch, src/sae/batch.py) -- paramétré (au lieu d'une constante en
     # dur) pour permettre l'ablation avant tout changement de défaut
-    # (AUDIT_SAE_2026-08.md §2.9, item 7).
+    # (docs/archive/audits/AUDIT_SAE_2026-08.md §2.9, item 7).
     BATCH_SIZE = batch_size
 
     # Historique PAR STEP (pas par époque), aligné avec la convention du
@@ -532,7 +532,7 @@ def load_or_train_extended_sae(
         model.train()
         # block_shuffle_indices plutôt que train_idx[torch.randperm(len(train_idx))] :
         # évite de réallouer un tenseur int64 de la taille de train_idx à chaque
-        # époque (jusqu'à ~800 Mo sur un run à 100M tokens, cf. AUDIT_SAE_2026-08.md).
+        # époque (jusqu'à ~800 Mo sur un run à 100M tokens, cf. docs/archive/audits/AUDIT_SAE_2026-08.md).
         epoch_perm = block_shuffle_indices(train_idx)
         # Métriques accumulées comme tenseurs GPU pendant l'époque, converties en
         # Python UNE SEULE FOIS à la fin (un seul sync CPU<->GPU par époque) plutôt

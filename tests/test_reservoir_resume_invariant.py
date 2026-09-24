@@ -1,5 +1,5 @@
 """Vérifie l'invariant statistique dont dépend la reprise du réservoir de
-Vitter dans saev5.py (Extraction P1, AUDIT_SAE_2026-08.md §2.3/§4.3, R1) :
+Vitter dans saev5.py (Extraction P1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3, R1) :
 traiter les tokens en DEUX passes (avant coupure, puis reprise avec les
 compteurs persistés n_residuals_seen/n_residuals_collected) doit donner la
 MÊME probabilité marginale d'inclusion dans le réservoir que de les traiter

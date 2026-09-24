@@ -1,6 +1,6 @@
 """
 scripts/post_stage/e06_correlations.py -- Correlations entre proprietes,
-confirmees hors decouverte (Plan_execution_SAE_15_jours_Claude_Code.md §11).
+confirmees hors decouverte (docs/post_stage/PLAN_E00-E09.md §11).
 
 Decouverte (candidats) sur FIT+DEV : NPMI par-parent sur le catalogue de
 features interpretables d'E02 (CORE+EXTRA). Filtre support conjoint >= 10

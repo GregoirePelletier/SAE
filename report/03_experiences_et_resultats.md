@@ -686,7 +686,7 @@ d'échelle et un effet de juge, cette comparaison ne doit **pas** être lue
 contre le 94,0% de référence du projet (§94), qui provient d'une autre
 famille de run (`results_v10_emails_main`, layer 24, `K_EXTRA=32`, confond
 layer et `K_EXTRA` en plus de la taille du modèle — erreur déjà commise et
-corrigée une fois dans ce rapport, cf. `AUDIT_SAE_2026-08.md` §9). L'écart
+corrigée une fois dans ce rapport, cf. `docs/archive/audits/AUDIT_SAE_2026-08.md` §9). L'écart
 1B/12B (82,0%, encore Gemma) reste néanmoins déjà nettement plus modeste que
 le chiffre historique (12,0%→45,3%, 33,3 points, sous sélection par
 magnitude et juge auto-référent des deux côtés) : cohérent avec §83/§89/§90

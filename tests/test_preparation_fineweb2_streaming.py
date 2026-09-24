@@ -1,5 +1,5 @@
 """Teste src/data/preparation.py::prepare_domain_dataset/sample_fineweb2_chunks
-en streaming=True (AUDIT_SAE_2026-08.md, item A1 : ces deux appels chargeaient
+en streaming=True (docs/archive/audits/AUDIT_SAE_2026-08.md, item A1 : ces deux appels chargeaient
 le parquet FineWeb2 entier en RAM avant filtrage -- `sample_fineweb2_chunks`
 est appelée en boucle sur 18 shards de 4,6 Go pour construire le filler, c'est
 le chemin de production le plus lourd). Le correctif change uniquement le
@@ -22,7 +22,7 @@ from datasets import load_dataset as _real_load_dataset
 
 # Garde-fou : si n_target n'est pas atteint par le fixture local,
 # prepare_domain_dataset retombe sur un fetch réseau de wikimedia/wikipedia
-# (cf. AUDIT_SAE_2026-08.md, item D1) -- offline forcé pour que toute erreur
+# (cf. docs/archive/audits/AUDIT_SAE_2026-08.md, item D1) -- offline forcé pour que toute erreur
 # de calibration du fixture échoue vite et proprement plutôt que de tenter un
 # accès réseau depuis ce test CPU.
 os.environ.setdefault("HF_HUB_OFFLINE", "1")

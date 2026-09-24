@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_a6_ep40_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# A6 (AUDIT_SAE_2026-08.md, campagne finale) : EPOCHS_EXTRA=40 (x4, ancienne
+# A6 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : EPOCHS_EXTRA=40 (x4, ancienne
 # ablation "Époques x4 (40/100)" testée uniquement sous magnitude+Gemma,
 # 41,3%, z=0,70, non significatif -- jamais rejouée sous méthodologie
 # finale) contre R0 (§97, EPOCHS_EXTRA=10). Copie exacte de R0

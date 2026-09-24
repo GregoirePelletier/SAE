@@ -1,6 +1,6 @@
 """Teste le correctif SAE Boost (Koriagin 2025, §3.1) de src/sae/frozen_core.py :
 l'encodeur extra doit lire x (l'entrée du core gelé), pas le résidu
-e = x - x̂_core (AUDIT_SAE_2026-08.md §1.3, "Écart 1"). Les tests existants de
+e = x - x̂_core (docs/archive/audits/AUDIT_SAE_2026-08.md §1.3, "Écart 1"). Les tests existants de
 test_frozen_core.py ne pouvaient pas distinguer les deux cas : leur mock
 core_sae.decode() retourne toujours des zéros, donc residual == x et le bug
 était invisible. Ici core_out != x pour rendre la distinction observable."""

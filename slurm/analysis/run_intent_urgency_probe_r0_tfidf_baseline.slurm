@@ -8,7 +8,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/analysis/intent_urgency_r0_tfidf_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -16,7 +16,7 @@ export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH}"
 
-# D1 (AUDIT_SAE_2026-08.md) : sondes d'intention + baseline TF-IDF+LogReg sur
+# D1 (docs/archive/audits/AUDIT_SAE_2026-08.md) : sondes d'intention + baseline TF-IDF+LogReg sur
 # les codes de R0 (results_v27_ablation_classic_setup_k5_25m_layer31, référence
 # unique du rapport sous méthodologie finale). Zéro calcul GPU réel (réutilise
 # p1_all_doc_acts_ext_d1024.pt déjà en cache).

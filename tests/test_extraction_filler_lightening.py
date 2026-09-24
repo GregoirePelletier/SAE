@@ -1,5 +1,5 @@
 """Teste src/data/preparation.py::is_filler_document -- allègement de
-l'extraction P1 côté filler (AUDIT_SAE_2026-08.md §2.2/§2.5) : un document
+l'extraction P1 côté filler (docs/archive/audits/AUDIT_SAE_2026-08.md §2.2/§2.5) : un document
 filler ne doit ni être encodé par le core SAE ni écrit en fragment, seul son
 résidu brut compte pour le réservoir. Complète test_reencode_skips_filler.py
 (qui teste l'exclusion filler du ré-encodage) côté extraction."""

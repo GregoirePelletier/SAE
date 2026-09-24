@@ -1,5 +1,5 @@
 """Teste src/analysis/metrics.py::normalize_by_p90_and_score -- correctif
-fidélité interp-embed Fig. 10 étape 1 (AUDIT_SAE_2026-08.md) :
+fidélité interp-embed Fig. 10 étape 1 (docs/archive/audits/AUDIT_SAE_2026-08.md) :
 property_based_retrieval (saev5.py) sommait les activations BRUTES pondérées
 par rang, laissant les magnitudes JumpReLU non bornées du core (outliers
 ~1e5) écraser le poids de rang. Chaque latent est maintenant normalisé par

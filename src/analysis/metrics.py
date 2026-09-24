@@ -253,7 +253,7 @@ def normalize_by_p90_and_score(matched_acts: torch.Tensor, weights: torch.Tensor
     somme pondérée par rang -- sans cette normalisation, les magnitudes JumpReLU
     non bornées du core (outliers ~1e5) écrasent le poids de rang, le score est
     dominé par l'échelle des latents plutôt que par leur pertinence
-    (AUDIT_SAE_2026-08.md). `matched_acts` : [n_docs, k_latents]."""
+    (docs/archive/audits/AUDIT_SAE_2026-08.md). `matched_acts` : [n_docs, k_latents]."""
     k = matched_acts.shape[1]
     p90 = torch.ones(k, dtype=matched_acts.dtype)
     for j in range(k):

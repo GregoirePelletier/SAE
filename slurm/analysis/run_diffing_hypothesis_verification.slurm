@@ -9,7 +9,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/diffing_hypothesis_verification_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -20,7 +20,7 @@ export PYTHONUNBUFFERED=1
 # hypothèses de diffing SAE déjà en cache (p1_diff_energy_sports.csv) contre
 # un corpus energy/sports frais -- première mesure verification_rate/coverage
 # de ce dépôt (rien n'était comparable au papier pour le diffing avant, cf.
-# AUDIT_SAE_2026-08.md §7). h100 obligatoire (Qwen3.8-27B-FP8 OOM sur les
+# docs/archive/audits/AUDIT_SAE_2026-08.md §7). h100 obligatoire (Qwen3.8-27B-FP8 OOM sur les
 # a100 40 Go de ce cluster, cf. job 45444).
 export SAVE_DIR="./results_v10_emails_main/"
 export LOCAL_DATASET_PATH="${SAE_ROOT}/datasets/fineweb2_fra/data/fra_Latn/train/000_00000.parquet"

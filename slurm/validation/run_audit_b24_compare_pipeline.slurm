@@ -8,7 +8,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=logs/validation/audit_b24_compare_pipeline_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Audit 2026-08, B.24 : premier essai du module src/sae/compare/ (jamais
 # execute). Compare F2LLM-v2-80M (backbone Pipeline 2 en production) a

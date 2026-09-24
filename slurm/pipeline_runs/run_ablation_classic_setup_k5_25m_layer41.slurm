@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_25m_layer41_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation "setup classique du papier" (SAE Boost, Koriagin et al. COLM 2025) :
 # K_EXTRA=5 (leur k optimal, le dépôt utilise K_EXTRA=32 par défaut depuis

@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_a3_w65k_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# A3 (AUDIT_SAE_2026-08.md, campagne finale) : largeur du SAE core 65k
+# A3 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : largeur du SAE core 65k
 # (gemma-scope-2-12b-it, layer_31_width_65k_l0_medium, téléchargé pour
 # l'occasion -- n'existait localement que pour layer_24) contre R0 (§97,
 # core 16k). Complète le balayage de largeur (§17 : 16k/65k/262k, mais

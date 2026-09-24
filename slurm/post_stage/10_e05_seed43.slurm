@@ -10,7 +10,7 @@
 #SBATCH --output=logs/post_stage/e05_seed43_%j.out
 #SBATCH --error=logs/post_stage/e05_seed43_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E05 -- deuxieme graine d'entrainement de l'extension (plan §10.2 :
 # "Trois checkpoints d'extension, memes donnees FIT, meme architecture,

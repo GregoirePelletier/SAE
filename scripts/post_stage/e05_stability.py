@@ -1,6 +1,6 @@
 """
 scripts/post_stage/e05_stability.py -- Stabilite inter-graines des features
-EXTRA, groupes et sous-espaces (Plan_execution_SAE_15_jours_Claude_Code.md
+EXTRA, groupes et sous-espaces (docs/post_stage/PLAN_E00-E09.md
 §10). CPU uniquement (aucun modele charge), a lancer via sbatch.
 
 Trois extensions entrainees sur les MEMES donnees FIT, meme architecture et

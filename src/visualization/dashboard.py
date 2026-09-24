@@ -65,7 +65,7 @@ def _judge_label_sources(run_dir: str, prefix: str) -> dict[str, dict]:
     labels juge disponibles dans ce run, `prefix` = "p1" ou "p2".
 
     Plusieurs formats de fichier coexistent depuis l'introduction du juge
-    Qwen (AUDIT_SAE_2026-08.md §9) : le cache plat d'origine
+    Qwen (docs/archive/audits/AUDIT_SAE_2026-08.md §9) : le cache plat d'origine
     ({f_idx: {...}}, juge non enregistré dans le fichier avant le sidecar
     `.meta.json` ajouté cette session), les comparaisons juge alternatif
     ({summary, alt_per_feature}, `judge_model_separation_test.py`/
@@ -1049,19 +1049,19 @@ def page_audit_2026_08() -> None:
                "Indépendant du run sélectionné dans la barre latérale. "
                "Archive figée des scripts qui ont établi les correctifs désormais actifs par défaut "
                "(sélection stratifiée, juge Qwen3.8-27B découplé de l'extracteur, déduplication par "
-               "mail parent) -- ces items sont tranchés (AUDIT_SAE_2026-08.md §9). Pour la campagne "
+               "mail parent) -- ces items sont tranchés (docs/archive/audits/AUDIT_SAE_2026-08.md §9). Pour la campagne "
                "de mesure sous cette méthodologie (balayages échelle/layer, sanity checks, "
                "diffing/clustering/retrieval vérifiés), voir les onglets Sweeps, Clustering & "
                "Corrélations, Diffing et Recherche.")
 
     patterns = [
-        os.path.join(REPO_ROOT, "docs", "audit_*_results.json"),
+        os.path.join(REPO_ROOT, "docs", "archive", "audits", "audit_*.json"),
         os.path.join(REPO_ROOT, "results_v10_emails_main", "cache", "audit_2026_08_*.json"),
         os.path.join(REPO_ROOT, "results_v10_emails_main", "cache", "c2_original_only_rejudge*.json"),
     ]
     files = sorted({f for p in patterns for f in glob.glob(p)})
     if not files:
-        st.info("Aucune sortie d'audit trouvée sous docs/ ou cache/.")
+        st.info("Aucune sortie d'audit trouvée sous docs/archive/audits/ ou cache/.")
         return
 
     rel_files = [os.path.relpath(f, REPO_ROOT) for f in files]

@@ -9,8 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val100k_l24_v11_originals_filler_matched_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
-# --signal=B:USR1@600 : cf. run_validation_25m_layer24.slurm (R1, AUDIT_SAE_2026-08.md §2.3/§4.3).
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+# --signal=B:USR1@600 : cf. run_validation_25m_layer24.slurm (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3).
 
 # B.1, reprise contrôlée de v9 (job 44833, RESULTS_TESTS.md §76). v9 confondait
 # corpus (originaux seuls) et part de filler FineWeb2 dans le réservoir

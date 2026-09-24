@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_v1_seed123_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# V1 (AUDIT_SAE_2026-08.md, campagne finale) : variabilité run-à-run de R0. Tout le
+# V1 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : variabilité run-à-run de R0. Tout le
 # dépôt est à n=1 graine à ce jour -- ce run rejoue R0 (run_ablation_classic_setup_
 # k5_25m_layer31.slurm, results_v27_ablation_classic_setup_k5_25m_layer31) à
 # l'identique, SEED=123 au lieu de 42. CORPUS_SPLIT_SEED (src/config.py, découplé de

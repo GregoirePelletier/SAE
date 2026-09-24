@@ -8,13 +8,13 @@
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/pipeline_runs/sae_b2_rejudge_h_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-# ── B2 (AUDIT_SAE_2026-08.md §5) : re-juge 150 features sélectionnées par
+# ── B2 (docs/archive/audits/AUDIT_SAE_2026-08.md §5) : re-juge 150 features sélectionnées par
 # fréquence (feature_selection_stratified_by_frequency, App. J interp-embed)
 # plutôt que par magnitude token-level moyenne (défaut, référence 45,3%
 # 68/150) -- même SAE d'extension déjà entraîné, même juge, aucun

@@ -9,10 +9,10 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val25m_l24_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 # --signal=B:USR1@600 : SLURM envoie SIGUSR1 ~10 min avant le SIGKILL du
 # timeout (48h) -- laisse le temps à saev5.py (_GracefulShutdown) d'écrire un
-# checkpoint de progression avant l'arrêt forcé (R1, AUDIT_SAE_2026-08.md
+# checkpoint de progression avant l'arrêt forcé (R1, docs/archive/audits/AUDIT_SAE_2026-08.md
 # §2.3/§4.3). Sans ce flag, seule une coupure "propre" (OOM, crash Python,
 # scancel) déclenche la reprise -- le timeout SLURM lui-même reste un
 # SIGKILL sec.

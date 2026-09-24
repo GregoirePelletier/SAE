@@ -1,11 +1,11 @@
 """Teste src/data/dataset.py::INTENT_KEYWORDS_FR -- correctif B.6
-(AUDIT_SAE_2026-08.md) : le motif "remboursement" matchait "avoir\\w*", le
+(docs/archive/audits/AUDIT_SAE_2026-08.md) : le motif "remboursement" matchait "avoir\\w*", le
 verbe "avoir" (l'un des mots les plus fréquents du français), invalidant tout
 document qui le contient comme faussement étiqueté "remboursement". Le motif
 corrigé exige un déterminant devant "avoir" (le nom, note de crédit EDF)
 plutôt que la forme verbale nue.
 
-N5 (AUDIT_SAE_2026-08.md §8) : "l'avoir"/"d'avoir" retirés du motif après
+N5 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : "l'avoir"/"d'avoir" retirés du motif après
 vérification empirique sur `local_data/emails/Mails.tsv` -- 31/31 occurrences
 de "d'avoir" et 4/4 de "l'avoir" y sont l'usage VERBAL (infinitif après
 préposition/pronom COD, ex. "je ne suis pas certain d'avoir compris", "je

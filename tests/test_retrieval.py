@@ -81,7 +81,7 @@ def test_latent_terms_index_csc_matches_dense_bm25_scores():
     aurait silencieusement mal attribué tous les scores BM25 au mauvais
     document. Vérifié : `latent_retrieval_precision_eval.py` n'a jamais produit
     de résultat citable avant cette migration (bloqué par l'OOM de
-    `build_token_training_pool`, cf. AUDIT_SAE_2026-08.md), donc aucun chiffre
+    `build_token_training_pool`, cf. docs/archive/audits/AUDIT_SAE_2026-08.md), donc aucun chiffre
     publié n'est concerné -- mais la classe de bug est réelle et vaut d'être
     gardée en mémoire dans ce commentaire, pas seulement dans un message de
     commit."""

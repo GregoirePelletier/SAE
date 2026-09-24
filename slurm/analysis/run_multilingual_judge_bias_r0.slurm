@@ -8,7 +8,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/analysis/sae_multilingual_bias_r0_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Biais multilingue du juge sous R0 (RESULTS_TESTS.md §22 réutilisait le juge
 # auto-référent MODEL_ID=Gemma-3-12b-it sur la sélection historique par

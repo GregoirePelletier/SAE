@@ -1,5 +1,5 @@
 """Teste src/visualization/dashboard.py::_judge_label_sources -- avant ce
-correctif (AUDIT_SAE_2026-08.md §9), la page Features affichait toujours le
+correctif (docs/archive/audits/AUDIT_SAE_2026-08.md §9), la page Features affichait toujours le
 cache p1_judge_labels_extended.json sans dire de quel juge il vient, alors
 que Gemma et Qwen coexistent maintenant dans le même SAVE_DIR (p1_judge_
 model_separation_*.json, b1_stratified_mixte_qwen_rejudge_*.json,

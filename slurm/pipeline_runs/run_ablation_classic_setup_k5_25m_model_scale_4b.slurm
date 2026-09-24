@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_25m_4b_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation taille du modèle extracteur/juge (1B vs 4B vs 12B référence) --
 # remplace results_v13_ablation_model_scale_4b (archivée, docs/archived_runs_manifest.md,

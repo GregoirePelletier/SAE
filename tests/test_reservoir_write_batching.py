@@ -1,5 +1,5 @@
 """Vérifie l'amortissement des écritures aléatoires du réservoir
-(saev5.py::_flush_pending_reservoir_writes, AUDIT_SAE_2026-08.md §2.2, G5) :
+(saev5.py::_flush_pending_reservoir_writes, docs/archive/audits/AUDIT_SAE_2026-08.md §2.2, G5) :
 accumuler les remplacements dans un buffer puis les appliquer triés par
 indice (torch.argsort(..., stable=True)) doit produire EXACTEMENT le même
 état final de réservoir que des écritures immédiates non triées -- y

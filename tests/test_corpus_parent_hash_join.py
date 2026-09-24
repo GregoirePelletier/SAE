@@ -1,4 +1,4 @@
-"""Teste le correctif B.7 (AUDIT_SAE_2026-08.md) de
+"""Teste le correctif B.7 (docs/archive/audits/AUDIT_SAE_2026-08.md) de
 src/data/preparation.py::build_email_train_test_corpus : la jointure
 mail-parent <-> variante augmentée se fait maintenant par SHA1 du texte
 parent (`parent_sha1`), pas par position (`parent_id` positionnel), qui

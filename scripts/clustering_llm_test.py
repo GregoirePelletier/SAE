@@ -2,10 +2,10 @@
 scripts/clustering_llm_test.py — Clustering ciblé complet (Appendix F.1,
 §4.3, arXiv:2512.10092v2) : `saev5.py::targeted_clustering_by_axis` ne fait
 que la sélection de latents par UN SEUL `axis_query` fixe + Jaccard (corrigé
-séparément, cf. AUDIT_SAE_2026-08.md) -- il manquait la génération de
+séparément, cf. docs/archive/audits/AUDIT_SAE_2026-08.md) -- il manquait la génération de
 mots-clés LLM + union top-k, l'étiquetage de cluster, l'accuracy par
 réassignation LLM et le z-score de conductance en espace dense
-(AUDIT_SAE_2026-08.md §1/§7). Ce script exerce la chaîne complète sur les 150
+(docs/archive/audits/AUDIT_SAE_2026-08.md §1/§7). Ce script exerce la chaîne complète sur les 150
 features d'extension déjà labellisées (`p1_top_extended_features.json`, reste
 autonome sans reconstruire le dictionnaire complet core+extension).
 
@@ -51,7 +51,7 @@ def _embed(texts: list, batch_size: int = 64) -> torch.Tensor:
     """Même convention que `saev5.py::_embed_bge_m3` (pooling [CLS] normalisé)
     -- dupliqué ici car `saev5.py` exécute tout son pipeline au chargement du
     module (pas de garde `if __name__ == "__main__"`), donc non-importable
-    comme bibliothèque (cf. AUDIT_SAE_2026-08.md, limitation notée)."""
+    comme bibliothèque (cf. docs/archive/audits/AUDIT_SAE_2026-08.md, limitation notée)."""
     tok = AutoTokenizer.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True)
     mdl = AutoModel.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True).to(DEVICE).eval()
     embs = []

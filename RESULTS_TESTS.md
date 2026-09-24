@@ -3915,7 +3915,7 @@ massivement documenté par axe (§38, jusqu'à 59,6%) est réel et important,
 mais sa cause est le seuil `length_ratio` interagissant avec des axes qui
 raccourcissent le texte par construction (orthographe très dégradée,
 impatience) — indépendant de la longueur du parent. À corriger dans
-`AUDIT_SAE_2026-08.md` : l'item B.9 tel que formulé (troncature → perte de
+`docs/archive/audits/AUDIT_SAE_2026-08.md` : l'item B.9 tel que formulé (troncature → perte de
 faits → sous-représentation des mails longs) est réfuté par cette mesure ;
 B.8 (taux d'acceptation par axe) était déjà couvert par §38, pas absent
 comme l'audit l'affirmait.
@@ -3975,7 +3975,7 @@ complet avant de comparer B.3/B.4/B.6/B.7/B.11 à la référence 45,3%.
 
 **Question** : le corpus d'entraînement de l'extension est dominé (~93% au
 run de référence) par du texte généré par Gemma-3-12B-it, le même modèle qui
-juge ensuite les features. B.1 (AUDIT_SAE_2026-08.md) demandait un premier
+juge ensuite les features. B.1 (docs/archive/audits/AUDIT_SAE_2026-08.md) demandait un premier
 test : réentraîner sur les mails originaux seuls, comparer le taux
 d'interprétabilité.
 
@@ -4103,7 +4103,7 @@ n'est pas simplement sous-entraîné, cf. §76 où rho_sae était dégradé).
 
 ## 79. B.2 tranché : sélection stratifiée par fréquence très significativement supérieure à la sélection par magnitude
 
-**Question** : B.2 (AUDIT_SAE_2026-08.md §5) — `feature_selection_by_magnitude`
+**Question** : B.2 (docs/archive/audits/AUDIT_SAE_2026-08.md §5) — `feature_selection_by_magnitude`
 sélectionne systématiquement les features les plus denses (proches de
 directions génériques/stop-word), un échantillon non comparable à un chiffre
 publié (Bills et al. échantillonnent au hasard, EleutherAI/Paulo stratifient).
@@ -4183,7 +4183,7 @@ terrain (`INTENT_KEYWORDS_FR`) est elle-même lexicale, ce qui favorise
 structurellement TF-IDF sur les intentions à vocabulaire homogène.
 
 **Limite connue** : n=4 requêtes, une seule par intention (pas de réplication
-par paraphrase multiple) — évaluation indicative (AUDIT_SAE_2026-08.md),
+par paraphrase multiple) — évaluation indicative (docs/archive/audits/AUDIT_SAE_2026-08.md),
 pas un benchmark IR (pas de MAP/nDCG/BEIR, cf. §1 métriques App. G
 disponibles mais pas encore branchées sur ce protocole).
 
@@ -4283,7 +4283,7 @@ palier.
 ## 83. Séparation juge/extraction, famille différente : Qwen3.8-27B juge 74% de plus de features interprétables que gemma-3-12b-it (extracteur=juge)
 
 **Question** : jusqu'à l'introduction de `JUDGE_MODEL_ID` (§7,
-`AUDIT_SAE_2026-08.md`), le juge d'auto-interprétation était systématiquement
+`docs/archive/audits/AUDIT_SAE_2026-08.md`), le juge d'auto-interprétation était systématiquement
 le même checkpoint que celui dont on extrait les activations. §43/§63/§65
 avaient déjà mesuré une forte dépendance au choix du juge (gemma-3-12b-it
 45,3% vs gemma-3-4b-it 24,7%, écart robuste à 2 graines) mais ne pouvaient
@@ -4351,7 +4351,7 @@ juge trancherait.
 ## 84. App K.1 (Diffing) — première mesure verification_rate/coverage du dépôt : 40% des hypothèses SAE valides, 92,5% de couverture
 
 **Question** : sans `HypothesisVerifier` (App K.1), aucun chiffre de diffing du
-dépôt n'était comparable au papier (§1, `AUDIT_SAE_2026-08.md`) — la
+dépôt n'était comparable au papier (§1, `docs/archive/audits/AUDIT_SAE_2026-08.md`) — la
 "vérification" des hypothèses SAE se limitait à la génération d'une phrase
 libre (`generate_llm_diff_hypothesis`), jamais quantifiée. `verification_rate`
 (fraction des hypothèses dont la différence de fréquence vérifiée dépasse 1%,
@@ -4411,7 +4411,7 @@ seed/tirage de corpus.
 **Question** : `targeted_clustering_by_axis` (`saev5.py`) ne faisait que la
 sélection de latents par UN SEUL `axis_query` fixe, sans étiquetage de
 cluster, accuracy ni z-score de conductance (§1/§7,
-`AUDIT_SAE_2026-08.md`) — rien n'était comparable au papier pour le
+`docs/archive/audits/AUDIT_SAE_2026-08.md`) — rien n'était comparable au papier pour le
 clustering. `src/analysis/clustering_llm.py` (génération de mots-clés LLM +
 union top-k, étiquetage de cluster, accuracy par réassignation LLM K.3,
 z-conductance en espace dense) exercé ici en chaîne complète pour la
@@ -4471,7 +4471,7 @@ empirique (silhouette/gap statistic).
 **Question** : sans NPMI_verified, `p1_interesting_correlations.json` reste
 une liste de candidats (NPMI brut sur activations SAE + dissimilarité de
 labels), pas un résultat comparable au papier (§1/§7,
-`AUDIT_SAE_2026-08.md`). `src/analysis/correlations_verified.py` exercé ici
+`docs/archive/audits/AUDIT_SAE_2026-08.md`). `src/analysis/correlations_verified.py` exercé ici
 pour la première fois via `scripts/npmi_verified_test.py`.
 
 **Écart à la configuration de référence** : hypothèses = 150 features
@@ -4525,7 +4525,7 @@ dictionnaire complet core+extension) ; un seul seed/tirage de corpus.
 
 ## 87. N3 : le 89,3% stratifié (§79) n'est pas reconstructible a posteriori — sur-pondération des bins rares confirmée par le code, taux par bin non fiable sur cette tentative
 
-**Question** : N3 (audit externe, AUDIT_SAE_2026-08.md §8) soutient que 89,3%
+**Question** : N3 (audit externe, docs/archive/audits/AUDIT_SAE_2026-08.md §8) soutient que 89,3%
 (sélection stratifiée, §79) n'est pas plus comparable à un chiffre publié que
 45,3% (magnitude), dans l'autre sens — le stratifié tire un nombre à peu près
 fixe de features par bin de fréquence quel que soit l'effectif du bin,
@@ -4645,7 +4645,7 @@ avant cette décision.
 
 **Question** : §79 (89,3%, 134/150) et §81 (B.1, résolu négativement contre
 82,0%) sont tous deux jugés par gemma-3-12b-it auto-référent, antérieurs à la
-décision de juger tout avec Qwen3.8-27B (AUDIT_SAE_2026-08.md §9, N4). Ce
+décision de juger tout avec Qwen3.8-27B (docs/archive/audits/AUDIT_SAE_2026-08.md §9, N4). Ce
 run rejuge les 150 features de l'arme MIXTE stratifiée (§79,
 `b2_stratified_selection_rejudge.json`, déjà en cache) avec Qwen, mêmes
 exemples, seul le juge change — même patron que §83
@@ -4789,7 +4789,7 @@ seul tirage de corpus/seed.
 
 **Question** : complète §80 (Latent Terms vs TF-IDF, ancien label
 remboursement bruité par "l'avoir"/"d'avoir") avec (a) le label resserré
-(N5, AUDIT_SAE_2026-08.md §8) et (b) la fusion RRF + reranking LLM + RBO,
+(N5, docs/archive/audits/AUDIT_SAE_2026-08.md §8) et (b) la fusion RRF + reranking LLM + RBO,
 jamais mesurés avant cette session (App G implémentée mais jamais câblée
 sur un pipeline de requêtes réel avant `latent_retrieval_precision_eval.py`).
 
@@ -5030,7 +5030,7 @@ du plateau ; un seul seed.
 **Question** : complète §90 (layer 41) pour le layer sweep sous méthodologie
 complète — layer 12, jamais mesuré sous stratifié+Qwen+déduplication avant
 ce run (crashé deux fois auparavant : N1 puis clé de cache orpheline,
-`AUDIT_SAE_2026-08.md` §9).
+`docs/archive/audits/AUDIT_SAE_2026-08.md` §9).
 
 **Écart à la configuration de référence** : identique à §82/§88 sauf
 `LAYER=12`.
@@ -5071,7 +5071,7 @@ un rerun natif est nécessaire pour obtenir le bon point de comparaison. Les
 taux bruts (80,0% pour 1B, 88,7% pour layer 12) restent valides tels quels ;
 seuls les tests de significativité contre "12B" sont à refaire une fois
 `results_v27` remesuré (job lancé,
-cf. priorisation de la campagne dans `AUDIT_SAE_2026-08.md` §9).
+cf. priorisation de la campagne dans `docs/archive/audits/AUDIT_SAE_2026-08.md` §9).
 
 ## 97. Run de référence (R0) : remplace `results_v27` purgé, comparateur unique de la campagne finale
 
@@ -5390,7 +5390,7 @@ détecter un écart modéré.
 sont construits par mots-clés, donc structurellement lexicaux — une baseline
 TF-IDF+LogReg est-elle battue par les codes SAE sur cette tâche, ou seulement
 égalée (ce qu'un jury industriel demande en premier,
-`AUDIT_SAE_2026-08.md`) ? Les deux sondes sont évaluées sur des plis de CV
+`docs/archive/audits/AUDIT_SAE_2026-08.md`) ? Les deux sondes sont évaluées sur des plis de CV
 **identiques** (même `StratifiedKFold`, même ordre document) pour permettre un
 McNemar apparié sur les prédictions hors-pli plutôt qu'une simple comparaison
 de moyennes.
@@ -5596,7 +5596,7 @@ fourchette du plancher de bruit V1/V2 (§101).
 sous stratifié). Contre R0 (§97, layer 31), sous méthodologie totalement
 homogène. Complète, avec layer 12 (§96, 88,7%) et layer 41 (rerun en
 cours, job 45973 -- l'ancien résultat §90 datait d'un cache incompatible,
-cf. AUDIT_SAE_2026-08.md), le sweep layer à K5/25M sous Qwen.
+cf. docs/archive/audits/AUDIT_SAE_2026-08.md), le sweep layer à K5/25M sous Qwen.
 
 **Écart à la configuration de référence** : identique à R0 (§97) sauf
 `LAYER=24`, `SAE_ID=layer_24_width_16k_l0_medium`.

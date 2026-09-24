@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_confdom_r0_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Rejeu du diagnostic domaine-vs-volume (§12/§46) sous méthodologie R0 --
 # RESULTS_TESTS.md §120 (audit de conformité R0 du rapport de stage). §12/§46

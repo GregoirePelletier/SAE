@@ -1,5 +1,5 @@
 """Teste src/data/dataset.py::load_mails_tsv -- compte les lignes malformées
-plutôt que de les ignorer sans trace (AUDIT_SAE_2026-08.md, item A3 :
+plutôt que de les ignorer sans trace (docs/archive/audits/AUDIT_SAE_2026-08.md, item A3 :
 `on_bad_lines="skip"` sans compteur, nombre de mails perdus à l'ingestion
 inconnu)."""
 from src.data.dataset import load_mails_tsv

@@ -7,7 +7,7 @@
 #SBATCH --time=00:10:00
 #SBATCH --output=logs/validation/diagnose_email_zero_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export PYTHONUNBUFFERED=1
 

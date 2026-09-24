@@ -98,7 +98,7 @@ def test_dead_features_never_reach_generation():
 
 
 def test_n_items_reflects_actual_positive_count_not_fixed_n_pos():
-    """N6 (AUDIT_SAE_2026-08.md §8) : le nombre d'items présentés au juge
+    """N6 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : le nombre d'items présentés au juge
     n'est PAS fixe (3 à 9 positifs + 1 négatif selon la fréquence de la
     feature) -- n_items doit refléter le compte RÉEL, pas toujours n_pos+1=10,
     sans quoi un taux corrigé du hasard (stats.chance_corrected_rate) serait

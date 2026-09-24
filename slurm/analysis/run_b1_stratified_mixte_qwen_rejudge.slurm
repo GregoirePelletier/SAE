@@ -9,14 +9,14 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=logs/analysis/b1_stratified_mixte_qwen_rejudge_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 
-# N4 (AUDIT_SAE_2026-08.md §8) : rejuge l'arme mixte stratifiée de B.1 (§79,
+# N4 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : rejuge l'arme mixte stratifiée de B.1 (§79,
 # §81, b2_stratified_selection_rejudge.json) avec Qwen3.8-27B au lieu de
 # gemma-3-12b-it -- même juge/patron que run_judge_model_separation_qwen.slurm.
 export SAVE_DIR="./results_v10_emails_main/"

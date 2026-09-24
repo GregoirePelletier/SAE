@@ -90,7 +90,7 @@ continu. Scientifiquement bénin (échantillon aléatoire dans les deux cas), ma
 
 Depuis le cache d'extraction partagé (`sae_shared.py::compute_activation_cache_key`),
 **`SEED` n'a plus le même effet qu'avant son introduction** (N9,
-AUDIT_SAE_2026-08.md §8) : `SEED` n'entre PAS dans la clé de cache (volontaire, la clé
+docs/archive/audits/AUDIT_SAE_2026-08.md §8) : `SEED` n'entre PAS dans la clé de cache (volontaire, la clé
 ne couvre que ce qui affecte l'EXTRACTION -- corpus, modèle, layer, hook, troncature).
 Deux runs ne différant que par `SEED` réutilisent donc le MÊME réservoir de tokens
 extrait ; l'ablation de graine ne fait plus varier que l'initialisation et l'ordre de
@@ -247,11 +247,11 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    $K_\text{extra}=32$, 500k tokens) : ce sont deux familles de run
    différentes (layer et $K_\text{extra}$ confondus, pas seulement la taille
    du modèle), erreur déjà commise et corrigée une fois dans
-   `RAPPORT_STAGE_UNIVERSITE.tex` (§9 de AUDIT_SAE_2026-08.md) — le vrai "12B"
+   `RAPPORT_STAGE_UNIVERSITE.tex` (§9 de docs/archive/audits/AUDIT_SAE_2026-08.md) — le vrai "12B"
    de la famille layer-scalée n'a pas encore été rejugé Qwen
    (`results_v27`, rerun en cours/à lancer)**. Le chiffre "seed" ci-dessus
    date d'avant le cache d'extraction partagé — cf. section Seeds plus haut
-   (N9, AUDIT_SAE_2026-08.md §8) : une nouvelle ablation de seed sous le cache
+   (N9, docs/archive/audits/AUDIT_SAE_2026-08.md §8) : une nouvelle ablation de seed sous le cache
    partagé mesure un effet plus étroit (init/shuffle SAE seuls, plus le
    réservoir de tokens) que ce chiffre historique.
 

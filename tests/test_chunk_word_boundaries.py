@@ -1,5 +1,5 @@
 """Teste src/data/preparation.py::_chunk_on_word_boundaries -- correctif
-B.10 (AUDIT_SAE_2026-08.md) : le chunking par `txt[i:i+chunk_length]`
+B.10 (docs/archive/audits/AUDIT_SAE_2026-08.md) : le chunking par `txt[i:i+chunk_length]`
 coupait indifféremment mots et phrases, une distribution de tokens qui
 n'existe dans aucun usage réel -- en particulier pour le filler FineWeb2
 qui domine le volume d'entraînement du SAE résiduel."""

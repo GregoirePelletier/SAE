@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e04_diffing_a100_%j.out
 #SBATCH --error=logs/post_stage/e04_diffing_a100_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Variante a100 de 07_e04_diffing.slurm -- meme motif que 06b (Qwen sharde
 # sur 2 GPU a100, uniquement si h100/h100-bis verifies pleins).

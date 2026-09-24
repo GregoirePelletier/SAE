@@ -1,5 +1,5 @@
 """Teste src/sae/sae_shared.py::acquire_shared_cache_lock -- verrou O_EXCL
-sur le cache d'extraction partagé (N2, AUDIT_SAE_2026-08.md §8), nécessaire
+sur le cache d'extraction partagé (N2, docs/archive/audits/AUDIT_SAE_2026-08.md §8), nécessaire
 car la méthode de travail de ce dépôt lance délibérément des jobs de même
 clé de cache en parallèle sur plusieurs partitions (course de SLURM)."""
 import json

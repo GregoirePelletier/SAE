@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=180G
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 # ATTENTION avant relance : --mem=180G est INSUFFISANT pour un réservoir de
 # 100M tokens réellement rempli. Bug corrigé ici (LOCAL_AUGMENTED_MAILS_PATH
 # vide + N_VOLUME_FILLER_TARGET_CHUNKS=294 -- hérité par erreur d'un template

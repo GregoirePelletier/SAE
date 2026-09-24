@@ -1,5 +1,5 @@
 """Teste src/sae/sae_shared.py::{save,load}_doc_acts_sparse_filler et
-load_all_doc_acts -- N10 (AUDIT_SAE_2026-08.md §8) : les lignes filler
+load_all_doc_acts -- N10 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : les lignes filler
 d'all_doc_sae_acts (jamais lues en aval) ne sont plus stockées sur le cache
 d'extraction partagé, seulement reconstruites (zéro) au chargement."""
 import torch

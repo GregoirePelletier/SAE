@@ -9,7 +9,7 @@ diffing de `saev5.py` -- pas besoin des MÊMES documents que ceux ayant produit
 les labels, seulement du MÊME domaine). Calcule `verification_rate`/`coverage`
 (`src/analysis/hypothesis_verifier.py`) -- première mesure de fidélité App K.1
 de ce dépôt (rien n'était comparable au papier pour le diffing avant, cf.
-AUDIT_SAE_2026-08.md §7).
+docs/archive/audits/AUDIT_SAE_2026-08.md §7).
 
 Usage :
     SAVE_DIR=./results_v10_emails_main/ PYTHONPATH=. \

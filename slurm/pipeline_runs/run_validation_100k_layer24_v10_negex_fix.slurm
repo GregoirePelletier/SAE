@@ -9,8 +9,8 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_val100k_l24_v10_negex_fix_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
-# --signal=B:USR1@600 : cf. run_validation_25m_layer24.slurm (R1, AUDIT_SAE_2026-08.md §2.3/§4.3).
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+# --signal=B:USR1@600 : cf. run_validation_25m_layer24.slurm (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3).
 
 # Réplique de v8 (job 44831) après le correctif du seuil dur B.5
 # (build_feature_examples_with_control, src/sae/judge.py) : v8 avait

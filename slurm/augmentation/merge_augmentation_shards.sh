@@ -3,7 +3,7 @@
 # augmented_mails.jsonl consommable par run_baseline.slurm. À lancer une fois que
 # les 8 tâches de l'array sont COMPLETED (squeue -u $USER pour vérifier).
 set -euo pipefail
-cd /home/h21486/SAE/
+cd "${SAE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 SAVE_DIR="./local_data/emails/"
 OUT="${SAVE_DIR}augmented_mails.jsonl"
 

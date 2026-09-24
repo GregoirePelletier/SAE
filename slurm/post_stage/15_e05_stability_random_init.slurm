@@ -8,7 +8,7 @@
 #SBATCH --output=logs/post_stage/e05_stability_randinit_%j.out
 #SBATCH --error=logs/post_stage/e05_stability_randinit_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E05 -- stabilite avec bras temoin "init aleatoire" : 2 runs pca (42/43) et
 # 2 runs random (45/46), meme procedure pour les trois types de paires

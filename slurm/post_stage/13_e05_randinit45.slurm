@@ -10,7 +10,7 @@
 #SBATCH --output=logs/post_stage/e05_randinit45_%j.out
 #SBATCH --error=logs/post_stage/e05_randinit45_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E05 -- bras TEMOIN "init aleatoire" (independance a l'initialisation) : meme config
 # que 10_e05_seed43 mais EXTRA_DECODER_INIT=random (directions gaussiennes

@@ -40,7 +40,7 @@ SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
-TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 # Tag dérivé mécaniquement d'ALT_JUDGE_MODEL_ID (R5) -- sans lui, deux juges
 # alternatifs différents lancés à la même SEED écrasent le même fichier de
 # sortie (OUT_PATH n'était keyé QUE par SEED avant ce correctif, jamais un

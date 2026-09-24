@@ -1,6 +1,6 @@
 """
 src/post_stage/cli.py -- Point d'entree unique de la campagne post-soutenance
-(Plan_execution_SAE_15_jours_Claude_Code.md §16.2). Commandes ajoutees au fur
+(docs/post_stage/PLAN_E00-E09.md §16.2). Commandes ajoutees au fur
 et a mesure des besoins de E00-E09, pas toutes d'un coup (§16.1 -- adapter au
 fur et a mesure, ne pas ecrire un contrat complet avant d'en avoir besoin).
 

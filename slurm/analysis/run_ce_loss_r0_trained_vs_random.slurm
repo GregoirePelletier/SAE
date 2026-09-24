@@ -8,7 +8,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=logs/analysis/sae_ce_r0_trained_vs_random_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # ΔCE (fidélité causale) du décodeur ENTRAÎNÉ (R0) contre les décodeurs
 # ALÉATOIRES figés (C1/C1b), sous K_EXTRA=5/D_EXTRA=1024/layer 31 (R0) --

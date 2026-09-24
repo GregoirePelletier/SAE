@@ -53,7 +53,7 @@ tail -f logs/pipeline_runs/<nom>_<jobid>.log
 suivi des résultats de chaque run vit dans `RESULTS_TESTS.md`, pas dans les
 logs bruts.
 
-### Dette de configuration (N11, AUDIT_SAE_2026-08.md §8)
+### Dette de configuration (N11, docs/archive/audits/AUDIT_SAE_2026-08.md §8)
 
 Le nombre de `.slurm` croît plus vite qu'il n'est nettoyé (63 → 87 constaté,
 malgré une passe de suppression explicite) — deux règles pour freiner ça :
@@ -117,7 +117,7 @@ l'extraction) — via des liens symboliques créés sous `SAVE_DIR/cache/`, pas
 une redirection directe (une dizaine de scripts d'analyse lisent ces chemins
 sous `SAVE_DIR/cache` directement). **Conséquence sur la course de doublons
 a100/h100** (pratique établie pour réduire le temps de file d'attente,
-`AUDIT_SAE_2026-08.md`) : deux jobs qui partagent la MÊME clé d'extraction
+`docs/archive/audits/AUDIT_SAE_2026-08.md`) : deux jobs qui partagent la MÊME clé d'extraction
 (même modèle/couche/hook/corpus/budget) écrivant simultanément dans le même
 cache partagé peuvent se marcher dessus (deux `ShardedFragmentWriter`, deux
 écritures memmap concurrentes sur le même fichier). Annuler le doublon perdant

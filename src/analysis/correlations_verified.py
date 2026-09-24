@@ -5,7 +5,7 @@ E.1/E.3, arXiv:2512.10092v2, Figure 4). Complète `src/analysis/cooccurrence.py`
 (NPMI brut sur activations SAE, `find_interesting_pairs`) avec la partie
 jamais implémentée : sans NPMI_verified, `p1_interesting_correlations.json`
 est une liste de CANDIDATS, pas un résultat comparable au papier
-(AUDIT_SAE_2026-08.md §1/§7).
+(docs/archive/audits/AUDIT_SAE_2026-08.md §1/§7).
 
 Protocole (papier, §4.2/E.1/E.3) : pour une paire de latents (i, j) découverte
 par NPMI élevé + labels sémantiquement dissimilaires (`find_interesting_pairs`),

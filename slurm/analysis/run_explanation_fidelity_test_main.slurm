@@ -8,7 +8,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/analysis/explanation_fidelity_main_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

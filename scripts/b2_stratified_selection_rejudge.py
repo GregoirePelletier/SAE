@@ -1,6 +1,6 @@
 """
 scripts/b2_stratified_selection_rejudge.py -- Sélection stratifiée par
-fréquence (`feature_selection_stratified_by_frequency`, AUDIT_SAE_2026-08.md
+fréquence (`feature_selection_stratified_by_frequency`, docs/archive/audits/AUDIT_SAE_2026-08.md
 item B.2) vs sélection par magnitude (défaut, référence 45,3%/68/150) sur les
 MÊMES caches d'activations et le MÊME juge -- aucun réentraînement, aucune
 nouvelle extraction, seul l'échantillon de 150 features change.
@@ -34,7 +34,7 @@ SEED = int(os.environ.get("SEED", "42"))
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 REF_JUDGE_CACHE = os.path.join(CACHE_DIR, "p1_judge_labels_extended.json")
-TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 # Nom de fichier dérivé mécaniquement du juge (R5) -- MODEL_ID contrôlait déjà
 # QUEL juge charger (cf. plus bas) mais pas le nom du fichier de sortie avant
 # ce correctif : lancer ce script avec MODEL_ID=Qwen aurait sinon écrasé
@@ -60,7 +60,7 @@ def main() -> None:
     # -- PAS min/max(ref_indices) : la référence magnitude ne couvre pas
     # nécessairement toute la plage [d_core, d_total), la sélection stratifiée
     # tronquerait alors silencieusement la queue de plage jamais atteinte par
-    # la référence (trouvé N3, AUDIT_SAE_2026-08.md §8 -- écart mesuré : 4
+    # la référence (trouvé N3, docs/archive/audits/AUDIT_SAE_2026-08.md §8 -- écart mesuré : 4
     # colonnes manquantes sur 1024, 17404 au lieu de 17408 dans le run qui a
     # produit b2_stratified_selection_rejudge.json).
     _frozen_core_ckpts = [f for f in os.listdir(SAVE_DIR) if f.startswith("p1_frozen_core_d")]
@@ -80,7 +80,7 @@ def main() -> None:
     n_train = len(train_texts)
     print(f"[b2-rejudge] n_train={n_train}")
 
-    # return_bin_info=True (N3, AUDIT_SAE_2026-08.md §8) : capture la strate
+    # return_bin_info=True (N3, docs/archive/audits/AUDIT_SAE_2026-08.md §8) : capture la strate
     # d'origine de chaque feature AU MOMENT de la sélection -- une
     # reconstruction rétroactive (rejouer cette fonction plus tard avec le
     # même seed) s'est révélée non fiable (fragments/corpus ayant pu dériver

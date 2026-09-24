@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e03_retrieval_a100_%j.out
 #SBATCH --error=logs/post_stage/e03_retrieval_a100_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Variante a100 de 06_e03_property_retrieval.slurm -- UNIQUEMENT quand
 # h100/h100-bis sont verifies pleins (scontrol show node, pas seulement

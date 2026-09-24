@@ -9,7 +9,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/pipeline_runs/sae_v10_abl_tok100k_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

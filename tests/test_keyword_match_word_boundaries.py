@@ -1,5 +1,5 @@
 """Teste src/data/preparation.py::keyword_match -- correctif B.11
-(AUDIT_SAE_2026-08.md) : substring `in` sans frontière de mot faisait matcher
+(docs/archive/audits/AUDIT_SAE_2026-08.md) : substring `in` sans frontière de mot faisait matcher
 "vol" contre volume/volley/évolution, "watt" contre Watteau -- bruitant la
 vérité terrain du diffing cross-domaine (energy/sports/support)."""
 from src.data.preparation import keyword_match

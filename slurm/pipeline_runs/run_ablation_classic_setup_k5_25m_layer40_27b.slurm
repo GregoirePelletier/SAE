@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_classic_k5_25m_27b_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation taille du modèle extracteur/juge, palier 27B (setup classique du
 # papier, K_EXTRA=5, D_EXTRA=1024) -- étend le sweep 1B/4B/12B/27B. Layer 40

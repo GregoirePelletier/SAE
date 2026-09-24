@@ -1,6 +1,6 @@
 """Teste src/sae/sae_shared.py::compute_activation_cache_key -- cache
 d'activations partagé entre runs qui ne diffèrent que par K_EXTRA/D_EXTRA/
-EPOCHS_EXTRA (downstream de l'extraction, AUDIT_SAE_2026-08.md)."""
+EPOCHS_EXTRA (downstream de l'extraction, docs/archive/audits/AUDIT_SAE_2026-08.md)."""
 from src.sae.sae_shared import compute_activation_cache_key
 
 
@@ -79,7 +79,7 @@ def test_key_is_deterministic_short_hex_string():
 
 
 def test_different_max_length_different_key():
-    # N7/N8 (AUDIT_SAE_2026-08.md §8) : max_length affecte le corpus
+    # N7/N8 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : max_length affecte le corpus
     # RÉELLEMENT vu à l'extraction (troncature), doit invalider la clé.
     kwargs = dict(BASE_KWARGS)
     kwargs["max_length"] = 2048

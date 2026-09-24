@@ -1,5 +1,5 @@
 """Teste la logique de reprise de `_eval_raw` dans la passe de ré-encodage de
-saev5.py (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : p1_eval_raw_tokens.pt peut
+saev5.py (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) : p1_eval_raw_tokens.pt peut
 déjà contenir une capture partielle d'un run précédent coupé pendant/après la
 fenêtre d'évaluation -- il faut la reprendre comme base plutôt que repartir de
 zéro (les raw_acts déjà réencodés sont irrécupérables, purgés de leur

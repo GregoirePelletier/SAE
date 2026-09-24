@@ -1,6 +1,6 @@
 """Teste src/sae/sae_shared.py::block_shuffle_indices -- remplace
 train_idx[torch.randperm(len(train_idx))] par époque dans
-load_or_train_extended_sae (AUDIT_SAE_2026-08.md, §2 Performance :
+load_or_train_extended_sae (docs/archive/audits/AUDIT_SAE_2026-08.md, §2 Performance :
 torch.randperm(100_000_000) réalloué à chaque époque)."""
 import torch
 

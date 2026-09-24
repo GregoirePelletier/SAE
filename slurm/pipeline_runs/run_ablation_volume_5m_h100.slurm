@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_vol5m_h100_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation volume ~5M tokens -- calibrage timing/ablations, réplique de
 # run_ablation_volume_25m.slurm à 1/5 du budget (réservoir 5M*3840*2o≈38 Go,

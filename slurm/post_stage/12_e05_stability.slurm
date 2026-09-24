@@ -8,7 +8,7 @@
 #SBATCH --output=logs/post_stage/e05_stability_%j.out
 #SBATCH --error=logs/post_stage/e05_stability_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E05 -- stabilite inter-graines des features EXTRA (plan §10). CPU seul
 # (aucun modele charge, aucune GPU reservee). Depend de 01_e01_fit_reference

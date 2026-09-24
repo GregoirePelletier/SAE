@@ -9,10 +9,10 @@
 #SBATCH --output=logs/post_stage/e01_compare_%j.out
 #SBATCH --error=logs/post_stage/e01_compare_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E01 -- comparaison CORE/FULL/DENSE/TFIDF sur DEV, protocole FIT-train/
-# DEV-eval strict (Plan_execution_SAE_15_jours_Claude_Code.md §6.3-6.4).
+# DEV-eval strict (docs/post_stage/PLAN_E00-E09.md §6.3-6.4).
 # Depend du checkpoint deja entraine par 01_e01_fit_reference.slurm (job
 # 48585, COMPLETED) -- ne re-entraine rien, encode seulement DENSE (bge-m3,
 # le seul poste qui beneficie reellement du GPU ici) et lit les activations

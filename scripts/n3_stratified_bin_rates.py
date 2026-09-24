@@ -1,5 +1,5 @@
 """
-scripts/n3_stratified_bin_rates.py -- N3 (AUDIT_SAE_2026-08.md §8) : 89,3%
+scripts/n3_stratified_bin_rates.py -- N3 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : 89,3%
 (sélection stratifiée, arme mixte, §79/RESULTS_TESTS.md) n'est pas plus
 comparable au papier que 45,3% (magnitude), dans l'autre sens -- le
 stratifié échantillonne un nombre à peu près fixe de features par bin de

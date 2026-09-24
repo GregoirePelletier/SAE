@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_a4_bs16384_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# A4 (AUDIT_SAE_2026-08.md, campagne finale) : BATCH_SIZE_EXTRA=16384 (défaut
+# A4 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : BATCH_SIZE_EXTRA=16384 (défaut
 # 1024, src/config.py) contre R0 (§97). Le budget top-k de BatchTopK est
 # partagé sur tout le batch aplati (k*B pré-activations) -- un batch 16x plus
 # large change le régime de parcimonie effectif par échantillon. Trade-off

@@ -2,7 +2,7 @@
 scripts/npmi_verified_test.py — NPMI_verified (App E.1/E.3, arXiv:2512.10092v2,
 Figure 4) : sans elle, `p1_interesting_correlations.json` est une liste de
 CANDIDATS (NPMI brut sur activations SAE + dissimilarité de labels), pas un
-résultat comparable au papier (AUDIT_SAE_2026-08.md §1/§7).
+résultat comparable au papier (docs/archive/audits/AUDIT_SAE_2026-08.md §1/§7).
 
 Protocole : parmi les 150 features d'extension déjà labellisées
 (`p1_top_extended_features.json`, interp_score=1 -- on reste autonome sans
@@ -72,7 +72,7 @@ SEED = int(os.environ.get("SEED", "42"))
 def _embed(texts: list, batch_size: int = 64) -> torch.Tensor:
     """Même convention que `saev5.py::_embed_bge_m3` -- dupliqué car `saev5.py`
     exécute tout son pipeline au chargement du module (non-importable comme
-    bibliothèque, cf. AUDIT_SAE_2026-08.md)."""
+    bibliothèque, cf. docs/archive/audits/AUDIT_SAE_2026-08.md)."""
     tok = AutoTokenizer.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True)
     mdl = AutoModel.from_pretrained(LATENT_LABEL_EMB_MODEL, local_files_only=True).to(DEVICE).eval()
     embs = []
@@ -87,7 +87,7 @@ def _embed(texts: list, batch_size: int = 64) -> torch.Tensor:
 
 CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 EXT_FEATURES_PATH = os.path.join(SAVE_DIR, "p1_top_extended_features.json")
-TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 OUT_PATH = os.path.join(CACHE_DIR, "npmi_verified.json")
 
 

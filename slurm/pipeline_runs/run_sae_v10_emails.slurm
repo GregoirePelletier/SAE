@@ -9,7 +9,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/pipeline_runs/sae_v10_emails_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # ── Isolation réseau ──
 export HF_HUB_OFFLINE=1

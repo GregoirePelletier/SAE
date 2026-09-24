@@ -1,5 +1,5 @@
 """Teste src/sae/judge.py::feature_selection_stratified_by_frequency --
-correctif B.2 (AUDIT_SAE_2026-08.md) : feature_selection_by_magnitude
+correctif B.2 (docs/archive/audits/AUDIT_SAE_2026-08.md) : feature_selection_by_magnitude
 sélectionne systématiquement les features les plus denses, rendant le taux
 d'interprétabilité mesuré non comparable à un chiffre publié ni entre
 configurations du dépôt."""
@@ -110,7 +110,7 @@ def test_stratified_never_exceeds_n_features(tmp_path):
 
 
 def test_stratified_bin_info_matches_selected_and_is_self_consistent(tmp_path):
-    """N3 (AUDIT_SAE_2026-08.md §8) : return_bin_info=True doit couvrir
+    """N3 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) : return_bin_info=True doit couvrir
     exactement les features sélectionnées, avec des tailles de strate
     cohérentes (bin_n_sampled <= bin_population), et attribuer des strates
     différentes à un groupe de features denses vs un groupe de features

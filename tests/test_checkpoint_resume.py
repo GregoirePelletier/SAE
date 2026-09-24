@@ -1,5 +1,5 @@
 """Teste src/storage/checkpoint.py -- brique de reprise après coupure (R1,
-AUDIT_SAE_2026-08.md §2.3/§4.3) partagée entre saev5.py (Pipeline 1) et
+docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) partagée entre saev5.py (Pipeline 1) et
 phrase_sae.py (Pipeline 2)."""
 import os
 import signal

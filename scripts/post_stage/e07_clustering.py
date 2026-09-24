@@ -1,6 +1,6 @@
 """
 scripts/post_stage/e07_clustering.py -- Clustering cible reellement compare
-aux alternatives (Plan_execution_SAE_15_jours_Claude_Code.md §12).
+aux alternatives (docs/post_stage/PLAN_E00-E09.md §12).
 
 3 axes fixes sur CONFIRM (type de probleme, action attendue, registre/
 urgence), matching de features par similarite label<->requete

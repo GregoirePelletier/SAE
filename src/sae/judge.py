@@ -213,7 +213,7 @@ def build_feature_examples_with_control(
     # peut apparaître 2-3 fois comme exemples "positifs" distincts alors qu'il s'agit
     # sémantiquement du même exemple pour le juge LLM.
     # Déduplication par (doc_idx, position du mot argmax) plutôt que par
-    # chaîne de mot (B.4, AUDIT_SAE_2026-08.md) : la boucle ci-dessous ne
+    # chaîne de mot (B.4, docs/archive/audits/AUDIT_SAE_2026-08.md) : la boucle ci-dessous ne
     # visite déjà chaque d_idx qu'une fois, donc (doc_idx, word_span) est
     # automatiquement unique -- l'ancien filtre sur la chaîne du mot excluait
     # en pratique tout mot-cible répété d'un document à l'autre, empêchant
@@ -417,7 +417,7 @@ def feature_selection_stratified_by_frequency(
     à un chiffre publié (Bills et al. échantillonnent au hasard, EleutherAI/Paulo
     stratifient) ni entre deux configurations du dépôt dès que la distribution de
     magnitude change (K_EXTRA, largeur, couche, core vs extension) --
-    AUDIT_SAE_2026-08.md, item B.2.
+    docs/archive/audits/AUDIT_SAE_2026-08.md, item B.2.
 
     Fréquence = fraction des documents échantillonnés où la feature est active
     (max-pool documentaire > 0, pas magnitude). Les features mortes (fréquence
@@ -428,7 +428,7 @@ def feature_selection_stratified_by_frequency(
     au sein d'un bin qui remplacerait le biais de magnitude par un autre biais.
 
     Retourne `list[int]` (indices sélectionnés) par défaut. Si
-    `return_bin_info=True` (N3, AUDIT_SAE_2026-08.md §8), retourne
+    `return_bin_info=True` (N3, docs/archive/audits/AUDIT_SAE_2026-08.md §8), retourne
     `(list[int], dict[int, dict])` -- le dict associe chaque feature
     sélectionnée à sa strate d'origine (`bin`), sa fréquence mesurée
     (`freq`), la taille de sa strate dans la population vivante
@@ -472,7 +472,7 @@ def feature_selection_stratified_by_frequency_dense(
     """
     Même sélection stratifiée par bins de fréquence log-espacés que
     `feature_selection_stratified_by_frequency` (App. J, B.2,
-    AUDIT_SAE_2026-08.md), mais pour un pipeline dont les activations
+    docs/archive/audits/AUDIT_SAE_2026-08.md), mais pour un pipeline dont les activations
     documentaires sont déjà un tenseur DENSE en mémoire (`doc_acts`,
     `[n_docs, d_sae]`, Pipeline 2 -- `PhraseLevelSAE`/F2LLM) plutôt que des
     fragments token-level sur disque (Pipeline 1). Aucune lecture de
@@ -553,7 +553,7 @@ def _stratified_select_from_freq(freq: np.ndarray, lo: int, hi: int, n_features:
     if not return_bin_info:
         return result
 
-    # bin_info (N3, AUDIT_SAE_2026-08.md §8) : par feature SÉLECTIONNÉE, sa
+    # bin_info (N3, docs/archive/audits/AUDIT_SAE_2026-08.md §8) : par feature SÉLECTIONNÉE, sa
     # strate d'origine, sa fréquence mesurée, et deux tailles utiles au
     # rééquilibrage a posteriori (Horvitz-Thompson, src/analysis/stats.py) --
     # taille de la strate dans la population vivante (`bin_population`) et
@@ -784,7 +784,7 @@ def odd_one_out_judge(
             "rho_interp": pf.get("rho_interp", float("nan")),
             "pos_examples": pf["pos_examples"],
             "neg_example": pf["neg_example"],  # cf. dashboard (exemples négatifs) -- absent des caches produits avant cet ajout
-            # n_items (N6, AUDIT_SAE_2026-08.md §8) : nombre d'items RÉELLEMENT
+            # n_items (N6, docs/archive/audits/AUDIT_SAE_2026-08.md §8) : nombre d'items RÉELLEMENT
             # présentés au juge (positifs + 1 négatif) -- varie de 4 (garde-fou
             # len(pos_examples)<3, donc 3+1 minimum survivant) à n_pos+1=10
             # selon la fréquence de la feature (une feature rare atteint plus

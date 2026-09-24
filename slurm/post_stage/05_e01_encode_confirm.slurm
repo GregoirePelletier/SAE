@@ -10,7 +10,7 @@
 #SBATCH --output=logs/post_stage/e01_encode_confirm_%j.out
 #SBATCH --error=logs/post_stage/e01_encode_confirm_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Encode CONFIRM a travers le SAE deja entraine (checkpoint fige, job 48585)
 # -- necessaire pour evaluer E03/E04 sur CONFIRM sans jamais l'entrainer.

@@ -18,7 +18,7 @@ except ImportError:
 def keyword_match(text: str, keywords: List[str]) -> bool:
     """Frontières de mot (`\\b...\\b`), pas un `in` sur sous-chaîne -- sans ça
     "vol" matche volume/volley/évolution, "watt" matche Watteau, "avoir"
-    matche le verbe (AUDIT_SAE_2026-08.md, item B.11) : la vérité terrain du
+    matche le verbe (docs/archive/audits/AUDIT_SAE_2026-08.md, item B.11) : la vérité terrain du
     diffing cross-domaine (energy/sports/support) était bruitée par
     construction. Même convention que `INTENT_KEYWORDS_FR`
     (`src/data/dataset.py`)."""
@@ -50,7 +50,7 @@ def _chunk_hash(chunk: str) -> str:
 def _chunk_on_word_boundaries(txt: str, chunk_length: int, max_chunks: int) -> List[str]:
     """Découpe `txt` en chunks d'environ `chunk_length` caractères, coupés à
     la frontière de mot la plus proche plutôt qu'au milieu d'un mot (B.10,
-    AUDIT_SAE_2026-08.md) -- `txt[i:i+chunk_length]` coupait indifféremment
+    docs/archive/audits/AUDIT_SAE_2026-08.md) -- `txt[i:i+chunk_length]` coupait indifféremment
     mots et phrases, une distribution de tokens qui n'existe dans aucun usage
     réel, en particulier pour le filler qui domine le volume d'entraînement
     du SAE résiduel. Un mot isolé plus long que `chunk_length` forme son
@@ -263,7 +263,7 @@ def is_filler_document(doc_global_idx: int, n_train: int, n_filler: int) -> bool
     de `all_texts = train_texts + volume_filler_texts + test_texts + diff_texts`
     (saev5.py) ? Utilisé pour alléger l'extraction côté filler (allocation
     core/fragment économisée, seul le résidu brut compte pour le réservoir,
-    cf. AUDIT_SAE_2026-08.md §2.2) -- distinct de la condition, plus large,
+    cf. docs/archive/audits/AUDIT_SAE_2026-08.md §2.2) -- distinct de la condition, plus large,
     "ce document alimente-t-il le réservoir" (train ∪ filler, doc_global_idx <
     n_train+n_filler), qui reste inchangée ailleurs."""
     return n_train <= doc_global_idx < n_train + n_filler
@@ -361,7 +361,7 @@ def build_email_train_test_corpus(
             df_aug["parent_idx"] = df_aug["parent_idx"].astype(int)
         else:
             # Repli rétrocompatible : JSONL généré avant l'ajout de parent_sha1,
-            # jointure positionnelle (fragile, cf. AUDIT_SAE_2026-08.md item B.7).
+            # jointure positionnelle (fragile, cf. docs/archive/audits/AUDIT_SAE_2026-08.md item B.7).
             # `parent_id` vit dans l'espace load_mails_tsv (celui où
             # run_augmentation.py le numérote), PAS directement dans l'espace
             # real_texts/real_hashes (load_and_clean_emails filtre 6 lignes de
@@ -419,7 +419,7 @@ def load_and_clean_emails(tsv_path: str, return_hashes: bool = False, return_pos
     (même `load_mails_tsv(tsv_path)`, même colonne, avant tout nettoyage
     supplémentaire). Permet à `build_email_train_test_corpus` de rattacher
     une variante augmentée à son mail parent par CONTENU plutôt que par
-    position (AUDIT_SAE_2026-08.md, item B.7).
+    position (docs/archive/audits/AUDIT_SAE_2026-08.md, item B.7).
 
     `return_positions=True` (défaut False, RÉTROCOMPATIBLE) : retourne en plus
     `positions`, l'index de chaque ligne conservée dans le DataFrame issu de

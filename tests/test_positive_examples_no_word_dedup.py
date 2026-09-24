@@ -1,5 +1,5 @@
 """Teste src/sae/judge.py::build_feature_examples_with_control -- correctif
-B.4 (AUDIT_SAE_2026-08.md) : la déduplication des positifs se faisait sur la
+B.4 (docs/archive/audits/AUDIT_SAE_2026-08.md) : la déduplication des positifs se faisait sur la
 chaîne du mot-cible (seen_target_words), pas sur (doc_idx, position) --
 empêchait une feature authentiquement lexicale de montrer le même mot dans
 plusieurs documents/contextes différents, sa forme la plus convaincante."""

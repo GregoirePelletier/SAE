@@ -1,5 +1,5 @@
 """Primitives numpy de la stabilite inter-graines des features EXTRA (E05,
-Plan_execution_SAE_15_jours_Claude_Code.md §10). Pures (aucun modele, aucun
+docs/post_stage/PLAN_E00-E09.md §10). Pures (aucun modele, aucun
 I/O) pour rester testables en CPU rapide ; le script scripts/post_stage/
 e05_stability.py assemble les checkpoints et les activations reels."""
 from typing import Dict, List, Optional, Tuple

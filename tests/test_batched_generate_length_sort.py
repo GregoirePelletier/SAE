@@ -1,5 +1,5 @@
 """Teste src/sae/judge.py::_batched_generate -- vérifie que le tri par
-longueur de prompt introduit pour amortir le padding (AUDIT_SAE_2026-08.md,
+longueur de prompt introduit pour amortir le padding (docs/archive/audits/AUDIT_SAE_2026-08.md,
 §2 Performance : "Juge -- pas de tri par longueur avant batching") ne casse
 pas le ré-alignement `responses[i] <-> list_of_messages[i]`. Aucun test
 existant n'exerçait l'implémentation réelle de cette fonction (le seul test

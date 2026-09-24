@@ -1,5 +1,5 @@
 """Teste le mécanisme de reprise par shards de
-src/sae/phrase_sae.py::extract_f2llm_embeddings (R1, AUDIT_SAE_2026-08.md
+src/sae/phrase_sae.py::extract_f2llm_embeddings (R1, docs/archive/audits/AUDIT_SAE_2026-08.md
 §2.3/§4.3). Le modèle F2LLM lui-même n'est pas chargé ici (GPU/poids requis,
 hors périmètre d'un test CPU) -- ce test isole le mécanisme réellement
 nouveau et risqué : écrire des shards + un checkpoint, puis les relire et les

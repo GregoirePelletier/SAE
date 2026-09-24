@@ -9,9 +9,9 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_c1_frozen_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
-# C1 (AUDIT_SAE_2026-08.md, campagne finale) : sanity check Korznikov et al. (décodeur
+# C1 (docs/archive/audits/AUDIT_SAE_2026-08.md, campagne finale) : sanity check Korznikov et al. (décodeur
 # W_dec_extra figé à une init ALÉATOIRE, jamais entraîné) rejoué sous méthodologie
 # finale (sélection stratifiée + juge Qwen3.8-27B, tous deux DÉFAUTS du dépôt --
 # FEATURE_SELECTION_METHOD/JUDGE_MODEL_ID, src/config.py -- aucun flag supplémentaire

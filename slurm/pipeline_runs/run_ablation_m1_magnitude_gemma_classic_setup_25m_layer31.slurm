@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_abl_m1_mag_gemma_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # M1 : dernier point manquant de la grille méthode de sélection x juge à
 # une configuration CRÉDIBLE (25M tokens, K_EXTRA=5, layer 31, 12B) --

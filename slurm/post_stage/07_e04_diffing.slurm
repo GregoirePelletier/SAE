@@ -9,7 +9,7 @@
 #SBATCH --output=logs/post_stage/e04_diffing_%j.out
 #SBATCH --error=logs/post_stage/e04_diffing_%j.err
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # E04 -- diffing dans le domaine cible (plan §9). Contraste apparié :
 # variantes de ton urgence__panique (A) vs urgence__calme (B) d'un même

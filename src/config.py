@@ -57,7 +57,7 @@ LR_EXTRA     = float(os.environ.get("LR_EXTRA", "3e-4"))
 # (top k·B pré-activations du batch aplati) : changer BATCH_SIZE_EXTRA change
 # le régime de sparsité vu à l'entraînement (variance de L0 par échantillon),
 # pas seulement la vitesse -- ne pas remonter le défaut sans ablation
-# comparant la fidélité de reconstruction avant/après (AUDIT_SAE_2026-08.md
+# comparant la fidélité de reconstruction avant/après (docs/archive/audits/AUDIT_SAE_2026-08.md
 # §2.9, item 7).
 BATCH_SIZE_EXTRA = int(os.environ.get("BATCH_SIZE_EXTRA", "1024"))
 USE_FROZEN_CORE = os.environ.get("USE_FROZEN_CORE", "1").strip() in ("1", "true", "True")
@@ -65,16 +65,16 @@ N_TOKENS_EXTRA_TRAIN = int(os.environ.get("N_TOKENS_EXTRA_TRAIN", "500000"))
 # Longueur de troncature du tokenizer à l'extraction (saev5.py, boucle
 # "Extraction P1") -- 512 était codé en dur, appliqué aux mails ENTIERS (pas
 # chunkés, contrairement au filler) et jamais mesuré à ce seuil précis (N7,
-# AUDIT_SAE_2026-08.md §8 ; §74/RESULTS_TESTS.md mesure une troncature à 2048,
+# docs/archive/audits/AUDIT_SAE_2026-08.md §8 ; §74/RESULTS_TESTS.md mesure une troncature à 2048,
 # sur le corpus d'AUGMENTATION, seuil et corpus différents). À rapprocher de
 # ρ(longueur, n_features)=0,906 (§59) : une troncature agressive pourrait
 # elle-même être une source de ce signal de longueur, pas juste le corréler.
 MAX_LENGTH = int(os.environ.get("MAX_LENGTH", "512"))
 # Seuil de clip des outliers de norme (src/analysis/activations.py::norm_outlier_mask,
-# appelé depuis saev5.py) -- 4.0 codé en dur jusqu'ici (N8, AUDIT_SAE_2026-08.md §8).
+# appelé depuis saev5.py) -- 4.0 codé en dur jusqu'ici (N8, docs/archive/audits/AUDIT_SAE_2026-08.md §8).
 SIGMA_CLIP = float(os.environ.get("SIGMA_CLIP", "4.0"))
 # Exclut le premier token de contenu (après les tokens spéciaux BOS/rôle) du
-# masquage -- True codé en dur jusqu'ici (N8, AUDIT_SAE_2026-08.md §8).
+# masquage -- True codé en dur jusqu'ici (N8, docs/archive/audits/AUDIT_SAE_2026-08.md §8).
 SKIP_FIRST_CONTENT_TOKEN = os.environ.get("SKIP_FIRST_CONTENT_TOKEN", "1").strip() in ("1", "true", "True")
 # Taille de batch pour l'extraction Gemma-3 (saev5.py, boucle "Extraction P1") --
 # 4 était codé en dur, jamais mesuré contre une valeur plus grande sur A100/H100
@@ -91,7 +91,7 @@ EXTRACTION_BATCH_SIZE = int(os.environ.get("EXTRACTION_BATCH_SIZE", "4"))
 # changement de sémantique. 128 par défaut, prudent (VRAM du batch dépend de la
 # longueur token totale du lot, variable d'un document à l'autre).
 REENCODE_BATCH_SIZE = int(os.environ.get("REENCODE_BATCH_SIZE", "128"))
-# Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : nombre de documents
+# Reprise après coupure (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) : nombre de documents
 # entre deux checkpoints de progression de l'extraction P1 (compteurs du
 # réservoir de Vitter + indice du prochain document à traiter). Borne le
 # travail reperdu en cas de crash/SIGKILL à ce nombre de documents, pas à

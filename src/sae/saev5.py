@@ -152,7 +152,7 @@ def open_mmap_reservoir(path, n_rows, d_in, dtype):
     return torch.from_file(path, shared=True, size=n_rows * d_in, dtype=dtype).view(n_rows, d_in)
 
 
-# Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) -- brique partagée
+# Reprise après coupure (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) -- brique partagée
 # avec phrase_sae.py (Pipeline 2), cf. docstring de src/storage/checkpoint.py.
 try:
     from src.storage.checkpoint import (
@@ -299,13 +299,13 @@ EMAIL_TEST_SPLIT = float(os.environ.get("EMAIL_TEST_SPLIT", "0.05"))
 MAX_AUGMENTED_PER_MAIL = int(os.environ.get("MAX_AUGMENTED_PER_MAIL", "13"))
 # Défaut désactivé : un Mails.tsv illisible/introuvable doit interrompre le run
 # plutôt que produire silencieusement un résultat sur 3 mails synthétiques
-# (AUDIT_SAE_2026-08.md, item A2). À activer explicitement pour un run de
+# (docs/archive/audits/AUDIT_SAE_2026-08.md, item A2). À activer explicitement pour un run de
 # démonstration/smoke-test sans données réelles -- jamais pour un résultat cité.
 ALLOW_SYNTHETIC_CORPUS_FALLBACK = os.environ.get("ALLOW_SYNTHETIC_CORPUS_FALLBACK", "0") == "1"
 # Batch size de extract_f2llm_embeddings (P2), en dur à 128 auparavant, jamais
-# balayé (AUDIT_SAE_2026-08.md, §2 Performance). Défaut 128 inchangé.
+# balayé (docs/archive/audits/AUDIT_SAE_2026-08.md, §2 Performance). Défaut 128 inchangé.
 F2LLM_EXTRACT_BATCH_SIZE = int(os.environ.get("F2LLM_EXTRACT_BATCH_SIZE", "128"))
-# "stratified" (défaut, par bins de fréquence, AUDIT_SAE_2026-08.md item B.2)
+# "stratified" (défaut, par bins de fréquence, docs/archive/audits/AUDIT_SAE_2026-08.md item B.2)
 # ou "magnitude" (ancien défaut) : magnitude sélectionne systématiquement les
 # features les plus denses, ce que le taux d'interprétabilité mesuré dessus
 # hérite silencieusement -- comparaison directe 68/150 (magnitude) vs 134/150
@@ -534,7 +534,7 @@ def targeted_clustering_by_axis(
 
     # Affinité de Jaccard (App. F : "spectral cluster their Jaccard similarity
     # matrix"), PAS cosine sur binaire -- métrique différente, corrigé
-    # (AUDIT_SAE_2026-08.md §1). jaccard_dist=0 -> similarité 1 sur la
+    # (docs/archive/audits/AUDIT_SAE_2026-08.md §1). jaccard_dist=0 -> similarité 1 sur la
     # diagonale, cohérent par construction de squareform(pdist(...)).
     jaccard_sim = 1.0 - squareform(pdist(sub_binarized, metric="jaccard"))
     spectral = SpectralClustering(
@@ -570,7 +570,7 @@ def property_based_retrieval(
     d'itération du dict). Sans cette normalisation, les magnitudes JumpReLU
     non bornées du core (outliers ~1e5) écrasent le poids de rang -- le score
     serait dominé par l'échelle des latents, pas par leur pertinence
-    (AUDIT_SAE_2026-08.md)."""
+    (docs/archive/audits/AUDIT_SAE_2026-08.md)."""
     print(f"\n  [Task 4] Recherche implicite : '{query_string}'")
     matched_latents = select_latents_by_similarity(query_string, feature_labels, top_k=top_k_latents)
     if not matched_latents:
@@ -878,7 +878,7 @@ def run_llm_max_pool_pipeline(
     # d_core+D_EXTRA -- D_EXTRA est un paramètre downstream
     # (SAEBoostResidualSAE), pas un paramètre d'extraction (cf. docstring de
     # la clé de cache), et deux runs partageant cette clé peuvent différer
-    # sur D_EXTRA (N1, AUDIT_SAE_2026-08.md §8). Padder ici graverait une
+    # sur D_EXTRA (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8). Padder ici graverait une
     # largeur figée par le run qui écrit EN PREMIER dans un artefact partagé
     # entre runs à D_EXTRA différents. Le padding vers d_core+D_EXTRA, quand
     # nécessaire, se fait exclusivement en aval, dans ext_fragments_dir
@@ -920,7 +920,7 @@ def run_llm_max_pool_pipeline(
     )
     _act_cache_dir = shared_activation_cache_dir(_act_cache_key)
     print(f"  [P1] Cache d'extraction partagé : {_act_cache_dir}")
-    # Verrou du cache partagé (N2, AUDIT_SAE_2026-08.md §8) : tient de l'entrée
+    # Verrou du cache partagé (N2, docs/archive/audits/AUDIT_SAE_2026-08.md §8) : tient de l'entrée
     # ci-dessus jusqu'à la fin de l'extraction RAW ci-dessous (relâché juste
     # avant `d_total = d_core`, cf. plus bas) -- couvre la création des liens
     # symboliques, la décision cache-hit/miss, et toute la boucle
@@ -975,7 +975,7 @@ def run_llm_max_pool_pipeline(
     n_train = len(train_texts)
     n_filler = len(volume_filler_texts)
     n_test  = len(test_texts)
-    # Filler jamais fragmenté (allègement extraction, AUDIT_SAE_2026-08.md §2.2/§2.5) :
+    # Filler jamais fragmenté (allègement extraction, docs/archive/audits/AUDIT_SAE_2026-08.md §2.2/§2.5) :
     # seul son résidu brut compte, pour le réservoir -- ni encodage core ni fragment
     # disque. n_fragmented_expected exclut donc la plage filler, contrairement à
     # len(all_texts).
@@ -1033,7 +1033,7 @@ def run_llm_max_pool_pipeline(
             print("  [P1] Fragments disques incomplets.")
             _need_extraction = True
 
-    # Reprise (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : le critère est "quel est le
+    # Reprise (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) : le critère est "quel est le
     # prochain document non traité", jamais "le run est-il complet". _resume_from>0
     # signifie qu'un checkpoint valide existe et couvre déjà les documents
     # [0, _resume_from) -- fragments ET compteurs de réservoir cohérents entre eux
@@ -1070,7 +1070,7 @@ def run_llm_max_pool_pipeline(
             token=HF_TOKEN, trust_remote_code=True, local_files_only=True
         ).eval()
 
-        # G1 (AUDIT_SAE_2026-08.md §2.2) : troncature des blocs décodeur
+        # G1 (docs/archive/audits/AUDIT_SAE_2026-08.md §2.2) : troncature des blocs décodeur
         # au-delà de LAYER, VÉRIFIÉE sur GPU avant déploiement
         # (scripts/audit_2026_08_layer_truncation_equivalence_and_speedup.py) :
         # - V1 (troncature `layers[:LAYER]` + `output_hidden_states=True` +
@@ -1116,7 +1116,7 @@ def run_llm_max_pool_pipeline(
                 # tuple (hidden_states, ...). Une future mise à jour de
                 # transformers qui changerait ce comportement casserait
                 # silencieusement l'équivalence bit-à-bit vérifiée sur GPU sans
-                # cette garde (AUDIT_SAE_2026-08.md, item "hook fragile").
+                # cette garde (docs/archive/audits/AUDIT_SAE_2026-08.md, item "hook fragile").
                 _hook_capture["acts"] = output[0] if isinstance(output, tuple) else output
             _n_layers_needed = LAYER
             _hook_handle = _decoder_stack.layers[LAYER - 1].register_forward_hook(
@@ -1178,7 +1178,7 @@ def run_llm_max_pool_pipeline(
         _GracefulShutdown.install()
         _last_checkpoint_doc = _resume_from
         _early_exit = False
-        # Fragments shardés côté extraction (item 3, AUDIT_SAE_2026-08.md §2.2/
+        # Fragments shardés côté extraction (item 3, docs/archive/audits/AUDIT_SAE_2026-08.md §2.2/
         # §2.9) : SHARD_SIZE documents par fichier au lieu d'un par document --
         # écriture toujours en arrière-plan (G2, ShardedFragmentWriter encapsule
         # son propre AsyncFragmentWriter) -- flush() OBLIGATOIRE avant tout
@@ -1187,7 +1187,7 @@ def run_llm_max_pool_pipeline(
         # laisser un checkpoint plus avancé que les fragments réellement sur disque.
         _fragment_writer = ShardedFragmentWriter(token_fragments_dir)
 
-        # Écritures aléatoires du réservoir amorties (G5, AUDIT_SAE_2026-08.md
+        # Écritures aléatoires du réservoir amorties (G5, docs/archive/audits/AUDIT_SAE_2026-08.md
         # §2.2) : en phase 2 (réservoir déjà plein), `reservoir[j[hit]] = x_new[hit]`
         # touche une position dispersée sur [0, N_TOKENS_EXTRA_TRAIN) à chaque
         # remplacement -- write-amplification aléatoire pure sur un volume réseau.
@@ -1258,7 +1258,7 @@ def run_llm_max_pool_pipeline(
                         keep = inputs["attention_mask"][b].bool()
                     filtered = acts[b, keep]
 
-                    # Allègement filler (AUDIT_SAE_2026-08.md §2.2/§2.5) : le filler ne
+                    # Allègement filler (docs/archive/audits/AUDIT_SAE_2026-08.md §2.2/§2.5) : le filler ne
                     # sert qu'à nourrir le réservoir ci-dessous (volume de tokens pour
                     # entraîner SAEBoostResidualSAE) -- son rôle en aval s'arrête là,
                     # aucun consommateur ne relit jamais son fragment ni sa case
@@ -1418,7 +1418,7 @@ def run_llm_max_pool_pipeline(
     active_sae = pretrained_sae
     # Répertoire de lecture par défaut pour tout consommateur de fragments en
     # aval (juge, UMAP) -- réassigné à ext_fragments_dir une fois le
-    # ré-encodage terminé (cf. plus bas, N1 AUDIT_SAE_2026-08.md §8) : sans
+    # ré-encodage terminé (cf. plus bas, N1 docs/archive/audits/AUDIT_SAE_2026-08.md §8) : sans
     # extension entraînée, les fragments core-only du cache partagé restent
     # la seule source valide.
     label_fragments_dir = token_fragments_dir
@@ -1438,7 +1438,7 @@ def run_llm_max_pool_pipeline(
                 ext_sae = SAEBoostResidualSAE(pretrained_sae, d_extra=D_EXTRA, k_extra=K_EXTRA).to(DEVICE)
             ckpt = torch.load(frozen_core_path, map_location=DEVICE, weights_only=False)
             # L'encodeur extra lit désormais x, pas le résidu e (SAE Boost §3.1,
-            # correctif AUDIT_SAE_2026-08.md §1.3) -- un checkpoint entraîné avant
+            # correctif docs/archive/audits/AUDIT_SAE_2026-08.md §1.3) -- un checkpoint entraîné avant
             # ce correctif a des poids W_enc_extra/b_enc_extra/encoder_input_scale
             # ajustés pour un INPUT DIFFÉRENT (e, dont l'échelle et la distribution
             # n'ont rien à voir avec x). `load_state_dict(strict=False)` les
@@ -1538,7 +1538,7 @@ def run_llm_max_pool_pipeline(
             # second run de D_EXTRA différent partageant la même clé
             # d'extraction perdait silencieusement raw_acts (KeyError au
             # prochain ré-encodage) ou lisait des colonnes extra héritées d'un
-            # AUTRE D_EXTRA -- N1, AUDIT_SAE_2026-08.md §8. token_fragments_dir
+            # AUTRE D_EXTRA -- N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8. token_fragments_dir
             # reste désormais toujours lecture seule après l'extraction :
             # aucun consommateur ne doit plus jamais y écrire.
             ext_fragments_dir = os.path.join(CACHE_DIR, "p1_token_fragments_ext")
@@ -1573,7 +1573,7 @@ def run_llm_max_pool_pipeline(
                 # d'écriture inutile.
                 re_encode_targets = build_reencode_targets(n_train, n_filler, len(all_texts))
 
-                # Reprise (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : cette passe est une
+                # Reprise (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) : cette passe est une
                 # SECONDE boucle de plusieurs heures sur tout le corpus (aussi longue
                 # que l'extraction elle-même, §2.5) et n'avait aucune reprise avant ce
                 # correctif -- même mécanisme que l'extraction P1 (checkpoint périodique
@@ -1732,7 +1732,7 @@ def run_llm_max_pool_pipeline(
                     torch.save(torch.cat(_eval_raw_diff)[:_EVAL_CAP_DIFF], _eval_raw_diff_path)
 
                 # Les shards d'extraction (token_fragments_dir) ne sont PLUS
-                # nettoyés ici : depuis le correctif N1 (AUDIT_SAE_2026-08.md
+                # nettoyés ici : depuis le correctif N1 (docs/archive/audits/AUDIT_SAE_2026-08.md
                 # §8), le ré-encodage écrit dans ext_fragments_dir (privé),
                 # jamais dans token_fragments_dir -- ce dernier reste le cache
                 # PARTAGÉ entre runs différant par K_EXTRA/D_EXTRA/EPOCHS_EXTRA
@@ -1829,7 +1829,7 @@ def run_llm_max_pool_pipeline(
             # dict PLAT {f_idx: {...}}, y ajouter une clé casserait leur
             # itération) : quel juge/quelle sélection a produit ce cache,
             # pour que le dashboard cesse d'afficher un taux d'interprétabilité
-            # sans dire de quel juge il vient (AUDIT_SAE_2026-08.md §9).
+            # sans dire de quel juge il vient (docs/archive/audits/AUDIT_SAE_2026-08.md §9).
             with open(judge_cache + ".meta.json", "w", encoding="utf-8") as f:
                 json.dump({"judge_model_id": JUDGE_MODEL_ID,
                            "feature_selection_method": FEATURE_SELECTION_METHOD,
@@ -2112,7 +2112,7 @@ def run_f2llm_pipeline(
     # Clé de cache dérivée mécaniquement du backbone (R5, CLAUDE.md) : sans ça,
     # basculer EMB_MODEL/EMB_POOLING sur un corpus de même taille (ex.
     # F2LLM-v2-330M -> F2LLM-v2-80M, ou bge-m3) rechargeait silencieusement les
-    # embeddings du mauvais modèle (AUDIT_SAE_2026-08.md).
+    # embeddings du mauvais modèle (docs/archive/audits/AUDIT_SAE_2026-08.md).
     _emb_tag = f"{os.path.basename(EMB_MODEL.rstrip('/'))}_{EMB_POOLING}"
 
     train_phrases, train_p2d = split_into_phrases(train_texts, max_phrases_per_doc=MAX_PHRASES_DOC)
@@ -2490,7 +2490,7 @@ if __name__ == "__main__":
             train_labels = ["Reclamation_Facturation", "Mise_En_Service", "Urgence_Technique"]
             # Test distinct du train même en mode dégradé -- train==test rendrait toute
             # métrique de classification/interprétabilité du run vide de sens (cf.
-            # AUDIT_SAE_2026-08.md, item A2).
+            # docs/archive/audits/AUDIT_SAE_2026-08.md, item A2).
             test_texts = [
                 "Je souhaite contester le montant de ma dernière facture, il me semble erroné.",
                 "Pouvez-vous planifier la pose de mon nouveau compteur électrique svp ?",

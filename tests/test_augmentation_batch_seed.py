@@ -1,5 +1,5 @@
 """Teste src/data/augmentation.py::_batch_seed -- correctif B.12
-(AUDIT_SAE_2026-08.md) : generate_variants faisait un seul torch.manual_seed
+(docs/archive/audits/AUDIT_SAE_2026-08.md) : generate_variants faisait un seul torch.manual_seed
 en tête de fonction, puis laissait le flux RNG dériver séquentiellement à
 travers tous les lots -- une reprise (lots déjà générés sautés) change la
 composition des lots suivants, donc la sortie réelle pour un même aug_id

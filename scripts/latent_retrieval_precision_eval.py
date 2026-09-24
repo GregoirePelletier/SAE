@@ -13,7 +13,7 @@ Protocole :
      validées comme suffisamment équilibrées (>=30 positifs) dans les tests
      précédents : réclamation, remboursement, information, urgence
      (`src.data.dataset.INTENT_KEYWORDS_FR`, patterns V2 en production, N5
-     AUDIT_SAE_2026-08.md §8 -- motif "remboursement" resserré).
+     docs/archive/audits/AUDIT_SAE_2026-08.md §8 -- motif "remboursement" resserré).
   2. Pour chaque intention, une requête en langage naturel PARAPHRASANT (pas
      copiant mot pour mot) le motif regex de l'intention -- teste la
      généralisation sémantique, pas juste le rappel de mots-clés exacts.

@@ -1,4 +1,4 @@
-"""Teste l'hypothèse B.9 (AUDIT_SAE_2026-08.md) : le prompt d'augmentation
+"""Teste l'hypothèse B.9 (docs/archive/audits/AUDIT_SAE_2026-08.md) : le prompt d'augmentation
 tronqué à 2048 tokens ferait perdre des faits aux mails longs (comparaison
 faite par `validate()` contre le parent COMPLET), sous-représentant les
 mails longs parmi les variantes acceptées. Corrèle longueur du mail parent

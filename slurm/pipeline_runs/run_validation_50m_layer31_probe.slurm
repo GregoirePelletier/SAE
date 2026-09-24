@@ -9,7 +9,7 @@
 #SBATCH --signal=B:USR1@600
 #SBATCH --output=logs/pipeline_runs/sae_probe_50m_layer31_%j.log
 
-SAE_ROOT="${SAE_ROOT:-/home/h21486/SAE}"
+SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Point de mesure UNIQUE (pas un sweep) : 50M tokens, 12B/layer31/K_EXTRA=5,
 # pour obtenir un chiffre RAM réel avant de décider d'un sweep 50M/100M

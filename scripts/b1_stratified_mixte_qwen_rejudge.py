@@ -1,5 +1,5 @@
 """
-scripts/b1_stratified_mixte_qwen_rejudge.py -- N4 (AUDIT_SAE_2026-08.md §8) :
+scripts/b1_stratified_mixte_qwen_rejudge.py -- N4 (docs/archive/audits/AUDIT_SAE_2026-08.md §8) :
 §81 (B.1) conclut "résolu négativement" sur un écart -7,3 pts (89,3% mixte vs
 82,0% originaux+filler, tous deux stratifiés, p=0,070) sans pouvoir distinguer
 "pas de contamination" de "le juge Gemma est complaisant avec du texte généré
@@ -49,7 +49,7 @@ CACHE_DIR = os.path.join(SAVE_DIR, "cache")
 # Arme MIXTE stratifiée (§79) -- PAS p1_judge_labels_extended.json (arme
 # magnitude/référence, §43/§63/§65/§83, déjà rejugée par judge_model_separation_test.py).
 B2_CACHE = os.path.join(CACHE_DIR, "b2_stratified_selection_rejudge.json")
-TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
+TOKEN_FRAGMENTS_DIR = resolve_extension_fragments_dir(CACHE_DIR)  # features EXTENSION uniquement (N1, docs/archive/audits/AUDIT_SAE_2026-08.md §8) -- p1_token_fragments_ext si présent (post-N1), repli p1_token_fragments sinon (legacy).
 _ALT_JUDGE_TAG = os.path.basename(ALT_JUDGE_MODEL_ID.rstrip("/"))
 OUT_PATH = os.path.join(CACHE_DIR, f"b1_stratified_mixte_qwen_rejudge_{_ALT_JUDGE_TAG}_seed{SEED}.json")
 

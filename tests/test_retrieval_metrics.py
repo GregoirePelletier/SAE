@@ -1,4 +1,4 @@
-"""Métriques de retrieval interp-embed App. G (AUDIT_SAE_2026-08.md, §1)."""
+"""Métriques de retrieval interp-embed App. G (docs/archive/audits/AUDIT_SAE_2026-08.md, §1)."""
 import math
 
 from src.analysis.metrics import (

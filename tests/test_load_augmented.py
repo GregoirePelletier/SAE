@@ -1,5 +1,5 @@
 """Teste src/data/augmentation.py::load_augmented -- non-régression du passage
-à un filtrage en un seul passage (AUDIT_SAE_2026-08.md, item A6 : la version
+à un filtrage en un seul passage (docs/archive/audits/AUDIT_SAE_2026-08.md, item A6 : la version
 précédente construisait la liste complète des enregistrements acceptés ET
 rejetés avant de filtrer, un aller-retour RAM inutile dans un process qui
 tient déjà le réservoir memmap et all_doc_sae_acts)."""

@@ -126,7 +126,7 @@ class PhraseLevelSAE(nn.Module):
 def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path: str = None,
                               shard_size: int = 100_000,
                               batch_size: int = None) -> tuple[torch.Tensor, int]:
-    """Reprise après coupure (R1, AUDIT_SAE_2026-08.md §2.3/§4.3) : sans
+    """Reprise après coupure (R1, docs/archive/audits/AUDIT_SAE_2026-08.md §2.3/§4.3) : sans
     `cache_path`, comportement inchangé (pas de reprise possible, appelant
     ponctuel type encodage d'une seule requête). Avec `cache_path`, les
     embeddings sont shardés tous les `shard_size` phrases sur disque
@@ -138,7 +138,7 @@ def extract_f2llm_embeddings(texts: list[str], max_length: int = 128, cache_path
 
     `batch_size` (défaut None -> 128, comportement inchangé) : paramétré au
     lieu d'une constante en dur pour permettre un balayage avant tout
-    changement de défaut (AUDIT_SAE_2026-08.md, §2 Performance -- même
+    changement de défaut (docs/archive/audits/AUDIT_SAE_2026-08.md, §2 Performance -- même
     discipline que `BATCH_SIZE_EXTRA` côté P1, `src/config.py`)."""
     if cache_path and os.path.exists(cache_path + ".pt"):
         print(f"  [Phrase] Restauration cache d'embeddings : {cache_path}.pt")
