@@ -73,10 +73,9 @@ variables shell, et certains scripts réexportent des variables que l'appelant a
   la famille `results_v*` à la racine (ablations layer/K_EXTRA/volume/seed),
   documentées par `docs/experiments.md` (index par question de recherche) et
   `docs/archived_runs_manifest.md` (quels `results_v*/` supprimés du disque
-  correspondent à quel `.slurm` pour les reproduire). Rapport lui-même :
-  `report/RAPPORT_STAGE_ENTREPRISE.tex` / `RAPPORT_STAGE_UNIVERSITE.tex`.
-  **Ne pas modifier le fond de ces deux fichiers** ni les chemins de figures
-  qu'ils référencent.
+  correspondent à quel `.slurm` pour les reproduire). Le rapport de stage (version finale) a
+  été remis hors de ce dépôt et n'y figure plus ; sa version de travail reste dans l'historique
+  Git (dossier `report/`, supprimé après le commit `e925d01`).
 - **Exploration ponctuelle** : la plupart des ~50 scripts directement sous
   `scripts/` (hors `scripts/post_stage/`) sont des audits/ablations à
   conclusion figée, chacun documenté par sa propre entrée narrative dans
@@ -110,9 +109,9 @@ variables shell, et certains scripts réexportent des variables que l'appelant a
   « plan §N » partout) : `docs/post_stage/PLAN_E00-E09.md`, spécification et non résultat.
 - **Référence technique** : `docs/architecture.md`, `docs/ops.md`, `docs/references.md`,
   `docs/INTERP_EMBED_COVERAGE.md` ; historique : `RESULTS_TESTS.md` (journal append-only, §N cités
-  par le rapport), `docs/experiments.md`, `docs/evaluation_protocol.md`, `docs/archived_runs_manifest.md`.
+  par le rapport de stage), `docs/experiments.md`, `docs/evaluation_protocol.md`, `docs/archived_runs_manifest.md`.
 - **Archive** (`docs/archive/`, conservée telle quelle, non maintenue) : audit interne d'août
-  (`audits/AUDIT_SAE_2026-08.md`, cité par le rapport et les commentaires de code),
+  (`audits/AUDIT_SAE_2026-08.md`, cité par le rapport de stage et des commentaires de code),
   audit externe du 22 septembre et sa checklist de réception (`audit_externe_2026-09/`),
   ancienne version longue de `CLAUDE.md`, extraction des annexes du papier interp_embed.
 - **Outillage agent** : `CLAUDE.md` (consignes courtes pour Claude Code) et

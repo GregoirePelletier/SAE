@@ -1,6 +1,6 @@
 """
 scripts/check_docs.py — Garde-fou éditorial pour la documentation Markdown
-versionnée du dépôt (README, CLAUDE.md, docs/, report/, RESULTS_TESTS.md) :
+versionnée du dépôt (README, CLAUDE.md, docs/, RESULTS_TESTS.md) :
 signale les régressions vers les travers corrigés lors de la refonte
 documentaire (numéro de version interne en prose, jargon de session,
 placeholders non résolus, TODO, première personne du singulier dans
@@ -20,9 +20,9 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-TARGET_DIRS = ["docs", "report"]
+TARGET_DIRS = ["docs"]
 TARGET_FILES = ["README.md", "CLAUDE.md", "RESULTS_TESTS.md"]
-EXCLUDE_DIRS = {"dist"}  # report/dist/ est généré, gitignoré, non versionné
+EXCLUDE_DIRS: set[str] = set()
 # docs/archive/ : instantanés conservés tels quels (audits, ancien CLAUDE.md, extraction de
 # papier), non maintenus -- non reformulés, liens internes non garantis (SOURCES.md de l'audit
 # externe jamais livré). PLAN_E00-E09.md : plan externe cité tel quel (« plan §N »).
@@ -41,34 +41,6 @@ LINE_EXCEPTIONS: set[tuple[str, str]] = {
     # URL d'API publique versionnée (v2.1), span de backticks multi-lignes non
     # détecté par la lecture ligne à ligne — pas un numéro de version interne.
     ("RESULTS_TESTS.md", "du schéma de l'export public (`data.economie.gouv.fr/api/explore/v2.1/catalog/"),
-    # SAELens (v6) : version d'un logiciel tiers, pas un numéro de version
-    # interne au projet. "Combiné v12" : label de ligne de table reprenant le
-    # nom d'un répertoire de run versionné (results_v12_*), exception assumée
-    # au même titre que les répertoires/scripts de run (cf. CLAUDE.md).
-    (
-        "report/RAPPORT_STAGE_UNIVERSITE.tex",
-        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
-    ),
-    (
-        "report/RAPPORT_STAGE_UNIVERSITE.tex",
-        r"Combiné v12 & 44,0\% & exploratoire \\",
-    ),
-    (
-        "report/RAPPORT_STAGE_ENTREPRISE.tex",
-        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
-    ),
-    (
-        "report/RAPPORT_STAGE_ENTREPRISE.tex",
-        r"Combiné v12 & 44,0\% & exploratoire \\",
-    ),
-    (
-        "report/Rapport_stage_EDF_relecture.tex",
-        r"\cite{bricken2023monosemanticity}). \textbf{SAELens \cite{bloom2024saelens}} (v6) stocke en revanche",
-    ),
-    (
-        "report/Rapport_stage_EDF_relecture.tex",
-        r"Combiné v12 & 44,0\% & exploratoire \\",
-    ),
 }
 
 VERSION_RE = re.compile(r"\bv\d{1,2}\b")

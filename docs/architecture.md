@@ -253,7 +253,6 @@ local_data/
   neuronpedia_labels/      # Cache labels Neuronpedia, partagé par tous les runs
   saes/                    # Poids SAE téléchargés (download_sae.py)
 docs/                      # Référence technique (ce dossier)
-report/                    # Rapport de stage M2
 slurm/, logs/              # Soumission SLURM et sorties (cf. docs/ops.md)
 results_v*/                # Répertoires de résultats par run (gitignorés),
                             #   cf. RESULTS_TESTS.md pour l'index

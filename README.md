@@ -105,8 +105,7 @@ valeurs sont surchargeables par variable d'environnement, voir `.env.example`).
 | `configs/post_stage/` | politique de campagne, manifeste et split gelés |
 | `tests/` | tests unitaires CPU |
 | `docs/` | documentation (voir `docs/HANDOVER.md`, section « Documents ») |
-| `report/` | rapport de stage (voir `report/README.md`) |
-| `RESULTS_TESTS.md` | journal d'expériences historique, sections §N citées par le rapport |
+| `RESULTS_TESTS.md` | journal d'expériences historique (sections §N citées par le rapport de stage, remis hors dépôt) |
 | `external/` | sous-modules de référence (interp_embed, SAELens) |
 
 ## Hors dépôt

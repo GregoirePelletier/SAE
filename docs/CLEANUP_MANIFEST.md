@@ -311,3 +311,15 @@ Non traités, décision de l'auteur : modification locale non commitée de
 `RAPPORT_STAGE_ENTREPRISE.tex` et `Rapport_stage_EDF_relecture.tex`, pointeur du sous-module
 `external/sae-lens` déplacé localement, fichiers non suivis `archive/dual_pipeline_sae.py`,
 `Prompt_finition_rapide_passation_SAE.md` et la capture d'écran de `report/`.
+
+## Lot 9 — retrait du rapport de stage
+
+À la demande de l'auteur (version finale remise hors dépôt) : `report/` retiré du suivi
+(chapitres `.md`, trois `.tex`, figures ; récupérable dans l'historique jusqu'au commit
+`e925d01`). La modification locale non commitée de `RAPPORT_STAGE_ENTREPRISE.tex`, les PDF, la
+capture d'écran et `report/dist/` ont été sauvegardés hors du dépôt avant retrait. Retirés avec
+lui : `scripts/build_report.py` et `slurm/validation/run_build_report.slurm` (assemblage du
+rapport) ; `scripts/plot_*.py` passés dans `scripts/archive/` (figures du rapport). `report/`
+retiré de `scripts/check_docs.py` et de `.gitignore`. Les mentions historiques du rapport dans
+`RESULTS_TESTS.md` et des commentaires de code sont laissées telles quelles.
+`Prompt_finition_rapide_passation_SAE.md` (non suivi) : non livré.
