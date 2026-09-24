@@ -278,7 +278,7 @@ et non validé (`docs/RESULTS_STATUS.md`).
 | `CLAUDE.md` (long) | `docs/archive/CLAUDE_long_2026-09.md` ; `CLAUDE.md` racine réduit à ~25 lignes | informations uniques conservées (diagnostics, seeds) ; pièges essentiels repris dans `HANDOVER.md` |
 | `scripts/augmentation_rejection_length_bias_test.py` | `scripts/archive/` | audit ponctuel, aucune référence active |
 | `scripts/seed_label_overlap_r0_test.py` | `scripts/archive/` | idem (`RESULTS_TESTS.md`, append-only, cite l'ancien chemin) |
-| `AUDIT_SAE_2026-08.md` | conservé à la racine | cité par `report/03_*.md` (protégé) et `RESULTS_TESTS.md` |
+| `docs/archive/audits/AUDIT_SAE_2026-08.md` | conservé à la racine | cité par `report/03_*.md` (protégé) et `RESULTS_TESTS.md` |
 | `docs/INTERP_EMBED_COVERAGE.md` | conservé | référence de méthode, citée par `src/analysis/hypothesis_verifier.py` |
 | `scripts/dictionary_width_quality_audit.py`, `compare_to_frozen_benchmark.py`, `plot_*.py` | conservés | chemins calculés depuis `__file__` / figures du rapport |
 
@@ -287,3 +287,27 @@ restent valides » corrigées sans toucher aux valeurs ; E00, E02≠R0, E03 (P@1
 (pas de rejeu), E05, E06, E09 précisés ; HANDOVER : parcours consultation / reprise ; `slurm/README.md` :
 lancement, `RUN_SUFFIX`, juge ; dashboard : bandeau par run et « sonde des axes d'augmentation » (E01).
 Hook `.claude/settings.json` inchangé (relance de la suite après édition `.py`).
+
+## Lot 8 — revue de passation finale
+
+| Ancien chemin | Nouveau chemin / action | Raison |
+|---|---|---|
+| `AUDIT_SAE_2026-08.md` (racine) | `docs/archive/audits/` | audit historique ; ~100 références de commentaires/docs mises à jour ; les `.tex` du rapport le citent par son nom (non modifiés) |
+| `docs/audit_2026_08_*.json` | `docs/archive/audits/` | sorties d'audit ; le dashboard les lit désormais à cet endroit (l'ancien motif ne les trouvait pas) |
+| `Plan_execution_SAE_15_jours_Claude_Code.md` (non suivi) | `docs/post_stage/PLAN_E00-E09.md` (suivi) | cité « plan §N » dans toute la documentation : dépendance réelle, jamais versionnée |
+| `docs/01-04_*.md` (non suivis, audit externe) | `docs/archive/audit_externe_2026-09/` (suivis, contenu inchangé) | instantané du 22 septembre, en partie dépassé ; index dans `docs/archive/README.md` |
+| `.github/agents/ml-engineer-cpu-test.agent.md` | retiré (récupérable dans Git) | prompt d'agent générique, sans information propre au projet |
+| `.claude/settings.json` | plugin personnel retiré, hook `pytest` conservé | outillage personnel |
+| `slurm/**/*.slurm` (141) | défaut `SAE_ROOT` = `$SLURM_SUBMIT_DIR` au lieu d'un chemin personnel | portabilité (même comportement si `sbatch` est lancé depuis la racine) |
+| `README.md` | réécrit | besoin, données, statut, installation, consultation, recalcul, tests, carte, hors dépôt |
+
+Aussi : `.env.example` (chemins des mails), `docs/architecture.md` (défauts `K_EXTRA`, `EMB_MODEL`),
+`docs/experiments.md` (index marqué historique), `docs/HANDOVER.md` (carte des documents,
+`SAE_ROOT`), `docs/RESULTS_STATUS.md` (liste « reste à faire »), `scripts/check_docs.py`
+(`docs/archive/` et le plan externe exclus du contrôle éditorial).
+
+Non traités, décision de l'auteur : modification locale non commitée de
+`report/RAPPORT_STAGE_ENTREPRISE.tex` (liens `s2`-`s6` morts ligne 949), coexistence de
+`RAPPORT_STAGE_ENTREPRISE.tex` et `Rapport_stage_EDF_relecture.tex`, pointeur du sous-module
+`external/sae-lens` déplacé localement, fichiers non suivis `archive/dual_pipeline_sae.py`,
+`Prompt_finition_rapide_passation_SAE.md` et la capture d'écran de `report/`.

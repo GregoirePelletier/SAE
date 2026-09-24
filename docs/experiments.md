@@ -4,6 +4,10 @@ Vue synthétique, organisée par question de recherche plutôt que par ordre
 chronologique. Le détail complet (logs, jobs SLURM) vit dans `RESULTS_TESTS.md` — ce
 document y renvoie systématiquement.
 
+> Index historique : les taux d'interprétabilité cités ici précèdent pour la plupart les
+> corrections de protocole de `RESULTS_TESTS.md` §113-120 (référence actuelle : §119,
+> 65,7 %). Statut à jour des expériences : `docs/RESULTS_STATUS.md`.
+
 ## 1. Le corpus complet peut-il être traité dans un budget de calcul raisonnable ?
 
 Augmentation complète (3480 mails × 13 axes = 45 240 générations) : ~63h GPU

@@ -1,149 +1,119 @@
-# Sparse Autoencoders (SAE) for Interpretable Text Analysis
+# SAE — analyse interprétable d'emails clients par Sparse Autoencoders
 
-Analyse interprétable de mails clients EDF (et de corpus publics de substitution) via
-Sparse Autoencoders sur les hidden states de Gemma-3, avec labellisation des features
-par GemmaScope-2 / Neuronpedia et par un juge LLM local.
-
-Deux pipelines :
-
-- **Pipeline 1** : Gemma-3 (hidden states, couche `LAYER`) → SAE GemmaScope-2 préentraîné
-  (+ extension `FrozenCoreResidualSAE`/`SAEBoostResidualSAE` optionnelle) → max-pool documentaire.
-- **Pipeline 2** : F2LLM-v2 (embeddings de phrases) → `PhraseLevelSAE` entraîné from-scratch
-  (BatchTopK + AuxK) → max-pool documentaire.
-
-Détail de l'architecture : `docs/architecture.md`. Installation, cluster SLURM,
-dépannage Windows/HuggingFace : `docs/ops.md`.
+Prototype de recherche (stage M2, EDF R&D) : **découvrir et examiner des thèmes dans des emails
+clients** sans taxonomie définie à l'avance, en décomposant les représentations internes d'un
+modèle de langue (Gemma-3) en features interprétables (Sparse Autoencoders), puis en s'en servant
+pour chercher, comparer et regrouper des emails.
 
 > **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+>
+> Un rejeu est engagé (résultats partiels) : état précis et limites dans
+> [`docs/RESULTS_STATUS.md`](docs/RESULTS_STATUS.md).
 
-Parcours de lecture : **README → `docs/HANDOVER.md` → `docs/RESULTS_STATUS.md`** (détail du
-statut et de l'impact : section Corpus de ce dernier). Prototype de recherche sur données
-synthétiques ; aucune validation par des analystes.
+**Données** : corpus d'emails de type client EDF **synthétiques** (aucune donnée client réelle),
+3 474 mails d'origine + variantes générées (émotion, urgence, registre, orthographe). Ni les données,
+ni les modèles, ni les résultats ne sont dans ce dépôt (voir « Hors dépôt »).
 
----
-
-## Corpus d'entraînement
-
-Le SAE d'extension (`SAEBoostResidualSAE`) et le `PhraseLevelSAE` s'entraînent sur les
-**mails originaux + variantes augmentées** (`local_data/emails/`), qui
-dominent le train (~41k/2,2k docs train/test). Le corpus generic
-energy/sports/support (FineWeb-2/Wikipedia) sert uniquement à une
-démonstration de diffing cross-domaine, encodée post-hoc, sans participer à
-l'entraînement.
-
-L'appariement de domaine entre le corpus d'entraînement de l'extension et le
-corpus cible conditionne directement l'interprétabilité mesurée des features :
-sur un corpus hors-domaine (energy/sports/support), le taux d'interprétabilité
-(protocole odd-one-out) est de 20% (2/10) ; sur le corpus emails, il est de
-45,3% (68/150) à effectif apparié (n=150, `RESULTS_TESTS.md` §46, z=2,74,
-p≈0,006). Le volume d'entraînement, testé de 100k à 2M tokens à corpus
-identique, n'a lui aucun effet mesurable.
-
-Ce chiffre date d'un protocole depuis révisé deux fois : sélection des
-features par magnitude d'activation (biaisée vers les features les plus
-denses), puis juge auto-référent (le même modèle Gemma extrait et juge),
-puis construction du négatif odd-one-out elle-même (le juge pouvait
-distinguer l'intrus par sa seule longueur, indépendamment du concept). Sous
-le protocole intégralement corrigé (sélection stratifiée, juge
-`Qwen3.8-27B` découplé du modèle d'extraction, négatif corrigé,
-déduplication par mail parent), sur la config par défaut de ce dépôt
-(`MODEL_SIZE=12b`, layer 31, `K_EXTRA=5`) : **65,7% (197/300)**, IC95%
-[60,1% ; 70,8%] — c'est **le chiffre de référence actuel** (`RESULTS_TESTS.md`
-§119, run R0, job 46191). Le corpus générique n'a pas été re-mesuré sous ce
-protocole ; l'effet de domaine lui-même (emails > générique) n'est donc plus
-quantifié dans sa forme actuelle, seule sa direction reste établie. Sous ce
-même protocole, l'effet d'échelle du modèle extracteur/juge (1B/4B/12B/27B)
-ne montre plus de tendance monotone détectable (`RESULTS_TESTS.md` §119) —
-ne pas citer une progression avec la taille du modèle comme résultat établi.
-Détail du diagnostic et des runs de validation : `RESULTS_TESTS.md` §12,
-§113-§120, et `docs/archive/CLAUDE_long_2026-09.md` (section Diagnostics).
+**Parcours de lecture** : ce README → [`docs/HANDOVER.md`](docs/HANDOVER.md) (carte du dépôt,
+démarrage, reprise) → [`docs/RESULTS_STATUS.md`](docs/RESULTS_STATUS.md) (où en est chaque résultat).
 
 ---
 
-## Démarrage rapide
+## Ce que fait le code
+
+- **Pipeline 1 (principal)** : Gemma-3 gelé → activations du residual stream (couche `LAYER`) →
+  SAE GemmaScope-2 préentraîné gelé (**CORE**) + petite extension entraînée sur le résidu
+  (**EXTRA** ; `SAEBoostResidualSAE`, `src/sae/frozen_core.py`) → représentation **FULL** =
+  CORE + EXTRA, agrégée par email. Les features EXTRA sont nommées par un juge LLM local
+  (Qwen3.8-27B, jamais le modèle d'extraction).
+- **Pipeline 2 (alternative)** : embeddings de phrases F2LLM-v2 → `PhraseLevelSAE` entraîné de
+  zéro. Non rejoué dans la campagne post-soutenance.
+- **Campagne post-soutenance E00–E09** (1B, couche 13) : comparaison de représentations
+  (CORE/FULL/dense bge-m3/TF-IDF), registre de features, recherche d'emails par propriété,
+  diffing de populations, stabilité des features, corrélations, clustering ciblé, mini-pilote
+  Streamlit. Split parent-aware **FIT / DEV / CONFIRM** (`configs/post_stage/`).
+
+Taux d'interprétabilité de référence (historique, 12B) : **65,7 % (197/300)**,
+`RESULTS_TESTS.md` §119 — protocole et réserves dans `docs/RESULTS_STATUS.md`.
+
+---
+
+## Installation
+
+Prérequis : Python **3.12**, [`uv`](https://docs.astral.sh/uv/), accès aux dépôts HuggingFace
+« gated » de Gemma (token), un cluster SLURM avec GPU pour tout calcul (voir `docs/ops.md`).
 
 ```bash
-# 1. Télécharger le modèle + le SAE (cible par défaut : 12b)
-python download_sae.py
-
-# 2. Récupérer les labels Neuronpedia (optionnel mais recommandé)
-python -c "from src.sae.neuronpedia_labels import fetch_neuronpedia_labels; \
-  fetch_neuronpedia_labels(model_id='gemma-3-12b-it', layer=24, width='16k', \
-  cache_path='local_data/neuronpedia_labels/neuronpedia_labels_24-gemmascope-2-res-16k.json')"
-
-# 3. Lancer la pipeline complète
-PYTHONPATH=. python src/sae/saev5.py
+git clone <url-du-dépôt> SAE && cd SAE
+git submodule update --init          # external/interp_embed, external/sae-lens (référence)
+uv sync --locked --python 3.12       # crée .venv/ aux versions de uv.lock
+cp .env.example .env                 # leviers de configuration documentés
 ```
 
-Installation, accès HuggingFace (gated), dépannage Windows : `docs/ops.md`.
+Modèles attendus sous `models/` (`MODEL_ID`, `EMB_MODEL`, `JUDGE_MODEL_ID` surchargeables) :
+`gemma-3-1b-it` / `gemma-3-12b-it`, `Qwen3.8-27B`, `bge-m3`, `F2LLM-v2-*`. SAE GemmaScope-2 :
+`MODEL_SIZE=1b .venv/bin/python download_sae.py` (ou `12b`, `4b`, `270m`). Accès réseau/proxy,
+HuggingFace et dépannage : `docs/ops.md`.
 
----
+## Utiliser
 
-## Configuration (`src/config.py`)
-
-Source unique de vérité pour toute la pipeline — toutes les valeurs sont surchargeables
-par variable d'environnement. Voir `.env.example` pour un jeu de valeurs prêtes à copier,
-avec un profil `12b` (principal) et un profil `270m` (validation rapide, commenté).
-Conditions de référence pour les comparaisons expérimentales : `docs/evaluation_protocol.md`.
-
-| Variable | Défaut | Rôle |
-|---|---|---|
-| `MODEL_SIZE` | `12b` | `12b` / `4b` / `1b` / `270m` — sélectionne modèle + SAE via `_PRESETS` |
-| `MODEL_ID` | dérivé du preset | Repo HF du modèle (override direct possible) |
-| `SAE_ID` | dérivé du preset | Sous-dossier GemmaScope (`layer_X_width_Y_l0_Z`) |
-| `DTYPE` | `bf16` | bf16 obligatoire sur Gemma-3 (activations massives, cf. `docs/architecture.md`) |
-| `LAYER` | dérivé du preset | Couche du residual stream extraite |
-| `USE_FROZEN_CORE` | `1` | Active l'extension `SAEBoostResidualSAE` (Pipeline 1) |
-| `D_EXTRA` / `K_EXTRA` | `1024` / `5` | Dimension / sparsité de l'extension |
-| `D_SAE` / `K_SPARSE` | `8192` / `16` | Dimension / sparsité du `PhraseLevelSAE` (Pipeline 2) |
-| `EMB_MODEL` | `codefuse-ai/F2LLM-v2-80M` | Modèle d'embeddings phrase (Pipeline 2) |
-| `SAVE_DIR` | `./results/` | Racine des sorties (résultats + `cache/`) |
-| `LOCAL_MAILS_PATH` | `./local_data/emails/Mails.tsv` | Corpus EDF (mails originaux) |
-| `LOCAL_AUGMENTED_MAILS_PATH` | `./local_data/emails/augmented_mails.jsonl` | Variantes augmentées acceptées |
-| `NEURONPEDIA_LABELS_PATH` | `./local_data/neuronpedia_labels/neuronpedia_labels_{layer}-gemmascope-2-res-{width}.json` | Cache labels Neuronpedia, partagé entre tous les runs |
-| `EMAIL_TEST_SPLIT` | `0.05` | Fraction des mails réservée au test, split group-aware par mail d'origine |
-| `MAX_AUGMENTED_PER_MAIL` | `13` | Nb max de variantes augmentées conservées par mail original |
-| `CLUSTER_OFFLINE_MODE` | `0` | `1` = reproduit l'environnement cluster (cf. `docs/ops.md`) |
-| `HF_TOKEN` | — | Token HF pour les repos gated |
-
----
-
-## Scripts, dashboard, tests
-
-Inventaire détaillé de tous les scripts (`download_sae.py`,
-`scripts/baseline_gemmascope.py`, `scripts/run_augmentation.py`,
-`scripts/retrieval_demo.py`, `src/sae/compare/pipeline.py`, diagnostics
-manuels) : `docs/architecture.md`.
-
-Dashboard interactif (Streamlit, lecture seule des artefacts déjà produits) :
+**Consulter les résultats (sans GPU ni poids)** — dashboard Streamlit en lecture seule sur un
+dossier `results_*` copié à la racine du clone :
 
 ```bash
-.venv/bin/python -m streamlit run src/visualization/dashboard.py
+export SAE_ROOT="$PWD"
+export SAE_DASHBOARD_STATE_DIR="$HOME/.local/share/sae_dashboard"
+mkdir -p "$SAE_DASHBOARD_STATE_DIR" && chmod 700 "$SAE_DASHBOARD_STATE_DIR"
+.venv/bin/python -m streamlit run src/visualization/dashboard.py \
+  --server.address=127.0.0.1 --server.port=8501 --server.headless=true \
+  --browser.gatherUsageStats=false
 ```
 
-Suite de tests :
+Fichiers à copier par page et limites : `docs/HANDOVER.md`, parcours A.
+
+**Recalculer** — uniquement par `sbatch`, jamais sur le nœud frontal, depuis la racine du clone :
 
 ```bash
-pytest tests/ -v
+export SAE_ROOT="$PWD"; mkdir -p logs/post_stage
+sbatch --export=ALL,RUN_SUFFIX=_nouveau slurm/post_stage/01_e01_fit_reference.slurm
+```
+
+Ordre des recettes, ressources, préconditions (encodage CONFIRM, juge sur H100) :
+`docs/HANDOVER.md` parcours B et `slurm/README.md`. Configuration : `src/config.py` (toutes les
+valeurs sont surchargeables par variable d'environnement, voir `.env.example`).
+
+**Tests** (CPU, ~3 min, aucune donnée réelle nécessaire) :
+
+```bash
+.venv/bin/python -m pytest tests/ -q
+.venv/bin/python scripts/check_docs.py     # contrôle éditorial de la documentation
 ```
 
 ---
 
-## Rapport et résultats
+## Carte du dépôt
 
-- `docs/RESULTS_STATUS.md` : statut actuel de chaque expérience post-soutenance
-  (E00-E09), ce qui est établi, ce qui ne l'est pas, ce qui attend encore une
-  vérification humaine — point d'entrée recommandé pour "où en est le projet
-  aujourd'hui".
-- `report/` : rapport de stage (chapitres numérotés `00_*` à `07_*`, sources
-  uniques ; `RAPPORT_STAGE_UNIVERSITE.tex` et `RAPPORT_STAGE_ENTREPRISE.tex`
-  sont les livrables). Limites connues et pistes pour la suite :
-  `report/04_limites_et_perspectives.md`.
-- `RESULTS_TESTS.md` : cahier de laboratoire historique (une section par
-  question posée, avant la soutenance), `docs/post_stage/eNN_results.md` :
-  même format pour la campagne post-soutenance.
-- `docs/HANDOVER.md` : carte du dépôt pour la reprise (parcours actif vs
-  référence historique vs exploration archivée, artefacts nécessaires pour
-  ouvrir le dashboard vs pour reproduire un calcul, environnement).
-- `docs/evaluation_protocol.md` : configuration de référence pour comparer
-  les runs entre eux.
+| Chemin | Contenu |
+|---|---|
+| `src/sae/` | pipeline (`saev5.py`), SAE et extension, juge, cache d'extraction |
+| `src/post_stage/` | contrat de données FIT/DEV/CONFIRM, représentations, stabilité, profilage |
+| `src/analysis/`, `src/data/`, `src/storage/` | métriques/statistiques, corpus et augmentation, checkpoints |
+| `src/visualization/dashboard.py` | dashboard Streamlit |
+| `scripts/post_stage/` | expériences E01–E07 (scripts autonomes) |
+| `scripts/` | audits et ablations historiques (`scripts/archive/` : audits sans usage actif) |
+| `slurm/post_stage/` | recettes actives ; autres sous-dossiers = campagnes historiques |
+| `configs/post_stage/` | politique de campagne, manifeste et split gelés |
+| `tests/` | tests unitaires CPU |
+| `docs/` | documentation (voir `docs/HANDOVER.md`, section « Documents ») |
+| `report/` | rapport de stage (voir `report/README.md`) |
+| `RESULTS_TESTS.md` | journal d'expériences historique, sections §N citées par le rapport |
+| `external/` | sous-modules de référence (interp_embed, SAELens) |
+
+## Hors dépôt
+
+Données (`local_data/`), modèles (`models/`), jeux publics (`datasets/`), résultats
+(`results_*/`), caches d'extraction (`local_data/activation_cache/`, plusieurs centaines de Go) et
+logs sont ignorés par Git. Ils sont sur le cluster d'origine ; leur transfert, sous contrôle
+d'accès, et l'inventaire des artefacts nécessaires sont décrits dans `docs/HANDOVER.md`.
+
+Auteur : Grégoire Pelletier (stage M2 Mathématiques et IA, Université Paris-Saclay, EDF R&D).

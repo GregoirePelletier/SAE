@@ -32,7 +32,8 @@ mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
   neuronpedia_labels/`, cf. `src/sae/neuronpedia_labels.py`).
 - L'**extension** (`FrozenCoreResidualSAE`/`SAEBoostResidualSAE`, `src/sae/frozen_core.py`)
   encode le résidu (ce que le SAE core ne reconstruit pas) avec un second SAE de plus
-  petite taille (`D_EXTRA=1024`, `K_EXTRA=32` actifs), entraîné **from-scratch** sur le
+  petite taille (`D_EXTRA=1024`, `K_EXTRA=5` actifs par défaut ; 32 dans les runs historiques de
+  la config `results_v10_emails_main`), entraîné **from-scratch** sur le
   corpus du projet (cf. section Corpus ci-dessous). Design spécifique au projet — jamais
   fourni par GemmaScope/SAELens.
 - Les features d'extension n'existent sur aucune base externe (Neuronpedia ne les
@@ -44,7 +45,7 @@ mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
 
 ```
 mail/texte → découpage en phrases
-           → F2LLM-v2-80M (embeddings de phrase, dim Matryoshka=320)
+           → F2LLM-v2 (embeddings de phrase ; défaut `EMB_MODEL` = 330M, 80M dans les runs historiques)
            → PhraseLevelSAE entraîné from-scratch (BatchTopK+AuxK, D_SAE=8192, K=16)
            → max-pool documentaire (max sur les phrases du document)
 ```

@@ -181,15 +181,20 @@ comme des diffs sur un fichier suivi.
 Aucun run 100M documenté (budget optionnel fixé à 0) ; ne pas en inventer un.
 À confirmer avec Grégoire si une tentative a eu lieu ailleurs.
 
-## Ce qui reste ouvert et nécessite Grégoire
+## Ce qui reste à faire (pour le repreneur)
 
-- Vérification humaine E02 (60-100 features).
-- Calibration humaine E03/E04 (jugements Qwen non recoupés par relecture).
-- Audits humains E06 (paires) et E07 (clusters).
-- Séances E08 (2-3 participants réels).
-- Décision sur le rerun `percentage_difference` (E04) et sur le rééquilibrage
-  CORE/FULL du budget candidat (E06) — tous deux non corrigés ici,
-  volontairement, car une correction de formule/sélection doit être un
-  patch isolé avec rejeu, pas un nettoyage de passation.
-- Second sink mémoire (E00, `p1_all_doc_acts_ext_d*.pt`) — audit des 20
-  scripts consommateurs avant correctif.
+1. **Terminer le rejeu sous le manifeste corrigé** : relever dans `sacct` les jobs 50937-50945
+   (E05 seed43/randinit45, encodage CONFIRM, E03/E04/E06/E07, analyses E05), consigner leurs
+   résultats dans `docs/post_stage/eNN_results.md` et mettre à jour ce document. Tant que ce n'est
+   pas fait, E03-E07 ne sont que l'historique (ancien split).
+2. **Évaluations humaines**, aucune réalisée : vérification E02 (60-100 features), calibration des
+   jugements Qwen E03/E04, audits E06 (paires) et E07 (clusters), séances E08 (2-3 participants).
+3. **Correctifs de méthode non faits** : rééquilibrage CORE/FULL du budget candidat E06 (rejeu
+   nécessaire) ; dépendance des parents partagés entre groupes A/B en E04 ; déduplication par
+   parent du top-10 E03 ; regénération de `augmented_mails.jsonl` avec `parent_sha1` (la jointure
+   reste positionnelle, désormais correcte).
+4. **Mémoire (E00)** : second poste `p1_all_doc_acts_ext_d*.pt` non corrigé (audit des scripts
+   consommateurs avant tout run volumineux).
+
+Déjà corrigé et testé : jointure variante→parent (manifeste régénéré) et `percentage_difference`
+(E04, code seulement — le rejeu E04 le prendra en compte).

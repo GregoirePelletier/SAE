@@ -101,15 +101,32 @@ variables shell, et certains scripts réexportent des variables que l'appelant a
 - Dashboard : `.venv/bin/python -m streamlit run src/visualization/
   dashboard.py` — lecture seule des artefacts déjà produits, aucune
   extraction/inférence au chargement d'une page.
-- Tests : `pytest tests/ -q` (doit rester 100% vert, cf. `CLAUDE.md`).
+- Tests : `.venv/bin/python -m pytest tests/ -q` (CPU, ~3 min ; doit rester vert, cf. `CLAUDE.md`).
+
+## Documents : actifs, référence, archive
+
+- **Actifs** : `README.md` → `docs/HANDOVER.md` → `docs/RESULTS_STATUS.md` ; détail par
+  expérience dans `docs/post_stage/eNN_results.md` ; plan d'origine de la campagne (cité
+  « plan §N » partout) : `docs/post_stage/PLAN_E00-E09.md`, spécification et non résultat.
+- **Référence technique** : `docs/architecture.md`, `docs/ops.md`, `docs/references.md`,
+  `docs/INTERP_EMBED_COVERAGE.md` ; historique : `RESULTS_TESTS.md` (journal append-only, §N cités
+  par le rapport), `docs/experiments.md`, `docs/evaluation_protocol.md`, `docs/archived_runs_manifest.md`.
+- **Archive** (`docs/archive/`, conservée telle quelle, non maintenue) : audit interne d'août
+  (`audits/AUDIT_SAE_2026-08.md`, cité par le rapport et les commentaires de code),
+  audit externe du 22 septembre et sa checklist de réception (`audit_externe_2026-09/`),
+  ancienne version longue de `CLAUDE.md`, extraction des annexes du papier interp_embed.
+- **Outillage agent** : `CLAUDE.md` (consignes courtes pour Claude Code) et
+  `.claude/settings.json` (relance `pytest` après toute édition d'un `.py`). Utiles seulement si
+  le repreneur travaille avec Claude Code ; sans effet sinon.
+- Journal de ce nettoyage de passation : `docs/CLEANUP_MANIFEST.md`.
 
 ## Environnement
 
 Installation, accès HuggingFace gated, dépannage Windows/cluster :
 `docs/ops.md` (ne pas dupliquer ici). Racine du projet configurable via
-`SAE_ROOT` (défaut : chemin absolu de ce clone) — introduit par ce nettoyage
-pour que `slurm/*.slurm` et les scripts `interp_embed` fonctionnent depuis
-n'importe quel clone, pas seulement `/home/h21486/SAE`. Modèles/données
+`SAE_ROOT` : dans les recettes `slurm/`, défaut = répertoire de soumission
+(`$SLURM_SUBMIT_DIR`, donc la racine du clone si `sbatch` y est lancé) ; dans les scripts
+`interp_embed`, défaut = dossier parent de `scripts/`. Aucun chemin personnel n'est requis. Modèles/données
 (`MODEL_ID`, `EMB_MODEL`, `JUDGE_MODEL_ID`, `LOCAL_MAILS_PATH`, `SAVE_DIR`,
 ...) restent individuellement surchargeables par variable d'environnement
 (`src/config.py`) — ne pas les recentraliser dans un second mécanisme.
@@ -168,7 +185,7 @@ ressource autorisée au moment du transfert plutôt que sur le frontal.
   (`models/gemma-3-{taille}-it`), juge (`models/Qwen3.8-27B`), et repasser
   par `slurm/post_stage/00_profile.slurm` → `01_e01_fit_reference.slurm` →
   ... dans l'ordre numéroté (dépendances documentées dans le plan
-  `Plan_execution_SAE_15_jours_Claude_Code.md` §16.5).
+  `docs/post_stage/PLAN_E00-E09.md` §16.5).
 - Chaque script Slurm exporte explicitement les chemins qu'il consomme
   (`LOCAL_MAILS_PATH`, `MODEL_ID`, etc., tous dérivés de `SAE_ROOT` depuis ce
   nettoyage) — lire l'en-tête du `.slurm` concerné pour la liste exacte
@@ -179,7 +196,7 @@ ressource autorisée au moment du transfert plutôt que sur le frontal.
 `p1_token_fragments`), tous pointant vers le cache d'extraction partagé
 `local_data/activation_cache/<clé>/` — vérifiés résolus (pas cassés) au
 moment de ce nettoyage. **Cibles en chemin absolu**
-(`/home/h21486/SAE/local_data/activation_cache/...`) : transmettre ce
+(`<clone d'origine>/local_data/activation_cache/...`) : transmettre ce
 répertoire de run à quelqu'un sans transmettre aussi `local_data/
 activation_cache/` (gros, non mesuré ici, cf. `.gitignore` — jamais suivi
 par Git) donnerait des liens cassés, silencieusement, tant que personne ne
