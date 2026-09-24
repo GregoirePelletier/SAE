@@ -55,11 +55,23 @@ export D_EXTRA=1024
 export K_EXTRA=5
 export EPOCHS_EXTRA=10
 export N_FEATURES_TO_LABEL=10
-export SAVE_DIR="${SAE_ROOT}/results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-}/"
+# EVAL_SUFFIX (vide par defaut = SAVE_DIR du run FIT, comportement historique). Non vide (ex.
+# _eval) : dossier d'evaluation DISTINCT -- la cle de cache d'extraction change (CONFIRM entre
+# dans diff_texts), et saev5.py refuse un lien SAVE_DIR/cache/* pointant vers l'ancienne cle.
+# Seuls les checkpoints FIT figes y sont copies (cp -n), aucun lien n'est supprime/recree.
+FIT_DIR="${SAE_ROOT}/results_post_stage_e01_fit_1b_layer13_k5${RUN_SUFFIX:-}"
+export SAVE_DIR="${FIT_DIR}${EVAL_SUFFIX:-}/"
 
 export PYTHONPATH="${SAE_ROOT}:${PYTHONPATH:-}"
 
 mkdir -p "${SAE_ROOT}/logs/post_stage" "${SAVE_DIR}/cache"
+if [ -n "${EVAL_SUFFIX:-}" ]; then
+  for f in p1_frozen_core_d1024_k5.pt p1_extended_sae.pt p1_extended_sae_history.json; do
+    [ -f "${FIT_DIR}/${f}" ] || { echo "checkpoint FIT absent: ${FIT_DIR}/${f}" >&2; exit 1; }
+    cp -n "${FIT_DIR}/${f}" "${SAVE_DIR}/${f}"
+  done
+  [ -f "${FIT_DIR}/cache/p1_eval_raw_tokens.pt" ] && cp -n "${FIT_DIR}/cache/p1_eval_raw_tokens.pt" "${SAVE_DIR}/cache/" || true
+fi
 cd "${SAE_ROOT}"
 
 srun --ntasks=1 .venv/bin/python scripts/post_stage/profile_run.py \
