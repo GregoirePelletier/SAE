@@ -31,3 +31,21 @@ tail -f logs/pipeline_runs/sae_v12_scaled_<jobid>.log
 Le suivi chronologique détaillé (paramètres exacts, durée, résultats, déductions)
 de chaque run est dans `RESULTS_TESTS.md` à la racine du dépôt — les logs bruts ne
 sont qu'une trace d'exécution, pas la documentation de référence.
+
+## Recettes actives et lancement
+
+- **Actives** : `post_stage/` (campagne post-soutenance, numérotée par ordre de dépendance,
+  ressources par recette dans son en-tête `#SBATCH`, budget dans `configs/post_stage/campaign_policy.yaml`).
+  Les autres répertoires sont des campagnes historiques : ne pas les rejouer par défaut ; leurs
+  chemins passent par `SAE_ROOT` mais leurs ressources n'ont pas été re-testées.
+- **Lancement** : depuis la racine du clone, `export SAE_ROOT="$PWD"` puis `mkdir -p logs/post_stage`
+  (et le sous-dossier de logs de la catégorie utilisée) **avant** `sbatch`. Les `#SBATCH --output`
+  sont relatifs à ce répertoire ; les directives `#SBATCH` n'expansent pas les variables shell ; un
+  script peut écraser une variable exportée par l'appelant.
+- **`RUN_SUFFIX`** (recettes `post_stage/`) : suffixe ajouté aux dossiers de résultats pour un nouveau
+  run (`sbatch --export=ALL,RUN_SUFFIX=_x ...`) ; vide = mêmes dossiers que l'historique. Un rejeu
+  sous le manifeste corrigé ne recharge pas les anciens poids FIT.
+- **Juge** : 1 H100/H100-bis suffit ; le repli 2×A100 n'existe que dans les scripts avec
+  `--judge-device auto` (E02-E04, variantes `*_a100.slurm`). L'encodage CONFIRM (`05_*`) change la clé de
+  cache : voir `docs/HANDOVER.md`, ne pas supprimer les liens de cache pour contourner l'erreur.
+- `bash -n` ne valide que la syntaxe shell (pas droits, ressources, poids, chemins résolus).

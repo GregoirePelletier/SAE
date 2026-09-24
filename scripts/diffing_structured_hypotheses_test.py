@@ -1,6 +1,6 @@
 """
 scripts/diffing_structured_hypotheses_test.py — App D.2 (arXiv:2512.10092v2,
-docs/PDF_APPENDICES_EXTRACT.md lignes 212-266) : génère des hypothèses de
+docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 212-266) : génère des hypothèses de
 diffing STRUCTURÉES (JSON, prompt verbatim) à partir des features SAE les
 plus discriminantes déjà calculées (`p1_diff_energy_sports.csv`,
 `corpus_diff_stats`), sélectionnées par différence de FRÉQUENCE (App D.2 :

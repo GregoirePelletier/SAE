@@ -1,7 +1,7 @@
 """
 hypothesis_verifier.py — Vérification d'hypothèses de diffing par juge LLM
 (App K.1, arXiv:2512.10092v2 ; définitions de `verification_rate`/`coverage`
-en Figures 11/12, cf. docs/PDF_APPENDICES_EXTRACT.md lignes 340 et 740-775).
+en Figures 11/12, cf. docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 340 et 740-775).
 
 Adaptateur de `external/interp_embed/paper/diffing/hypothesis_verifier.py::
 HypothesisVerifier` vers le juge local du projet (`JUDGE_MODEL_ID`,
@@ -103,7 +103,7 @@ def compute_verification_metrics(
     hypothesis_labels: Optional[list] = None,
     threshold: float = 0.01,
 ) -> tuple:
-    """Métriques App K.1 (docs/PDF_APPENDICES_EXTRACT.md lignes 340, 742).
+    """Métriques App K.1 (docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 340, 742).
 
     - `verification_rate` : fraction des hypothèses dont la différence de
       fréquence vérifiée |rate_in_group - rate_out_group| dépasse `threshold`

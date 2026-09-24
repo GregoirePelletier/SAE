@@ -1,6 +1,6 @@
 """
 scripts/diffing_hypothesis_verification_test.py — App K.1 (arXiv:2512.10092v2,
-docs/PDF_APPENDICES_EXTRACT.md lignes 340, 740-775) : vérifie par juge LLM
+docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 340, 740-775) : vérifie par juge LLM
 local (Qwen3.8-27B-FP8, JUDGE_MODEL_ID) les hypothèses de diffing SAE déjà
 produites (`p1_diff_energy_sports.csv`, labels des features les plus
 discriminantes énergie vs sports, `corpus_diff_stats`) contre un corpus frais

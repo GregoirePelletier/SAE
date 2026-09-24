@@ -16,7 +16,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 
-# App D.2 (docs/PDF_APPENDICES_EXTRACT.md lignes 212-266) : génère des
+# App D.2 (docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 212-266) : génère des
 # hypothèses de diffing STRUCTURÉES (JSON, prompt verbatim) à partir des
 # features SAE les plus discriminantes (sélection par différence de
 # FRÉQUENCE, top 200/seuil 0.03 -- distinct du tri par log-odds-ratio),

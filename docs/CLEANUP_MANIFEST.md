@@ -266,3 +266,24 @@ Correction demandée explicitement après la découverte du lot 4.
 - `parent_sha1` reste absent du `augmented_mails.jsonl` gelé (généré avant
   son ajout) : la jointure reste positionnelle, désormais correcte ; la
   régénérer avec `parent_sha1` supprimerait cette dépendance.
+
+## Lot 7 — passe de finition (statuts, démarrage, rangement)
+
+Non commité à la rédaction. Aucun job lancé, aucune donnée touchée. Statut du rejeu `_v2` : partiel
+et non validé (`docs/RESULTS_STATUS.md`).
+
+| Ancien chemin | Nouveau chemin / action | Raison |
+|---|---|---|
+| `docs/PDF_APPENDICES_EXTRACT.md` | `docs/archive/references/PDF_APPENDICES_EXTRACT.md` (contenu inchangé) | extraction de travail ; références mises à jour (`src/analysis`, 2 scripts, 2 recettes, `check_docs.py`, `INTERP_EMBED_COVERAGE.md`) |
+| `CLAUDE.md` (long) | `docs/archive/CLAUDE_long_2026-09.md` ; `CLAUDE.md` racine réduit à ~25 lignes | informations uniques conservées (diagnostics, seeds) ; pièges essentiels repris dans `HANDOVER.md` |
+| `scripts/augmentation_rejection_length_bias_test.py` | `scripts/archive/` | audit ponctuel, aucune référence active |
+| `scripts/seed_label_overlap_r0_test.py` | `scripts/archive/` | idem (`RESULTS_TESTS.md`, append-only, cite l'ancien chemin) |
+| `AUDIT_SAE_2026-08.md` | conservé à la racine | cité par `report/03_*.md` (protégé) et `RESULTS_TESTS.md` |
+| `docs/INTERP_EMBED_COVERAGE.md` | conservé | référence de méthode, citée par `src/analysis/hypothesis_verifier.py` |
+| `scripts/dictionary_width_quality_audit.py`, `compare_to_frozen_benchmark.py`, `plot_*.py` | conservés | chemins calculés depuis `__file__` / figures du rapport |
+
+Contenu : bandeau de statut (README, HANDOVER, E01-E07) ; formulations « gain établi / jamais vu /
+restent valides » corrigées sans toucher aux valeurs ; E00, E02≠R0, E03 (P@10, `incident_collectif`), E04
+(pas de rejeu), E05, E06, E09 précisés ; HANDOVER : parcours consultation / reprise ; `slurm/README.md` :
+lancement, `RUN_SUFFIX`, juge ; dashboard : bandeau par run et « sonde des axes d'augmentation » (E01).
+Hook `.claude/settings.json` inchangé (relance de la suite après édition `.py`).

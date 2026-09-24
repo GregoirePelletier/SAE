@@ -16,7 +16,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 
-# App K.1 (docs/PDF_APPENDICES_EXTRACT.md lignes 340, 740-775) : vérifie les
+# App K.1 (docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 340, 740-775) : vérifie les
 # hypothèses de diffing SAE déjà en cache (p1_diff_energy_sports.csv) contre
 # un corpus energy/sports frais -- première mesure verification_rate/coverage
 # de ce dépôt (rien n'était comparable au papier pour le diffing avant, cf.

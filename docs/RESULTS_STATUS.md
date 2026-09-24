@@ -12,11 +12,10 @@ e01_fit_1b_layer13_k5/` (1B, layer 13, K_EXTRA=5, FIT/DEV/CONFIRM figés dans
 `configs/post_stage/`). E00 (profilage mémoire) a ses propres répertoires
 séparés (`results_post_stage_e00_profile_1b*/`), non lus par E01-E07.
 
-**Réserve la plus importante, à lire avant tout le reste** : les
-résultats E01-E07 ont été calculés sous un split FIT/DEV/CONFIRM dont le
-rattachement des variantes était décalé (corrigé depuis, cf. section
-« Corpus »). Ils sont à rejouer avant d'être cités comme évalués hors
-entraînement.
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+
+Ce bandeau est la référence unique ; les chiffres d'impact sont dans la section Corpus
+ci-dessous, et nulle part ailleurs.
 
 ## Taux d'interprétabilité de référence (tout le dépôt, pas seulement post-soutenance)
 
@@ -25,18 +24,18 @@ config par défaut du dépôt (`MODEL_SIZE=12b`, layer 31, `K_EXTRA=5`), sous
 protocole intégralement corrigé (sélection stratifiée, juge `Qwen3.8-27B`
 découplé de l'extracteur, négatif odd-one-out corrigé, déduplication par mail
 parent). Toute mesure antérieure (§79 89,3%, §82 82,0%, §94 94,0%, §95/§96)
-est supersédée — cf. `CLAUDE.md` section Diagnostics point 5 pour le détail
+est supersédée — cf. `docs/archive/CLAUDE_long_2026-09.md` section Diagnostics point 5 pour le détail
 de pourquoi chacune ne tient plus. Aucune tendance d'échelle du modèle
 extracteur/juge n'est détectable sous ce protocole (§119, Cochran-Armitage
 p=0,34) — ne pas citer de progression 1B→27B comme résultat établi.
 
 ## E00 — Diagnostic mémoire et correctif
 
-**Clos.** Fuite mémoire (`all_doc_sae_acts`) diagnostiquée et corrigée
+**Correctif de construction validé** (pas « tout est clos »). Fuite mémoire (`all_doc_sae_acts`) diagnostiquée et corrigée
 (commit `a640ed7`), validée par benchmark synthétique + rerun réel (job
 48530). Un second sink (`p1_all_doc_acts_ext_d*.pt`) identifié mais **non
 corrigé** — nécessite d'auditer 20 scripts consommateurs avant de le
-toucher sans casser leur indexation. Détail : `docs/post_stage/
+toucher sans casser leur indexation : les runs volumineux (filler massif, réencodage FULL) ne sont pas sécurisés. Détail : `docs/post_stage/
 memory_diagnosis.md`.
 
 ## Corpus — freeze FIT/DEV/CONFIRM — jointure corrigée, résultats E01-E07 à rejouer
@@ -72,6 +71,16 @@ qu'un rejeu (GPU, non lancé ici, autorisation requise) n'a pas été fait avec
 existants ne sont pas réutilisables comme « FIT-only ». Le sens des
 conclusions n'est pas préjugé — seule leur validité méthodologique l'est.
 
+## Rejeu sous le manifeste corrigé — partiel, non validé
+
+Soumis sous `RUN_SUFFIX=_v2` (dossiers `results_post_stage_*_v2`, anciens résultats
+intacts). Statuts Slurm observés : référence FIT, sondes E01, pooling, registre E02 et
+2 des 4 entraînements E05 (seed44, randinit46) terminés ; seed43 et randinit45 en échec
+(mémoire GPU : chargement du juge sur A100 40 Go) ; encodage CONFIRM en échec (garde de
+clé de cache sur `SAVE_DIR/cache`, cf. `docs/HANDOVER.md`) ; E03/E04/E06/E07 et les
+analyses E05 non exécutés. Aucun résultat du rejeu n'est analysé ni rattaché ici :
+les statuts des sections ci-dessous restent ceux de l'historique.
+
 ## E01 — Représentations comparables (FIT→DEV)
 
 **Fait, verdict négatif honnête.** Gain FULL−CORE **non établi** sur la
@@ -84,17 +93,18 @@ Write-up : `docs/post_stage/e01_results.md`.
 ## E02 — Catalogue de features
 
 **Fait.** 300 features (150 core/150 extra), 197/300=65,7% interprétables
-(même run que R0, cohérence attendue). **Vérification humaine (60-100
+(1B, FIT ancien manifeste ; **pas le même run que R0** historique 12B, malgré le même
+197/300 — ne pas les fusionner). **Vérification humaine (60-100
 features, plan §7) toujours en attente — nécessite Grégoire.**
 
 ## E03 — Retrieval par propriété (CONFIRM)
 
-**Fait.** Premier gain établi de l'extension sur toute la campagne :
-FULL−CORE = +25pt P@10, IC [+5,8;+45]. FULL perd contre DENSE et BM25 (SAE
+**Fait (historique).** Premier écart favorable à l'extension de la campagne :
+FULL−CORE = +25pt P@10, IC bootstrap [+5,8;+45] à n=6 familles, à revalider. FULL perd contre DENSE et BM25 (SAE
 pour expliquer, pas pour classer). P@10 mesuré sur des top-10 entièrement
 jugés (pas besoin de juger tout le corpus, et le texte le dit explicitement).
-`incident_collectif` quasi-nul pour toutes les méthodes — probable défaut de
-la propriété, pas un résultat. Calibration humaine **non faite**. Write-up :
+`incident_collectif` : CORE/FULL à 0, mais DENSE/TFIDF/BM25 non nuls en
+paraphrase — échec des features SAE sur cette propriété, pas un résultat sur le corpus. Calibration humaine **non faite**. Write-up :
 `docs/post_stage/e03_results.md`.
 
 ## E04 — Diffing structuré (urgence panique/calme)
@@ -109,7 +119,9 @@ commit dédié — n'affecte que le signal de découverte envoyé au générateu
 d'hypothèses, ne change rétroactivement aucun des 8 comptes CONFIRM
 ci-dessus). Un nouveau run de diffing (autre contraste, ou rejeu de
 panique/calme) bénéficiera du signal corrigé ; les résultats déjà gelés
-ci-dessus restent valides tels quels. Audit humain **non fait**. Write-up :
+ci-dessus restent consultables comme historique (split antérieur). **Aucun rejeu
+d'E04 n'a été fait** : le correctif de formule est dans le code, pas dans les résultats.
+Audit humain **non fait**. Write-up :
 `docs/post_stage/e04_results.md`.
 
 ## E05 — Stabilité inter-graines de l'extension
@@ -119,12 +131,14 @@ ci-dessus restent valides tels quels. Audit humain **non fait**. Write-up :
 décodeur. Résultat : stabilité géométrique ne dépend pas du type d'init
 (~80% des features supportées appariées), mais **le retrieval de thèmes par
 groupe reste instable** (Jaccard@100 non significatif pour aucun groupe) —
-"géométrie stable, retrieval variable". Write-up : `docs/post_stage/
+"géométrie stable, retrieval variable" (distinguer stabilité géométrique, classement
+des emails, score max et moyenne des actifs) ; conclusions à confirmer après rejeu
+sous le manifeste corrigé. Write-up : `docs/post_stage/
 e05_results.md`.
 
 ## E06 — Corrélations entre propriétés
 
-**Fait — incohérence table/prose corrigée par ce nettoyage** (arbitrée
+**Fait (historique) — incohérence table/prose corrigée par ce nettoyage** (arbitrée
 depuis `e06_correlations.json` : 4/8 paires établies, pas 5 comme l'ancienne
 prose l'affirmait ; la table listait déjà les 4 bonnes lignes). Une seule
 association vraiment actionnable (réfrigérateur × dysfonctionnement
@@ -132,6 +146,7 @@ association vraiment actionnable (réfrigérateur × dysfonctionnement
 (0 paire EXTRA-seule parmi les 8 gelées) — non corrigé, nécessiterait un
 rerun. Audit humain **non fait**. Write-up : `docs/post_stage/
 e06_results.md`.
+Associations mesurées sur corpus synthétique : pas une découverte métier validée.
 
 ## E07 — Clustering ciblé par axe
 
@@ -155,8 +170,8 @@ comme des diffs sur un fichier suivi.
 
 ## E09 — Run 100M (optionnel)
 
-Non trouvé de trace d'exécution dans le dépôt au moment de ce nettoyage —
-à confirmer avec Grégoire si une tentative a eu lieu ailleurs.
+Aucun run 100M documenté (budget optionnel fixé à 0) ; ne pas en inventer un.
+À confirmer avec Grégoire si une tentative a eu lieu ailleurs.
 
 ## Ce qui reste ouvert et nécessite Grégoire
 

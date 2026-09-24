@@ -706,7 +706,7 @@ def page_pilot_e08(run_dir: str) -> None:
         cols = st.columns(len(acc)) if acc else []
         for col, (rep, v) in zip(cols, acc.items()):
             col.metric(rep, f"{100*v:.1f}%")
-        st.caption("Sonde d'intention tenue-à-l'écart (held-out DEV), voir docs/post_stage/e01_results.md "
+        st.caption("Sonde des axes d'augmentation (14 classes, held-out DEV de l'ancien manifeste), voir docs/post_stage/e01_results.md "
                    "pour les IC bootstrap et la lecture complète -- ne pas comparer ces chiffres seuls "
                    "sans les intervalles.")
 
@@ -1346,6 +1346,32 @@ def page_sweeps() -> None:
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Runs post-soutenance identifiés comme antérieurs au correctif de filiation des
+# emails parents (docs/RESULTS_STATUS.md, section Corpus).
+PRE_PARENT_FIX_RUNS = {
+    "results_post_stage_e00_profile_1b", "results_post_stage_e00_profile_1b_v2",
+    "results_post_stage_e01_fit_1b_layer13_k5",
+    "results_post_stage_e05_seed43", "results_post_stage_e05_seed44",
+    "results_post_stage_e05_randinit45", "results_post_stage_e05_randinit46",
+}
+
+
+def show_run_status_warning(run_dir: str) -> None:
+    if run_dir in PRE_PARENT_FIX_RUNS:
+        st.warning(
+            "Statut : résultats antérieurs au correctif de filiation des emails parents. La "
+            "séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes ; consultable "
+            "comme historique, pas une validation hors apprentissage. Rejeu nécessaire. "
+            "Évaluations humaines non réalisées. Détail : docs/RESULTS_STATUS.md."
+        )
+    elif run_dir.startswith("results_post_stage_"):
+        st.warning(
+            "Run post-soutenance dont le statut n'est pas validé par ce dashboard (rejeu "
+            "éventuellement partiel) : vérifier commit, manifeste, checkpoint FIT et statut de "
+            "fin des jobs avant de citer un chiffre (docs/RESULTS_STATUS.md)."
+        )
+
+
 def main() -> None:
     st.set_page_config(page_title="SAE EDF — Dashboard", layout="wide")
     st.title("Analyse interprétable de mails clients EDF via SAE")
@@ -1357,6 +1383,7 @@ def main() -> None:
         return
     default_idx = run_dirs.index("results_v10_emails_main") if "results_v10_emails_main" in run_dirs else 0
     run_dir = st.sidebar.selectbox("Run", run_dirs, index=default_idx)
+    show_run_status_warning(run_dir)
 
     page = st.sidebar.radio(
         "Page",

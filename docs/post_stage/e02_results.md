@@ -1,5 +1,8 @@
 # E02 — Registre de features CORE/EXTRA (1B/layer13/K5, FIT)
 
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+
 300 features labellisées (150 CORE, 150 EXTRA), sélection stratifiée par
 fréquence (`feature_selection_stratified_by_frequency`), exemples issus
 exclusivement de FIT, juge Qwen (`odd_one_out_judge`).

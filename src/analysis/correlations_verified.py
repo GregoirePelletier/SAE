@@ -18,7 +18,7 @@ gonflent artificiellement le nombre de paires à vérifier.
 Adaptateur du juge local du projet (`src.sae.judge._batched_generate`), même
 raison que `src/analysis/hypothesis_verifier.py` : le code des auteurs suppose
 une API OpenAI/OpenRouter absente de ce dépôt. Prompts repris VERBATIM du PDF
-(docs/PDF_APPENDICES_EXTRACT.md lignes 777-820, Appendix K.2) et du corps
+(docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 777-820, Appendix K.2) et du corps
 principal (§4.2/E.1/E.3, extraits directement du PDF -- pas dans
 PDF_APPENDICES_EXTRACT.md qui ne couvre que les annexes).
 """

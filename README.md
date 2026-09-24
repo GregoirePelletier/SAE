@@ -14,6 +14,12 @@ Deux pipelines :
 Détail de l'architecture : `docs/architecture.md`. Installation, cluster SLURM,
 dépannage Windows/HuggingFace : `docs/ops.md`.
 
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+
+Parcours de lecture : **README → `docs/HANDOVER.md` → `docs/RESULTS_STATUS.md`** (détail du
+statut et de l'impact : section Corpus de ce dernier). Prototype de recherche sur données
+synthétiques ; aucune validation par des analystes.
+
 ---
 
 ## Corpus d'entraînement
@@ -50,7 +56,7 @@ même protocole, l'effet d'échelle du modèle extracteur/juge (1B/4B/12B/27B)
 ne montre plus de tendance monotone détectable (`RESULTS_TESTS.md` §119) —
 ne pas citer une progression avec la taille du modèle comme résultat établi.
 Détail du diagnostic et des runs de validation : `RESULTS_TESTS.md` §12,
-§113-§120, et `CLAUDE.md` (section Diagnostics).
+§113-§120, et `docs/archive/CLAUDE_long_2026-09.md` (section Diagnostics).
 
 ---
 

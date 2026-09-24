@@ -1,10 +1,13 @@
 # E04 — Diffing structuré urgence__panique vs urgence__calme (1B/layer13/K5)
 
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+
 Contraste `urgence__panique` (cible) vs `urgence__calme`. Découverte des
 features candidates sur FIT (`corpus_diff_stats`, 8733 features actives dans
 A∪B, top 200 au-dessus du seuil 0,03), génération de 8 hypothèses structurées
 par Qwen **gelées avant toute lecture de CONFIRM**, vérification sur CONFIRM
-(jamais vu pendant la découverte) — le juge ne voit ni le groupe ni la
+(non utilisé pendant la découverte, selon l'ancien manifeste) — le juge ne voit ni le groupe ni la
 méthode d'origine du document.
 
 CONFIRM sous-échantillonné à 150 documents par groupe
@@ -50,7 +53,7 @@ Ne pas citer `verification_rate=1,0`/`coverage=1,0` sans cette précision.
    une communication procédurale/formelle, et le stade découverte (magnitude
    de diff sur les features SAE, pas encore de jugement sémantique) a mal
    orienté le signe de cette hypothèse précise avant vérification — un
-   exemple concret de pourquoi la vérification sur CONFIRM (jamais vue
+   exemple concret de pourquoi la vérification sur CONFIRM (non utilisée
    pendant la découverte) est nécessaire et pas une formalité : une
    hypothèse peut être un signal réel tout en étant générée avec le mauvais
    sens.
@@ -68,7 +71,7 @@ Ne pas citer `verification_rate=1,0`/`coverage=1,0` sans cette précision.
   template plutôt qu'une propriété qui généraliserait à un corpus réel non
   labellisé de cette façon.
 - Vérification 100% Qwen (juge découplé de l'extracteur Gemma, politique
-  juge Qwen-partout — cf. `RESULTS_TESTS.md` §119, `CLAUDE.md` point 6
+  juge Qwen-partout — cf. `RESULTS_TESTS.md` §119, `docs/archive/CLAUDE_long_2026-09.md` point 6
   "Indépendance du juge"), aucune calibration humaine — audit humain des
   résultats de diffing (plan §9.2 point 5) toujours en attente, nécessite
   Grégoire.

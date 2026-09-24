@@ -1,9 +1,64 @@
 # Passation — carte du dépôt
 
 Ce document est une carte, pas un journal. Pour le "pourquoi" de chaque
-choix, `CLAUDE.md` (règles actives) et `RESULTS_TESTS.md`/`docs/post_stage/`
+choix, `CLAUDE.md` (règles actives, courtes) et `RESULTS_TESTS.md`/`docs/post_stage/`
 (résultats) restent les sources de vérité — celui-ci n'en recopie aucun
 chiffre.
+
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+
+## Deux parcours
+
+### A. Consulter les artefacts sans GPU ni poids
+
+Python 3.12, environnement via un accès autorisé (`uv sync --locked --python 3.12`), copie
+légère des artefacts d'un run dans un dossier `results_*` à la racine du clone (inventaire
+plus bas), puis :
+
+```bash
+export SAE_ROOT="$PWD"
+export SAE_DASHBOARD_STATE_DIR="$HOME/.local/share/sae_dashboard"
+mkdir -p "$SAE_DASHBOARD_STATE_DIR"
+chmod 700 "$SAE_DASHBOARD_STATE_DIR"
+.venv/bin/python -m streamlit run src/visualization/dashboard.py \
+  --server.address=127.0.0.1 --server.port=8501 --server.headless=true \
+  --browser.gatherUsageStats=false
+```
+
+- Le dashboard liste les `results_*` du clone (sélecteur latéral) ; `SAVE_DIR` ne le pilote pas.
+  Un bandeau signale les runs post-soutenance antérieurs au correctif parent ; un run sans
+  bandeau n'est pas pour autant validé.
+- Page Features/Extension : lit `cache/p1_judge_labels_extended.json` et son `.meta.json` (les
+  JSON de la racine ne suffisent pas). Page UMAP : lit `umap_*_coords.parquet`, pas seulement le HTML.
+- Retrieval/diffing post-soutenance : page **Mini-pilote analyste (E08)**, résultats précalculés.
+  « Recherche » filtre aussi des labels : pas d'inférence sémantique en direct.
+- Comparaison original/augmenté : exige `Mails.tsv` et `augmented_mails.jsonl` sous
+  `local_data/emails/`. Les cibles des liens absolus de cache ne servent qu'aux consommateurs
+  concernés ; aucune copie globale de `local_data/` pour la démo.
+- État E08 propre à chaque utilisateur (`SAE_DASHBOARD_STATE_DIR`) ; écritures concurrentes non
+  garanties. Un tunnel SSH doit viser la machine qui exécute Streamlit.
+- Une page qui s'ouvre n'est pas une validation de ses chiffres.
+
+### B. Reprendre les calculs (modèles, données, caches)
+
+Depuis la racine du clone : `export SAE_ROOT="$PWD"` puis `mkdir -p logs/post_stage` **avant** tout
+`sbatch` (les directives `#SBATCH --output` visent `logs/...` en relatif ; elles n'expansent pas les
+variables shell, et certains scripts réexportent des variables que l'appelant aurait posées).
+
+- Recettes actives : `slurm/post_stage/` (numérotées par ordre de dépendance). Les autres
+  répertoires de `slurm/` documentent les campagnes historiques : ne pas les rejouer par défaut.
+- `RUN_SUFFIX` (vide par défaut) s'ajoute aux dossiers de résultats des recettes post-soutenance
+  (`RUN_SUFFIX=_v2 sbatch --export=ALL,RUN_SUFFIX=_v2 ...`) pour écrire un nouveau run sans écraser
+  l'ancien. Un rejeu sous le manifeste corrigé repart d'un nouveau FIT : il ne recharge pas les
+  anciens poids.
+- Juge Qwen3.8-27B bf16 : 1 GPU H100/H100-bis. Repli 2×A100 (`device_map="auto"`) uniquement dans
+  les scripts qui l'implémentent (`--judge-device auto` : E02, E03, E04, variantes `*_a100.slurm`
+  de E03/E04). Les entraînements passant par `saev5.py` (01, 05, 10, 11, 13, 14) chargent aussi le
+  juge sur un seul GPU : pas sur A100 40 Go (échec mémoire observé au rejeu).
+- Encodage CONFIRM : voir « Précondition de l'encodage CONFIRM » plus bas — la clé de cache change ;
+  ne jamais supprimer ou recréer les liens `SAVE_DIR/cache/*` pour contourner l'erreur.
+- Ressources et budget : `configs/post_stage/campaign_policy.yaml`. Aucun job ne se lance sans
+  accord explicite.
 
 ## Parcours actif vs référence historique vs exploration archivée
 
@@ -46,7 +101,7 @@ chiffre.
 - Dashboard : `.venv/bin/python -m streamlit run src/visualization/
   dashboard.py` — lecture seule des artefacts déjà produits, aucune
   extraction/inférence au chargement d'une page.
-- Tests : `pytest tests/ -q` (doit rester 100% vert, cf. CLAUDE.md).
+- Tests : `pytest tests/ -q` (doit rester 100% vert, cf. `CLAUDE.md`).
 
 ## Environnement
 
@@ -63,8 +118,9 @@ n'importe quel clone, pas seulement `/home/h21486/SAE`. Modèles/données
 
 ### 1. Minimum pour ouvrir la démo CPU (dashboard, sans poids ni extraction)
 
-Run recommandé : `results_post_stage_e01_fit_1b_layer13_k5/` (campagne
-post-soutenance complète, E01-E07 sur la même config). Pour cette
+Run historique consultable : `results_post_stage_e01_fit_1b_layer13_k5/` (campagne
+post-soutenance E01-E07 sur une même config, **antérieure au correctif parent**, cf. statut
+en tête ; le rejeu `_v2` est partiel et non validé). Pour cette
 démonstration, seuls les JSON/HTML/parquet à la racine du répertoire de run
 sont nécessaires (petits, quelques Mo à ~26 Mo pour les HTML UMAP) :
 `e01_representation_comparison.json`, `e01_pooling_and_length_analysis.json`,
@@ -134,9 +190,14 @@ nettoyage.
 
 ## Dépannage
 
-Pièges connus (cache/checkpoint, seeds, PyTorch/HuggingFace, diagnostics de
-run) : `CLAUDE.md` — toujours le relire à jour plutôt que de s'y fier de
-mémoire, il est activement maintenu. Ne pas le dupliquer ici.
+Pièges connus, le détail est dans `docs/archive/CLAUDE_long_2026-09.md` (diagnostics de run, seeds, cache) :
+
+- `output_hidden_states=True` sans `logits_to_keep=1` calcule les logits sur tout le vocabulaire : OOM possible.
+- `@torch.no_grad()` sur un générateur ne protège pas les itérations : `with torch.no_grad():` explicite dans la boucle.
+- Activations SAE en CSR sparse pour `LogisticRegression`, jamais en dense (sklearn recopie en fp64).
+- Une reprise après coupure n'est pas bit-reproductible ; `SEED` n'entre pas dans la clé du cache d'extraction.
+- Lire `dead_pct_extension` (pas `dead_pct` seul) et ne jamais lire une feature isolée comme « prouvée interprétable ».
+- HuggingFace via le proxy du cluster : `HF_HUB_DISABLE_XET=1` pour les gros téléchargements.
 
 ### Précondition de l'encodage CONFIRM (`05_e01_encode_confirm.slurm`)
 

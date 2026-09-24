@@ -1,6 +1,6 @@
 """
 retrieval_rerank.py — Reranking LLM du top-k (App. G, "Combining results and
-second stage retrieval", arXiv:2512.10092v2, docs/PDF_APPENDICES_EXTRACT.md
+second stage retrieval", arXiv:2512.10092v2, docs/archive/references/PDF_APPENDICES_EXTRACT.md
 lignes 640-647) : "we also add in LLM reranking of the top 50" -- le papier
 ne publie pas le prompt de reranking utilisé (contrairement au juge
 odd-one-out/vérification, App. C/K), seulement le protocole ("top 50") et

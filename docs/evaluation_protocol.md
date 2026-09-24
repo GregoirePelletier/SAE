@@ -78,7 +78,7 @@ ne sont valables que dans ce régime réduit, jusqu'à confirmation à plus gran
   41 rejugé Qwen ; p=0,101 layer 12 sous méthodologie pleinement corrigée). Le
   seul écart individuel significatif de tout le dépôt (hors effet d'échelle du
   modèle) ne survit donc pas à la correction du protocole de sélection —
-  `CLAUDE.md`, point 5 des diagnostics, mis à jour en conséquence.
+  `docs/archive/CLAUDE_long_2026-09.md`, point 5 des diagnostics, mis à jour en conséquence.
 
 Prioriser un rerun à plus grande échelle sur la chaîne §12→§18.3→§23 (c'est la
 décision la plus citée ailleurs dans le projet) avant §28 ou §33.
@@ -103,8 +103,8 @@ juge distinguait l'intrus par sa longueur) invalidant les taux d'interprétabili
 de §79/§82/§94-96, et fixe **§119 (run R0, 65,7% (197/300), IC95% [60,1% ; 70,8%])
 comme valeur de référence définitive** sous juge `Qwen3.8-27B` (pas
 `google/gemma-3-12b-it` — la ligne "LLM (extraction + juge)" du tableau
-"Conditions fixées" ci-dessus est donc, elle aussi, dépassée). `CLAUDE.md`
-(section Diagnostics, point 5) tient ce point à jour ; s'y référer plutôt qu'à
+"Conditions fixées" ci-dessus est donc, elle aussi, dépassée). `docs/archive/CLAUDE_long_2026-09.md`
+(section Diagnostics, point 5) documente ce point ; s'y référer plutôt qu'à
 la table ci-dessus pour comparer un nouveau run au taux d'interprétabilité
 actuel du projet.
 

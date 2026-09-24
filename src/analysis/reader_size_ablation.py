@@ -1,6 +1,6 @@
 """
 reader_size_ablation.py — App I (arXiv:2512.10092v2, "Ablations on reader
-model size", docs/PDF_APPENDICES_EXTRACT.md lignes 698-712) : compare la
+model size", docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 698-712) : compare la
 capacité de généralisation d'un SAE entraîné sur les activations d'un modèle
 extracteur PETIT vs GRAND (ici : gemma-3-12b-it vs gemma-3-27b-it, RESULTS_
 TESTS.md §82 -- le papier compare Llama-3.1-8B vs Llama-3.3-70B) via un score

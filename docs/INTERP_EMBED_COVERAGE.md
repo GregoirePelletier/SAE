@@ -1,7 +1,7 @@
 # Inventaire interp_embed ↔ dépôt ↔ papier — Étape 0
 
 Source de fidélité pour tout prompt/formule : `pdf/InterpretableSAE_Embeddings.pdf`
-(Appendices A–M extraits verbatim dans `docs/PDF_APPENDICES_EXTRACT.md`, avec
+(Appendices A–M extraits verbatim dans `docs/archive/references/PDF_APPENDICES_EXTRACT.md`, avec
 traçabilité ligne/page). `external/interp_embed` est le code de référence des auteurs,
 une implémentation **partielle** du papier — jamais l'inverse. Catégories A/B/C/D
 définies dans la mission (remplacer / forcer la leur / double / garder la mienne).
@@ -55,7 +55,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
 3. **Le "harnais de vérification du diffing (App. K.1)" existe déjà en code**, pas
    seulement en spécification PDF : `paper/diffing/hypothesis_verifier.py::HypothesisVerifier`
    implémente le prompt App K.1 quasi mot pour mot (`verify_hypothesis_response`,
-   comparé ligne à ligne à `docs/PDF_APPENDICES_EXTRACT.md` §K.1 — même structure
+   comparé ligne à ligne à `docs/archive/references/PDF_APPENDICES_EXTRACT.md` §K.1 — même structure
    REASONING/ANSWER, mêmes 7 instructions). Ce qui manque réellement (à construire) :
    le calcul des métriques (taux de vérification >1%, couverture) au-dessus de la
    matrice retournée par `verify_all` — la mission les avait correctement identifiées
@@ -63,7 +63,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
    à corriger : c'est un adaptateur, pas une construction neuve.
 4. **App. K contient bien K.1–K.4** (contrairement au doute initial de la recherche par
    regex) : K.3 CLUSTERING et K.4 RETRIEVAL existent, courts (4-6 lignes chacun) —
-   cf. `docs/PDF_APPENDICES_EXTRACT.md` §K.3/§K.4 (citation par ancre de section, pas
+   cf. `docs/archive/references/PDF_APPENDICES_EXTRACT.md` §K.3/§K.4 (citation par ancre de section, pas
    par ligne, N13 AUDIT_SAE_2026-08.md §8 — la ligne exacte peut bouger si ce fichier
    est un jour réduit/reformulé, l'ancre de section non). Les prompts de jugement
    clustering et retrieval de l'étape "À CONSTRUIRE" ont donc une spécification texte
@@ -117,7 +117,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
 
 | Symbole | Lignes | §/App. | Équivalent chez moi | Cat. | Écart |
 |---|---|---|---|---|---|
-| `class HypothesisVerifier` | 34–624 | **App. K.1 — prompt vérifié quasi-verbatim** (cf. désaccord #3) | Rien (aucun harnais de vérification équivalent) | **Adaptateur prioritaire**, pas "à construire" | Le prompt du dépôt dit *"the document exhibits..."* pour le texte à analyser dans le corps de la tâche mais garde *"RESPONSE TEXT TO ANALYZE"* comme en-tête — micro-incohérence interne au prompt déjà présente dans le PDF lui-même (vérifié dans `docs/PDF_APPENDICES_EXTRACT.md` — pas une erreur d'extraction) |
+| `class HypothesisVerifier` | 34–624 | **App. K.1 — prompt vérifié quasi-verbatim** (cf. désaccord #3) | Rien (aucun harnais de vérification équivalent) | **Adaptateur prioritaire**, pas "à construire" | Le prompt du dépôt dit *"the document exhibits..."* pour le texte à analyser dans le corps de la tâche mais garde *"RESPONSE TEXT TO ANALYZE"* comme en-tête — micro-incohérence interne au prompt déjà présente dans le PDF lui-même (vérifié dans `docs/archive/references/PDF_APPENDICES_EXTRACT.md` — pas une erreur d'extraction) |
 | `.verify_all` / `.verify_multiple_fields` | 237–333 | App. K.1 | — | Adaptateur | Async + `asyncio.Semaphore`, à réutiliser tel quel (pas de calcul, juste de l'orchestration API) |
 | `.compute_multi_field_results` / `.save_multi_field_results` | 335–517 | — (reporting) | `RESULTS_TESTS.md` (format markdown numéroté, pas CSV) | C (garder mon format de reporting, réutiliser leur calcul de matrice) | — |
 
@@ -193,7 +193,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
 - Réellement "à construire" (pas de code existant ni chez moi ni chez eux, seulement
   une spec papier) : agrégation `mean`/`sum`/`count` sur CSR (moi : spec connue, code à
   écrire), prompts de génération de mots-clés clustering (App. F.1, prompt non trouvé
-  verbatim dans l'extraction — à vérifier dans `docs/PDF_APPENDICES_EXTRACT.md` §F),
+  verbatim dans l'extraction — à vérifier dans `docs/archive/references/PDF_APPENDICES_EXTRACT.md` §F),
   métriques de retrieval (MAP/MP@50/MP@10/RBO — formules non retrouvées explicitement
   dans l'extraction, cf. points d'incertitude du fichier), protocole App. I complet
   (F1 latent-classifieur, aucune implémentation ni chez moi ni chez eux), baseline
@@ -208,7 +208,7 @@ définies dans la mission (remplacer / forcer la leur / double / garder la mienn
   ligne à ligne en entier (1406 lignes à eux deux). Si l'étape 1 les utilise comme
   adaptateurs directs, une relecture complète est nécessaire avant d'écrire le test
   d'équivalence.
-- `docs/PDF_APPENDICES_EXTRACT.md` liste 13 points d'incertitude propres (formules RBO/
+- `docs/archive/references/PDF_APPENDICES_EXTRACT.md` liste 13 points d'incertitude propres (formules RBO/
   MAP/RRF non trouvées explicitement dans le texte extrait, mapping numérique {1,0.5,0}
   de D.3 introuvable dans les Appendices — probablement dans le corps principal, hors
   périmètre de cette extraction). À vérifier manuellement sur le PDF avant d'implémenter

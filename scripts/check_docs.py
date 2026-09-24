@@ -91,7 +91,7 @@ FIRST_PERSON_SCOPE = {"README.md"}  # + tout fichier sous docs/
 # mort) continuent de s'appliquer à ces deux fichiers.
 FIRST_PERSON_EXCLUDED_FILES = {
     os.path.join("docs", "INTERP_EMBED_COVERAGE.md"),
-    os.path.join("docs", "PDF_APPENDICES_EXTRACT.md"),
+    os.path.join("docs", "archive", "references", "PDF_APPENDICES_EXTRACT.md"),
 }
 
 

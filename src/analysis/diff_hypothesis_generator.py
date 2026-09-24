@@ -1,7 +1,7 @@
 """
 diff_hypothesis_generator.py — Génération d'hypothèses structurées (App. D.2,
 arXiv:2512.10092v2, prompt verbatim reproduit dans
-docs/PDF_APPENDICES_EXTRACT.md lignes 216-263) : convertit une liste de
+docs/archive/references/PDF_APPENDICES_EXTRACT.md lignes 216-263) : convertit une liste de
 features SAE discriminantes entre deux corpus en un tableau JSON d'hypothèses
 concises, chacune citant les features qui la supportent, un sens
 ("target"/"other"), une force de différence, une confiance.

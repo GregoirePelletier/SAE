@@ -151,7 +151,7 @@ def corpus_diff_stats(
 def select_top_diff_features_by_frequency(
     diff_df: pd.DataFrame, threshold: float = 0.03, top_n: int = 200,
 ) -> pd.DataFrame:
-    """Sélection App. D.2 (arXiv:2512.10092v2, docs/PDF_APPENDICES_EXTRACT.md
+    """Sélection App. D.2 (arXiv:2512.10092v2, docs/archive/references/PDF_APPENDICES_EXTRACT.md
     lignes 214/265) : "top 200 latents ayant la plus grande différence de
     FRÉQUENCE au-dessus d'un seuil fixé à 0.03" -- critère de sélection
     DIFFÉRENT de `corpus_diff_stats` (trié par |log-odds-ratio|, la mesure

@@ -1,7 +1,11 @@
 # E03 — Retrieval par propriété sur CONFIRM (1B/layer13/K5)
 
-12 requêtes (6 propriétés × formulation lexicale/paraphrase), CONFIRM
-(10 865 documents, jamais entraîné). Pertinence jugée par Qwen (0/1/2) sur
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+
+12 requêtes (6 propriétés × formulation lexicale/paraphrase), CONFIRM de
+l'ancien manifeste (10 865 documents ; sa séparation d'avec l'entraînement
+n'était pas effective pour les variantes, cf. statut ci-dessus). Pertinence jugée par Qwen (0/1/2) sur
 l'union des top-10 de chaque méthode — **simplification assumée** : pas de
 double-annotation humaine (plan §8.3), à calibrer dès que possible.
 
@@ -25,8 +29,9 @@ double-annotation humaine (plan §8.3), à calibrer dès que possible.
 ## Comparaisons par famille (moyenne lexicale+paraphrase, IC bootstrap n=6)
 
 **FULL − CORE : +25 points, IC [+5,8 ; +45].** N'inclut pas zéro — c'est le
-**premier gain établi de l'extension** dans toute la campagne (contraste
-avec E01, où FULL≈CORE sur la sonde d'intention). CORE seul n'a que 77
+**premier écart favorable à l'extension** de la campagne historique (IC
+bootstrap par famille, n=6 ; contraste avec E01, où FULL≈CORE sur la sonde des
+axes d'augmentation). CORE seul n'a que 77
 labels utilisables contre 197 pour FULL (catalogue GemmaScope-2 générique,
 peu de directions correspondant à des propriétés métier comme "menace de
 résiliation" ou "relance répétée") — cohérent avec l'hypothèse du plan
@@ -36,7 +41,7 @@ dépend directement du nombre de latents pertinents disponibles, contrairement
 à une sonde de classification qui peut réussir avec un signal diffus.
 
 **FULL − DENSE : -15,8 points, IC [-26,7 ; -6,7].** N'inclut pas zéro dans
-l'autre sens : bge-m3 bat FULL de façon établie sur cette tâche. **FULL −
+l'autre sens : l'écart en faveur de bge-m3 est statistiquement distinct de zéro sur cet échantillon. **FULL −
 BM25 : -15,8 points, IC [-30,0 ; +2,5]** (borne haute tout juste positive,
 proche de zéro mais pas établi). **FULL − TFIDF : -8,3 points, IC [-26,7 ;
 +10,0]**, croise zéro, non établi.
@@ -45,21 +50,21 @@ proche de zéro mais pas établi). **FULL − TFIDF : -8,3 points, IC [-26,7 ;
 
 Résultat à deux faces, à ne pas aplatir en un seul verdict :
 
-1. **L'extension apporte un gain net et établi sur CORE** — le seul de toute
-   la campagne jusqu'ici. Elle mérite sa place dans le catalogue de features
-   utilisé pour le retrieval, pas seulement comme diagnostic.
+1. **FULL dépasse CORE sur cet échantillon historique** (+25 points, IC
+   n'incluant pas zéro à n=6 familles) — le seul écart de ce type dans la
+   campagne, à revalider après rejeu sous le manifeste corrigé.
 2. **FULL n'est pas encore compétitif avec un moteur dense/lexical classique**
    pour le classement pur — DENSE et BM25 restent (au moins) aussi bons,
    souvent meilleurs. Conforme à l'attente déjà écrite dans le plan (§8.5) :
    "le résultat acceptable peut être la conservation d'un moteur dense/lexical
    pour le classement et du SAE pour expliquer les thèmes."
 
-Deux propriétés (`incident_collectif`) ressortent quasi nulles pour TOUTES
-les méthodes (P@10 ≤ 0,10 pour core/full sur les deux formulations) — soit
-la propriété est rare/mal formulée pour ce corpus synthétique, soit CONFIRM
-n'a pas assez d'exemples réellement collectifs. `menace_resiliation` (paraphrase)
-tombe aussi à 0 pour DENSE/TFIDF/BM25 -- possible paraphrase trop éloignée
-du vocabulaire du corpus, à vérifier avant de la réutiliser telle quelle.
+Pour `incident_collectif`, CORE et FULL sont à 0,00 sur les deux formulations,
+mais DENSE/TFIDF/BM25 ne sont pas nuls en paraphrase (0,30 / 0,70 / 0,60) : c'est
+un échec des features SAE sur cette propriété, pas une preuve qu'elle est absente
+du corpus. `menace_resiliation` (paraphrase) tombe à 0 pour DENSE/TFIDF/BM25 --
+paraphrase possiblement trop éloignée du vocabulaire du corpus, à vérifier avant
+réutilisation.
 
 ## Limites connues
 
@@ -69,9 +74,10 @@ du vocabulaire du corpus, à vérifier avant de la réutiliser telle quelle.
 - p90 de normalisation et TFIDF ajustés directement sur CONFIRM (piste
   exploratoire d'indexation, §4.5) — pas la piste stricte FIT-only utilisée
   pour E01.
-- Union jugée par requête (36-46 documents) : les documents jamais retournés
-  par aucune méthode ne sont pas jugés — un vrai P@10 populationnel
-  nécessiterait un jugement exhaustif du corpus, hors budget ici.
+- Union jugée par requête (36-46 documents) : tous les top-10 de chaque
+  méthode sont jugés, ce qui suffit pour P@10 (pas besoin de juger tout le
+  corpus). Les documents jamais retournés ne sont pas jugés : un rappel ou une
+  MAP demanderait un jugement exhaustif, hors budget ici.
 
 ## Fichiers
 

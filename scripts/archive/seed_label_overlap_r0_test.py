@@ -1,5 +1,5 @@
 """
-scripts/seed_label_overlap_r0_test.py — Recouvrement exact des labels de
+scripts/archive/seed_label_overlap_r0_test.py — Recouvrement exact des labels de
 features interprétables entre graines, sous méthodologie R0 (stratifié +
 juge Qwen3.8-27B + déduplication par mail parent, K_EXTRA=5, D_EXTRA=1024,
 25M tokens, layer 31, n=300).
@@ -23,7 +23,7 @@ Cluster SLURM) : trois fichiers JSON de quelques centaines de Ko, aucune
 lecture de tenseur/modèle/checkpoint.
 
 Usage (CPU uniquement) :
-    PYTHONPATH=. .venv/bin/python scripts/seed_label_overlap_r0_test.py
+    PYTHONPATH=. .venv/bin/python scripts/archive/seed_label_overlap_r0_test.py
 """
 from __future__ import annotations
 

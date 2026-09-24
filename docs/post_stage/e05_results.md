@@ -1,5 +1,8 @@
 # E05 — Stabilité inter-graines des features EXTRA (1B/layer13/K5)
 
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+
 Cinq extensions (`D_EXTRA=1024`, `K_EXTRA=5`) entraînées sur les mêmes
 données FIT, mêmes hyperparamètres, cœur GemmaScope-2 gelé jamais comparé
 (identique par construction) : trois avec l'init par défaut « PCA » (graines

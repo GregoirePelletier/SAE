@@ -1,11 +1,14 @@
 # E01 — Représentations comparables (résultat FIT→DEV, 1B/layer13/K5)
 
+> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
+(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+
 Protocole strict (plan §6.4) : entraînement (SAE, TFIDF) sur **FIT seul**
 (25 970 documents, 2 084 mails d'origine), évaluation sur **DEV tenu à
 l'écart** (6 518 documents, 521 mails d'origine), aucune validation croisée
 interne sur l'ensemble d'évaluation (contrairement à la sonde historique
 `acc_axes_email`, qui fait sa propre CV à 5 plis à l'intérieur d'un seul
-ensemble). CONFIRM non touché à ce stade.
+ensemble). CONFIRM non consulté à ce stade (ancien manifeste).
 
 ## Ce qui a été mesuré
 
