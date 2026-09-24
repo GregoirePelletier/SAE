@@ -13,8 +13,8 @@ critères de décision plus bas).
 | Paramètre | Valeur | Justification |
 |---|---|---|
 | LLM (extraction + juge) | `google/gemma-3-12b-it` | Cible de production du projet, seul LLM utilisé dans toutes les expériences validées à ce jour. |
-| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (`report/01_etat_de_lart.md`) — **mais le balayage de couche fait après ce choix (`RESULTS_TESTS.md` §51) trouve la couche 31 significativement supérieure à la couche 24 (z=2,20, sans correction multi-tests, seul écart significatif du balayage complet layer+hook-point §51+§53) ; à répliquer avant adoption, le choix de couche n'a pas été révisé depuis.** |
-| Extension SAE (Pipeline 1) | `D_EXTRA=1024`, `K_EXTRA=32` | Valeurs par défaut, non ré-optimisées dans cette passe (piste de suite, `report/04`). |
+| SAE préentraîné (Pipeline 1, "core") | GemmaScope-2 `layer_24_width_16k_l0_medium` | Couverture Neuronpedia la plus dense en proportion (état de l'art du rapport de stage) — **mais le balayage de couche fait après ce choix (`RESULTS_TESTS.md` §51) trouve la couche 31 significativement supérieure à la couche 24 (z=2,20, sans correction multi-tests, seul écart significatif du balayage complet layer+hook-point §51+§53) ; à répliquer avant adoption, le choix de couche n'a pas été révisé depuis.** |
+| Extension SAE (Pipeline 1) | `D_EXTRA=1024`, `K_EXTRA=32` | Valeurs par défaut, non ré-optimisées dans cette passe (piste de suite du rapport de stage). |
 | Budget de tokens extension | `N_TOKENS_EXTRA_TRAIN=500000` | Validé non-limitant par ablation (100k/500k/2M statistiquement indistinguables, `RESULTS_TESTS.md` §12) — **mais cette ablation reste elle-même 50 à 100× en dessous du seuil de convergence documenté par la littérature (SAE Boost, `RESULTS_TESTS.md` §18.3) : sa conclusion ne s'extrapole pas au régime production sans le tester directement. Confirmation à 200M tokens (§23.5) toujours `PENDING`.** |
 | Corpus principal (entraînement) | Emails originaux + augmentés (`local_data/emails/`), corpus generic energy/sports/support réduit à un rôle secondaire post-hoc | `RESULTS_TESTS.md` §12 : c'est le facteur qui a le plus d'effet sur l'interprétabilité. |
 | Embedding Pipeline 2 (backbone `PhraseLevelSAE`) | `F2LLM-v2-330M` (au lieu de -80M) | Cf. §"Comparaison des embeddings" ci-dessous. |
@@ -46,7 +46,7 @@ quoi la comparer.
 | 10 | **Plausibilité de l'explication document-level (nouveau)** | `scripts/explanation_plausibility_test.py` (GPU, juge) | `.../cache/explanation_plausibility_results.json` | choix forcé réel vs décoy aléatoire, vs hasard (50%) |
 | 11 | Retrieval par propriétés / clustering ciblé | *(dans results.json, section P1)* — `select_latents_by_similarity` | `p1_diff_energy_sports.csv`, sortie console "Task 3/4" | bge-m3 vs F2LLM vs (ancien) matching substring, §15.1-15.2 |
 | 12 | Corrélations "intéressantes" (NPMI + dissimilarité) | *(dans results.json, section P1)* — `find_interesting_pairs` | `p1_interesting_correlations.json` | vs matrice NPMI brute seule (`p1_npmi.pt`, sans filtre) |
-| 13 | Diffing cross-domaine (SAE natif, mails originaux vs augmentés) | `slurm/baseline_diffing/run_baseline_full_v2.slurm` | *(données brutes archivées, `docs/archived_runs_manifest.md` — antérieures au correctif juge B.3/B.5/B.6/B.11, relancer pour un chiffre comparable au code actuel)* | avant/après fix biais "Objet :" (§14.1) ; vs diffing energy/sports (P1, générique) |
+| 13 | Diffing cross-domaine (SAE natif, mails originaux vs augmentés) | `slurm/baseline_diffing/run_baseline_full_v2.slurm` | *(données brutes archivées, `docs/archive/archived_runs_manifest.md` — antérieures au correctif juge B.3/B.5/B.6/B.11, relancer pour un chiffre comparable au code actuel)* | avant/après fix biais "Objet :" (§14.1) ; vs diffing energy/sports (P1, générique) |
 | 14 | **Embedding backbone Pipeline 2 : F2LLM-80M vs F2LLM-330M (nouveau)** | `slurm/pipeline_runs/run_sae_v10_p2_f2llm330m.slurm` | `results_v10_p2_f2llm330m/results.json` | comparer NMSE/L0/`clf_acc_email_axes` contre `results_v10_emails_main/results.json` (section P2) |
 | 15 | Retrieval BM25 sur vocabulaire latent (Latent Terms, token-level) | `scripts/latent_retrieval_precision_eval.py` / `src/sae/retrieval/latent_terms.py --mails ...` | en cours (jobs 44995/44996) : OOM du pool corrigé, entraînement relancé avec un budget `--time` élargi | non comparé formellement à ce jour à `select_latents_by_similarity` (piste de suite) |
 | 16 | Robustesse au biais de formatage du corpus augmenté | *(déjà produit)* fix `load_augmented` + rerun #13 | cf. §14.1 | avant/après, par axe/niveau |
@@ -112,7 +112,7 @@ actuel du projet.
 
 Items identifiés mais non résolus, à traiter avant de s'appuyer dessus sans réserve :
 
-- **Circularité possible du baseline TF-IDF** (§37, cf. `docs/experiments.md`) : les
+- **Circularité possible du baseline TF-IDF** (§37, cf. `docs/archive/experiments.md`) : les
   labels de vérité terrain d'intention viennent eux-mêmes de règles à base de
   mots-clés (`INTENT_KEYWORDS_FR`) — un classifieur lexical comme TF-IDF peut donc
   recouper la vérité terrain par construction, pas seulement par fuite de style

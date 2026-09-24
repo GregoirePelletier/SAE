@@ -45,7 +45,7 @@ export HF_DATASETS_OFFLINE=1
 # 44,7% entre 100k/500k/2M) -- pousser ce paramètre n'apporterait aucune
 # information nouvelle, seulement du coût GPU.
 # EMB_MODEL = F2LLM-v2-330M (pas -80M) : conforme à la condition fixée pour
-# l'évaluation "toutes méthodes" (docs/evaluation_protocol.md, "F2LLMv2 assez
+# l'évaluation "toutes méthodes" (docs/archive/evaluation_protocol.md, "F2LLMv2 assez
 # grand") et déjà validé séparément (results_v10_p2_f2llm330m, NMSE meilleur :
 # 0,0745->0,0689).
 #

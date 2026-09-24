@@ -180,8 +180,8 @@ document.
   domaine général pour SAE Boost, cf. §1) plutôt que supprimé faute de référence — le
   raccrocher à un `.slurm` reste à faire, hors scope hygiène. `c2_original_only_rejudge.py`/
   `relabel_diff_csvs.py`/`augmentation_lexical_leakage_audit.py` gardés : non cités par
-  `report/` mais cités par `RESULTS_TESTS.md` §37+ comme source de reproductibilité d'un
-  résultat déjà publié — le critère "cité par `report/`" seul les aurait supprimés à tort.
+  le rapport de stage mais cités par `RESULTS_TESTS.md` §37+ comme source de reproductibilité d'un
+  résultat déjà publié — le critère "cité par le rapport de stage" seul les aurait supprimés à tort.
   **Reste à faire, volontairement pas fait dans cette passe** (effort disproportionné au
   risque d'erreur pour une passe de nettoyage) : `docs/PDF_APPENDICES_EXTRACT.md` — réduction
   risquée sans casser les citations précises par numéro de ligne que
@@ -271,7 +271,7 @@ document.
   porte maintenant l'IC de Wilson ([5,7%, 51,0%]) et le résultat du test à deux
   proportions (`stats.py`, z=-1,56, p=0,12, non significatif à cet effectif). (b) le
   point d'entrée unique réclamé existe déjà et est déjà lié depuis le README —
-  `docs/evaluation_protocol.md` (config exacte, `SAVE_DIR`, commandes, table
+  `docs/archive/evaluation_protocol.md` (config exacte, `SAVE_DIR`, commandes, table
   capacité→résultat→comparaison) — l'audit avait affirmé son absence à tort. (c) la
   duplication `_strip_leading_objet_line`/nettoyage « Objet : » est corrigée : source
   unique `dataset.strip_leading_objet_line`, utilisée par `augmentation.py` et
@@ -311,7 +311,7 @@ unitaires jusqu'ici, pas en conditions réelles).
 **Nettoyage disque effectué cette session** : `results_v*/` réduits à leurs artefacts
 légers (`results.json`, labels du juge, plots) sauf `results_v10_emails_main/` (gardé
 complet, référence du dashboard Streamlit) — détail et scripts pour refaire chaque type
-d'ablation dans `docs/archived_runs_manifest.md`. Scripts slurm strictement supersédés
+d'ablation dans `docs/archive/archived_runs_manifest.md`. Scripts slurm strictement supersédés
 supprimés (git log les préserve). Dashboard Streamlit vérifié fonctionnel après coup
 (`streamlit.testing.v1.AppTest`, toutes pages × plusieurs runs, zéro exception).
 
@@ -885,7 +885,7 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
   verification_rate=80% (diffing, contre 40% pour la sélection non
   structurée du run archivé, §84) ; RRF+rerank domine uniformément TF-IDF et
   Latent Terms seuls (§92). Les deux résultats sont désormais dans
-  `RAPPORT_STAGE_UNIVERSITE.tex` (diffing/clustering en nouvelles
+  le rapport de stage (diffing/clustering en nouvelles
   sous-sections Résultats ; retrieval déjà présent).
 - **App I (F1 lecteur 12B/27B)** : calcul prêt, aucune orchestration écrite,
   aucun run — nécessite une extraction fraîche par-document sur un domaine
@@ -928,7 +928,7 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
 ### 2. Chiffres périmés
 
 - **§80 (remboursement P@10 0,90 vs 0,30)** : label resserré (N5), job 45745
-  en file — chiffre à mettre à jour dans `report/03_experiences_et_resultats.md`
+  en file — chiffre à mettre à jour dans le rapport de stage
   §5.5 dès que le job termine (la section actuelle dit encore "aucun résultat
   produit à ce jour", alors que `RESULTS_TESTS.md` §80 a déjà un tableau
   complet sous l'ANCIEN label — la note "[En cours]" du rapport est donc elle
@@ -941,7 +941,7 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
   directement le remplaçant — c'est la mesure la plus importante de toute
   cette campagne, à vérifier en priorité dès qu'elle termine.
 - **§81 (B.1, −7,3 pts non significatif)** : déjà correctement cité dans
-  `report/04_limites_et_perspectives.md:246-247` (82,0% vs 89,3%, p=0,070,
+  le rapport de stage (82,0% vs 89,3%, p=0,070,
   sens inversé) — RAS sur la formulation. Job 45735 ne change pas cette
   conclusion (rejuge l'arme mixte, pas l'arme originaux+filler — l'arme
   originaux+filler reste non rejugeable sans extraction fraîche, fragments
@@ -963,9 +963,9 @@ toute extraction réelle) est sans ambiguïté et bon marché à corriger
   `p1_judge_model_separation_*`/`b1_stratified_mixte_qwen_rejudge` (Qwen).
   Tout chiffre du rapport citant ce `SAVE_DIR` sans préciser lequel des deux
   est ambigu depuis l'introduction du juge Qwen — à vérifier ligne par ligne
-  dans `report/03_experiences_et_resultats.md`/`04_limites_et_perspectives.md`
+  dans le rapport de stage/`04_limites_et_perspectives.md`
   avant la remise finale (pas fait dans cette passe, volume trop grand pour
-  cette session — grep `results_v10_emails_main` dans `report/` et trancher
+  cette session — grep `results_v10_emails_main` dans le rapport de stage et trancher
   Gemma/Qwen pour chaque occurrence est la prochaine étape mécanique).
 
 ### 3. Verdict et liste de jobs
@@ -987,10 +987,10 @@ terminé : §96, 88,7% (133/150), non significatif contre le 82,0% de layer 31
 | 2a | Rejugement Qwen layer41 | ✅ **fait** | §90 (78,7% vs 82,7%, p=0,429, non significatif) |
 | 2b | Relance complète layer31/4B/27B sous Qwen | **pas fait** | coût réévalué ~1-2h GPU/palier, pas prioritaire tant que §89/§90 suffisent à établir le pattern (écart Qwen/Gemma non significatif sous stratifié) |
 | 3 | 45874 (1B, resoumis h100)/45803 (layer12) | ✅ **fait** | §95 (1B=80,0% sous méthodologie pleinement corrigée, contre 82,0% pour le 12B de la même famille, encore Gemma — comparaison à finir de nettoyer, cf. #2b) ; §96 (layer12=88,7%, non significatif contre layer31) |
-| 4 | Vérification rédactionnelle 45,3%/§83 | ✅ **fait pour `RAPPORT_STAGE_UNIVERSITE.tex`** | 94,0\% (§94, stratifié+Qwen+dédoublonnage) comme référence unique du rapport ; §95/§96 (effet d'échelle atténué, layer sweep) propagés ; diffing (§84/§91) et clustering (§86) ajoutés comme nouvelles sous-sections Résultats, jusqu'ici absentes. **Les fichiers `.md` sources (`FRONT_MATTER.md`, `01_etat_de_lart.md`, `03_experiences_et_resultats.md`, `04_limites_et_perspectives.md`, `06_conclusion.md`) n'ont PAS reçu cette passe** — toujours au chiffre 94,7\%/45,3\% et à l'ancienne narration ("correctifs" chronologiques), désormais **en avance/retard l'un sur l'autre avec le `.tex`** ; à re-synchroniser ou à traiter comme obsolètes (`report/dist/RAPPORT_DE_STAGE.md` n'est de toute façon qu'un artefact de travail, pas le livrable, cf. `report/README.md`) |
-| 5 | Grep `results_v10_emails_main` dans `report/*.md`, trancher Gemma/Qwen | ✅ **fait pour les .md et le .tex université** | reste `RAPPORT_STAGE_ENTREPRISE.tex` (explicitement reporté à après l'université, décision utilisateur) |
+| 4 | Vérification rédactionnelle 45,3%/§83 | ✅ **fait pour le rapport de stage** | 94,0\% (§94, stratifié+Qwen+dédoublonnage) comme référence unique du rapport ; §95/§96 (effet d'échelle atténué, layer sweep) propagés ; diffing (§84/§91) et clustering (§86) ajoutés comme nouvelles sous-sections Résultats, jusqu'ici absentes. **Les fichiers `.md` sources (`FRONT_MATTER.md`, `01_etat_de_lart.md`, `03_experiences_et_resultats.md`, `04_limites_et_perspectives.md`, `06_conclusion.md`) n'ont PAS reçu cette passe** — toujours au chiffre 94,7\%/45,3\% et à l'ancienne narration ("correctifs" chronologiques), désormais **en avance/retard l'un sur l'autre avec la version finale du rapport** ; à re-synchroniser ou à traiter comme obsolètes(version assemblée du rapport n'est de toute façon qu'un artefact de travail, pas le livrable) |
+| 5 | Grep `results_v10_emails_main` dans le rapport de stage, trancher Gemma/Qwen | ✅ **fait pour les sources et la version université** | reste le rapport de stage (explicitement reporté à après l'université, décision utilisateur) |
 | 6 | `b2_stratified_selection_rejudge.py` rerun sous Qwen (bin_info natif) | ✅ **fait** | §94 (N3 résolu : 94,0% brut, 93,85% repondéré, écart négligeable) |
-| 7 | App I | **pas fait** | toujours aucune mention dans `report/*.md` — confirmé non prioritaire |
+| 7 | App I | **pas fait** | toujours aucune mention dans le rapport de stage — confirmé non prioritaire |
 | 8 | Extraction fraîche arme originaux+filler | **pas fait** | toujours basse priorité, B.1 déjà tranché négativement |
 
 **Hors liste initiale, fait cette session** : déduplication des exemples
@@ -1007,7 +1007,7 @@ Dashboard mis à jour pour afficher explicitement quelle source/juge produit
 chaque taux affiché (avant : toujours le cache Gemma historique, sans le
 dire).
 
-**§95/§96 propagés dans `RAPPORT_STAGE_UNIVERSITE.tex` (fait)** : le sweep
+**§95/§96 propagés dans le rapport de stage (fait)** : le sweep
 1B sous méthodologie pleinement corrigée (stratifié + Qwen + déduplication)
 donne 80,0% ; la table d'échelle du rapport cite désormais ce chiffre contre
 le 12B **de la même famille de run** (layer 31, $K_\text{extra}=5$, encore
@@ -1029,8 +1029,7 @@ CLAUDE.md, point 5 des diagnostics, mis à jour en conséquence).
   masqué.
 - **Fichiers `.md` sources non resynchronisés** avec les corrections
   ci-dessus ni avec les ajouts diffing/clustering (cf. item #4 du tableau) —
-  décision à prendre : les mettre à jour pour qu'ils reflètent le `.tex`, ou
-  les déclarer legacy/gelés puisque `report/README.md` désigne déjà les deux
-  `.tex` comme les seuls livrables.
-- **`RAPPORT_STAGE_ENTREPRISE.tex`** : toujours pas repassé (décision
+  décision à prendre : les mettre à jour pour qu'ils reflètent la version finale du rapport, ou
+  les déclarer gelés.
+- **le rapport de stage** : toujours pas repassé (décision
   utilisateur de le traiter après la version université, item #5).

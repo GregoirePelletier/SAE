@@ -2,7 +2,7 @@
 
 Prototype de recherche : analyse interprétable de mails clients EDF par SAE (Gemma-3 + GemmaScope-2, extension
 `FrozenCoreResidualSAE`). Lire d'abord `docs/HANDOVER.md` (carte, parcours, artefacts) puis `docs/RESULTS_STATUS.md`
-(statut des résultats : E01-E07 antérieurs au correctif de filiation parent, rejeu requis). Règles complètes
+(état des résultats : E01-E07 d'abord calculés avec un split erroné, rejeu en cours). Règles complètes
 d'origine : `docs/archive/CLAUDE_long_2026-09.md` ; cluster : `docs/ops.md`.
 
 - Données/caches : ne jamais supprimer données, poids, checkpoints, caches partagés (`local_data/activation_cache/`),

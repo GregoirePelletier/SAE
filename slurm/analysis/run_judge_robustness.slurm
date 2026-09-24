@@ -16,7 +16,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 # Teste si le taux d'interprétabilité résiduel (~55-59% de features non interprétées,
-# cf. RESULTS_TESTS.md §12 / report/04_limites_et_perspectives.md) est en partie dû au
+# cf. RESULTS_TESTS.md §12 / perspectives du rapport de stage) est en partie dû au
 # biais de position du protocole odd-one-out (une seule décision greedy par feature)
 # plutôt qu'aux features elles-mêmes. Réutilise les activations/fragments DÉJÀ
 # calculés par run_sae_v10_emails.slurm (job 39660) -- aucune réextraction Gemma-3,

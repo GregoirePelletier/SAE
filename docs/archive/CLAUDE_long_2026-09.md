@@ -167,7 +167,7 @@ asynchrones). Un commit par sujet logique, jamais un commit fourre-tout.
 - `RESULTS_TESTS.md` est append-only : les identifiants `§N` sont cités
   depuis le rapport et ne doivent jamais être renumérotés. Chaque nouvelle
   section suit le format : Question / Écart à la configuration de référence
-  (`docs/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
+  (`docs/archive/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
   Conclusion / Limite connue.
 - Rédiger au présent, sans numéro de version interne (`v9`, `v10`...) ni récit
   de session : une contrainte de conception encore active se formule comme
@@ -247,7 +247,7 @@ suivantes non interprétables, ne pas sauter aux étapes 4-5 sans avoir vérifi�
    $K_\text{extra}=32$, 500k tokens) : ce sont deux familles de run
    différentes (layer et $K_\text{extra}$ confondus, pas seulement la taille
    du modèle), erreur déjà commise et corrigée une fois dans
-   `RAPPORT_STAGE_UNIVERSITE.tex` (§9 de docs/archive/audits/AUDIT_SAE_2026-08.md) — le vrai "12B"
+   le rapport de stage (§9 de docs/archive/audits/AUDIT_SAE_2026-08.md) — le vrai "12B"
    de la famille layer-scalée n'a pas encore été rejugé Qwen
    (`results_v27`, rerun en cours/à lancer)**. Le chiffre "seed" ci-dessus
    date d'avant le cache d'extraction partagé — cf. section Seeds plus haut

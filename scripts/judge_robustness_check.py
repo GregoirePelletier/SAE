@@ -2,7 +2,7 @@
 scripts/judge_robustness_check.py — Teste la robustesse du protocole odd-one-out
 (src/sae/judge.py::odd_one_out_judge) face au biais de position/ordre des exemples.
 
-Contexte (cf. RESULTS_TESTS.md §12, report/04_limites_et_perspectives.md) : après
+Contexte (cf. RESULTS_TESTS.md §12, perspectives du rapport de stage) : après
 correction du corpus d'entraînement (emails dominants), le taux d'interprétabilité
 des features d'extension reste à ~41-45% (n=150), sans effet du volume de tokens
 (testé 100k/500k/2M). Piste non testée : le protocole ne fait qu'UNE SEULE décision

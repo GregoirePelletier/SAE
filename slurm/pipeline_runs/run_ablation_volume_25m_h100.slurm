@@ -20,7 +20,7 @@ SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 # features et sonde de classification restent sur emails+augmentés seuls).
 # LAYER=24 explicite : le défaut de src/config.py a été relevé à 31 depuis
 # l'écriture de ce script, SAE_ID reste pinné à layer_24_width_16k_l0_medium
-# (config de référence, docs/evaluation_protocol.md) -- sans LAYER explicite,
+# (config de référence, docs/archive/evaluation_protocol.md) -- sans LAYER explicite,
 # les deux dériveraient silencieusement.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

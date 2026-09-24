@@ -12,7 +12,7 @@
 SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # Ablation taille du modèle extracteur/juge (1B vs 4B vs 12B référence) --
-# remplace results_v13_ablation_model_scale_1b (archivée, docs/archived_runs_manifest.md,
+# remplace results_v13_ablation_model_scale_1b (archivée, docs/archive/archived_runs_manifest.md,
 # antérieure au correctif juge B.3/B.5/B.6/B.11). Setup classique du papier
 # (K_EXTRA=5, D_EXTRA=1024), layer_13 = ~2/3 profondeur pour gemma-3-1b-it
 # (src/config.py _PRESETS), 25M tokens (calibrage timing/mémoire déjà établi

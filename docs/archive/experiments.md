@@ -16,7 +16,7 @@ séquentielles → ~7h30 en array SLURM à 8 shards parallèles.
 Chronométrage par étape (`stage_timer`, `src/sae/saev5.py`) : chargement du corpus,
 Pipeline 1 et Pipeline 2 sont chronométrés séparément à chaque run. Aucun run n'a
 encore été conduit au volume qui compte réellement pour trancher l'effet du volume de
-tokens (100-200M, cf. `docs/evaluation_protocol.md`) — pas de table de temps à cette
+tokens (100-200M, cf. `docs/archive/evaluation_protocol.md`) — pas de table de temps à cette
 échelle pour l'instant.
 
 ## 2. Le taux de détection de l'intrus (odd-one-out) est-il limité par le volume d'entraînement ou par autre chose ?
@@ -56,7 +56,7 @@ Aucun écart statistiquement distinguable entre les 3 valeurs testées, dans cet
 plage. Ça ne démontre pas que le volume est sans effet en général — seulement que,
 sous contrainte de calcul, retenir 500k plutôt que 2M ne coûte rien de mesurable dans
 cette plage précise. Elle reste 50 à 100× en dessous du seuil où la littérature (SAE
-Boost) documente un effet de volume (`docs/evaluation_protocol.md`, `RESULTS_TESTS.md`
+Boost) documente un effet de volume (`docs/archive/evaluation_protocol.md`, `RESULTS_TESTS.md`
 §18.3) — pas une preuve d'absence d'effet à l'échelle de production.
 
 Reste à expliquer : ~55-59% des features d'extension restent non interprétables même

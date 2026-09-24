@@ -9,7 +9,7 @@ Sec58/Sec61 mesurent deja un Delta-CE ("l'extension reduit le Delta-CE de
 ENTRAINEE -- PAS un decodeur entraine a un decodeur aleatoire fige, et sur
 le checkpoint historique K_EXTRA=32, pas R0 (K_EXTRA=5). Les deux rapports
 de stage decrivaient a tort cette mesure comme un analogue du Delta-FVE
-(entraine vs aleatoire) -- corrige en texte (RAPPORT_STAGE_ENTREPRISE.tex).
+(entraine vs aleatoire) -- corrige dans le texte du rapport de stage.
 Ce script produit la VRAIE comparaison entraine-vs-aleatoire promise par le
 texte, sous R0.
 

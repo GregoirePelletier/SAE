@@ -1,6 +1,6 @@
 # Inventaire interp_embed ↔ dépôt ↔ papier — Étape 0
 
-Source de fidélité pour tout prompt/formule : `pdf/InterpretableSAE_Embeddings.pdf`
+Source de fidélité pour tout prompt/formule : le papier *Interpretable Embeddings with Sparse Autoencoders* (arXiv:2512.10092v2)
 (Appendices A–M extraits verbatim dans `docs/archive/references/PDF_APPENDICES_EXTRACT.md`, avec
 traçabilité ligne/page). `external/interp_embed` est le code de référence des auteurs,
 une implémentation **partielle** du papier — jamais l'inverse. Catégories A/B/C/D

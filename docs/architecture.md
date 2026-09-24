@@ -1,7 +1,7 @@
 # Architecture
 
 Vue d'ensemble technique du dépôt. Pour le détail des expériences et
-résultats, voir `RESULTS_TESTS.md` et `docs/experiments.md`.
+résultats, voir `RESULTS_TESTS.md` et `docs/archive/experiments.md`.
 
 ## Objectif du projet
 
@@ -33,12 +33,12 @@ mail/texte → Gemma-3-12B-it (hidden states, couche LAYER=24)
 - L'**extension** (`FrozenCoreResidualSAE`/`SAEBoostResidualSAE`, `src/sae/frozen_core.py`)
   encode le résidu (ce que le SAE core ne reconstruit pas) avec un second SAE de plus
   petite taille (`D_EXTRA=1024`, `K_EXTRA=5` actifs par défaut ; 32 dans les runs historiques de
-  la config `results_v10_emails_main`), entraîné **from-scratch** sur le
+  la configuration historique du rapport), entraîné **from-scratch** sur le
   corpus du projet (cf. section Corpus ci-dessous). Design spécifique au projet — jamais
   fourni par GemmaScope/SAELens.
 - Les features d'extension n'existent sur aucune base externe (Neuronpedia ne les
   connaît pas) : elles sont labellisées par un **juge LLM local** (odd-one-out,
-  `src/sae/judge.py::odd_one_out_judge`) — cf. `docs/experiments.md` pour le protocole
+  `src/sae/judge.py::odd_one_out_judge`) — cf. `docs/archive/experiments.md` pour le protocole
   et son taux de succès mesuré.
 
 ### Pipeline 2 — F2LLM + PhraseLevelSAE (phrase-level)
@@ -129,7 +129,7 @@ identifiés, non corrigés à ce stade :
    sans changement de sémantique d'entraînement.
 2. Le réservoir passe systématiquement par le chemin mmap, même quand il tiendrait sans
    problème en mémoire GPU (500K-2M tokens, la quasi-totalité des runs réels à ce jour,
-   cf. `docs/evaluation_protocol.md`). Un seuil simple (matérialiser un tenseur dense sur
+   cf. `docs/archive/evaluation_protocol.md`). Un seuil simple (matérialiser un tenseur dense sur
    `DEVICE` une fois en dessous d'une taille donnée, garder le chemin mmap actuel
    au-delà) supprimerait le transfert host→device par step ET l'indirection memmap pour
    tous les runs de taille courante, sans toucher au comportement déjà validé à grande
@@ -179,7 +179,7 @@ d'entraînement devient un sujet actif :
   implémentés et exercés en production (`cooccurrence_graph`, appelé depuis
   `saev5.py` et `scripts/feature_group_reproducibility_test.py`). Résultats empiriques
   peu concluants sur corpus réel : NPMI ne retient que 3 paires sur 26 579 arêtes comme
-  "intéressantes" sur `results_v10_emails_main` (`RESULTS_TESTS.md` §16.3, contre un
+  "intéressantes" sur le run historique de référence (`RESULTS_TESTS.md` §16.3, contre un
   rappel parfait sur signal synthétique injecté, §40) ; le regroupement Louvain réel
   n'est **pas distinguable statistiquement** d'un regroupement aléatoire de même taille
   (similarité 0.948 vs 0.964, p=0.675, `RESULTS_TESTS.md` §66/B.27) — un résultat négatif
@@ -254,8 +254,7 @@ local_data/
   saes/                    # Poids SAE téléchargés (download_sae.py)
 docs/                      # Référence technique (ce dossier)
 slurm/, logs/              # Soumission SLURM et sorties (cf. docs/ops.md)
-results_v*/                # Répertoires de résultats par run (gitignorés),
-                            #   cf. RESULTS_TESTS.md pour l'index
+results_*/                 # Répertoires de résultats par run (hors Git)
 ```
 
 ## Scripts

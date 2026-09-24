@@ -7,7 +7,7 @@ Fichier append-only : les identifiants `§N` sont cités depuis le rapport et
 ne sont jamais renumérotés (`§35` n'existe pas — aucun contenu n'a été
 retiré à cette position, cf. note à cet endroit). Chaque nouvelle section
 suit le format : Question / Écart à la configuration de référence
-(`docs/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
+(`docs/archive/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
 Conclusion / Limite connue.
 
 ## Index
@@ -746,7 +746,7 @@ Suite directe de ma question : "comment tester ma pipeline de bout en bout
 pour estimer la qualité de notre solution d'explication des documents ?". Deux tests
 complémentaires (fidélité causale + plausibilité perçue), puis un protocole
 d'évaluation consolidé couvrant l'ensemble des méthodes du dépôt, sous conditions
-fixées (`docs/evaluation_protocol.md`).
+fixées (`docs/archive/evaluation_protocol.md`).
 
 ### 16.1. Fidélité de l'explication (ablation)
 
@@ -809,7 +809,7 @@ les deux features sont labellisées.
 
 ### 16.4. Protocole d'évaluation complet du dépôt (conditions fixées)
 
-`docs/evaluation_protocol.md` (nouveau) : recense les 16 capacités/méthodes du dépôt,
+`docs/archive/evaluation_protocol.md` (nouveau) : recense les 16 capacités/méthodes du dépôt,
 leur commande de reproduction, leur artefact de résultat, et l'alternative à laquelle
 chacune est comparée, sous un jeu de conditions **fixé** (Gemma-3-12B-it, GemmaScope
 16k+FrozenCore par défaut, corpus emails-dominant, F2LLM-v2-**330M** pour le backbone
@@ -1103,7 +1103,7 @@ Coïncidence notable : leur dictionnaire résiduel fait 1024 features dans toute
 leurs expériences — exactement notre `D_EXTRA` par défaut. Le projet a donc, sans
 le savoir/le documenter, déjà implémenté et validé à l'échelle la méthode listée
 comme objectif optionnel du cadrage initial. Corrigé dans `docs/references.md`
-et `report/01_etat_de_lart.md`.
+et le rapport de stage.
 
 ### 18.2. Écart de sensibilité `K_EXTRA` (top-k du résiduel)
 
@@ -2319,7 +2319,7 @@ ajoutée au plan (cf. section Prochaines étapes) plutôt que traitée ici.
 
 ## 40. Validation de `find_interesting_pairs` par injection synthétique (résultat positif)
 
-Piste "reste à faire" de `report/04_limites_et_perspectives.md` point 8 :
+Piste "reste à faire" du rapport de stage (perspectives, point 8) :
 valider `find_interesting_pairs`/`cooccurrence_graph` (`src/analysis/
 cooccurrence.py`) contre un signal connu, à la manière de la validation par
 injection synthétique du papier de référence interp_embed (Appendix E.2). Le
@@ -2414,7 +2414,7 @@ fermement** : le chiffre 45,3% n'est PAS robuste au choix du juge -- il ne
 doit plus être cité comme une propriété intrinsèque du SAE sans préciser
 le juge utilisé.
 
-## 44. Revue externe multi-perspective (avocat du diable) sur `report/RAPPORT_DE_STAGE.md`
+## 44. Revue externe multi-perspective (avocat du diable) sur le rapport de stage
 
 Panel de 5 reviewers indépendants et aveugles l'un à l'autre (plugin
 `academic-research-skills`), chacun avec accès direct au dépôt pour vérifier
@@ -3554,7 +3554,7 @@ intentions sur 4 (steering_fidelity). B.26 illustre une seconde fois (après le 
 initial) qu'un résultat "vérifié" sur des labels faibles n'est pas automatiquement
 fiable une fois le label corrigé — ici dans les deux sens (renforcement ET
 affaiblissement selon le script). Rapport mis à jour :
-`report/03_experiences_et_resultats.md` §5.2/5.3/5.5, `report/04_limites_et_perspectives.md`.
+le rapport de stage (résultats et perspectives).
 
 **Limite connue** : `src/data/dataset.py::INTENT_KEYWORDS_FR` en production reste non
 corrigé (décision utilisateur en attente) — ces trois résultats V2 restent, comme §60,
@@ -4178,7 +4178,7 @@ TF-IDF proche du hasard, Latent Terms très au-dessus), à égalité sur
 atteint P@10=1,00 (taux de base 54,8%, le plus élevé des quatre — TF-IDF
 profite mécaniquement d'un intitulé fréquent avec un vocabulaire régulier
 type "réclamation"/"insatisfait"). Cohérent avec la réserve méthodologique
-déjà documentée (`report/03_experiences_et_resultats.md`) : la vérité
+déjà documentée (le rapport de stage) : la vérité
 terrain (`INTENT_KEYWORDS_FR`) est elle-même lexicale, ce qui favorise
 structurellement TF-IDF sur les intentions à vocabulaire homogène.
 
@@ -4237,7 +4237,7 @@ comparée entre bras dans ce run.
 ## 82. Sweep taille du modèle extracteur (4B/12B/27B, setup classique K_EXTRA=5) : effet significatif 4B→12B, plateau 12B→27B
 
 **Question** : réplique et étend le sweep taille de modèle archivé
-(`docs/archived_runs_manifest.md`, pré-correctif juge) sous le code et le
+(`docs/archive/archived_runs_manifest.md`, pré-correctif juge) sous le code et le
 protocole actuels — setup classique du papier SAE Boost (K_EXTRA=5,
 D_EXTRA=1024), volume 25M tokens, sélection stratifiée (défaut depuis §79),
 n=150, corpus mixte de référence. Chaque palier utilise son layer "~2/3
@@ -5084,7 +5084,7 @@ campagne d'ablations finale (C1, V1/V2, A1/A2, S1/S2, L1) compare contre ce
 run.
 
 **Écart à la configuration de référence** : aucun — ce run EST la
-configuration de référence (`docs/evaluation_protocol.md`).
+configuration de référence (`docs/archive/evaluation_protocol.md`).
 
 **Méthode statistique** : `proportion_with_ci` (Wilson) pour le taux seul ;
 `two_proportion_test`/`paired_mcnemar_test` pour toute comparaison contre ce
@@ -5117,7 +5117,7 @@ comparait le 1B corrigé qu'au 12B *non* corrigé de §82/§94) — c'est,
 provisoirement et sous réserve de S2 (27B, en attente), la **disparition de
 la significativité de l'effet d'échelle une fois les trois points mesurés
 sous le même protocole**. Le "résultat central du stage" tel qu'actuellement
-formulé dans `RAPPORT_STAGE_UNIVERSITE.tex` (§model-scale) n'est plus soutenu
+formulé dans le rapport de stage (§model-scale) n'est plus soutenu
 par ces trois chiffres et doit être révisé avant toute autre rédaction — pas
 seulement requalifié à la baisse, sa significativité elle-même est
 maintenant en question à ce sous-ensemble de tailles.
@@ -6152,7 +6152,7 @@ interprétables de 22/78 = 28,2% entre `SEED=42` et `SEED=123`, mais sous
 sélection par magnitude, juge Gemma-3-12b-it auto-référent, négatif non
 corrigé et n=150 (`results_v10_emails_main` vs
 `results_v13_ablation_seed123`) — un protocole non R0, cité tel quel dans
-`RAPPORT_STAGE_ENTREPRISE.tex` (§reproductibilite) comme s'il caractérisait
+le rapport de stage (§reproductibilite) comme s'il caractérisait
 la stabilité des features sous R0. Ce même recouvrement, mesuré sous
 méthodologie pleinement corrigée, donne-t-il un ordre de grandeur
 comparable ?
@@ -6196,7 +6196,7 @@ rapport à §21 est cohérente avec le passage à une sélection stratifiée
 plus idiosyncrasiques d'une graine à l'autre) et à n=300 (population de
 labels distincts mécaniquement plus grande, ce qui réduit un indice de
 Jaccard à taux d'accord individuel égal) plutôt qu'un changement réel de
-robustesse du SAE lui-même. **`RAPPORT_STAGE_ENTREPRISE.tex` doit remplacer
+robustesse du SAE lui-même. **Le rapport de stage doit remplacer
 28,2% par ce chiffre** (14,4%, R0 vs V1 — même paire de valeurs de seed que
 la mesure historique) et préciser que la conclusion qualitative est
 inchangée, pas seulement mettre à jour le nombre.
@@ -6220,7 +6220,7 @@ mais sous sélection par magnitude, juge Gemma-3-12b-it auto-référent,
 négatif non corrigé et hyperparamètres historiques
 (`results_v9_full`/`results_v10_emails_main`, $K_\text{extra}=32$, layer 24,
 500k tokens) — un protocole non R0, cité dans
-`RAPPORT_STAGE_ENTREPRISE.tex` (§diagnostic-initial) comme la démonstration
+le rapport de stage (§diagnostic-initial) comme la démonstration
 que "le facteur qui a déterminé l'interprétabilité était la nature du
 corpus d'entraînement, pas sa taille". Cette conclusion résiste-t-elle à la
 méthodologie R0 intégrale ?
@@ -6263,7 +6263,7 @@ sous-entraînement).
 15,3 points, $z=2{,}74$, $p=0{,}006$, significatif sous magnitude + juge
 auto-référent) ne réplique pas du tout sous protocole R0** : le point
 estimé s'inverse même légèrement (générique 67,7% $>$ emails 65,7%), sans
-que cet écart soit lui-même significatif. **`RAPPORT_STAGE_ENTREPRISE.tex`
+que cet écart soit lui-même significatif. **Le rapport de stage
 doit corriger sa conclusion, pas seulement ses chiffres** : l'affirmation
 "le facteur qui a déterminé l'interprétabilité était la nature du corpus
 d'entraînement, pas sa taille" ne tient plus sous méthodologie corrigée —
@@ -6296,7 +6296,7 @@ campagne.
 une comparaison décodeur entraîné contre décodeur aléatoire, alors que cette
 mesure compare en réalité core seul contre core+extension entraînée, sur le
 checkpoint historique $K_\text{extra}=32$ (pas R0). Une fois le texte corrigé
-pour refléter honnêtement ce qui a été mesuré (cf. `RAPPORT_STAGE_ENTREPRISE.tex`),
+pour refléter honnêtement ce qui a été mesuré (cf. le rapport de stage),
 la vraie comparaison — décodeur entraîné (R0) contre décodeurs aléatoires
 figés (C1/C1b), sous $K_\text{extra}=5$ — reste-t-elle à produire, et
 confirme-t-elle la lecture qu'en donne le $\Delta$FVE (R0 largement
@@ -6358,7 +6358,7 @@ nettement moins la cross-entropy que les deux témoins aléatoires figés
 ($\Delta$CE 0,301 contre 0,51-0,53), effet hautement significatif et
 quasi unanime par document (56/60 et 54/60) — **cette fois, la lecture du
 $\Delta$CE converge réellement avec celle du $\Delta$FVE** (R0 largement
-supérieur aux témoins aléatoires, §98/§105/§119) : `RAPPORT_STAGE_ENTREPRISE.tex`
+supérieur aux témoins aléatoires, §98/§105/§119) : le rapport de stage
 peut désormais citer un vrai $\Delta$CE entraîné-vs-aléatoire sous R0, plutôt
 que la comparaison historique core-seul-vs-core+extension sous
 $K_\text{extra}=32$ mal décrite dans les versions précédentes.
@@ -6426,7 +6426,7 @@ de la feature individuelle, un vote majoritaire est préférable en
 production) **se confirme**, mais son ampleur exacte était surestimée sous
 l'ancien protocole — cohérent avec le motif déjà observé ailleurs dans ce
 rapport (sélection par magnitude + juge auto-référent amplifiant les
-artefacts de mesure). `RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce chiffre
+artefacts de mesure). Le rapport de stage doit citer ce chiffre
 comme référence, pas celui de §13.1.
 
 **Limite connue** : un seul seed de réordonnancement (5 répétitions, pas de
@@ -6470,7 +6470,7 @@ deux protocoles), mais un bruit de bascule individuelle substantiel. Comme
 pour le réordonnancement (§123), ce bruit individuel est **plus faible**
 sous R0 qu'historiquement (27,0% contre 38,6%) — le motif se confirme,
 son ampleur était surestimée sous l'ancien protocole.
-`RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce chiffre comme référence.
+le rapport de stage doit citer ce chiffre comme référence.
 
 **Limite connue** : la traduction reste faite par le même modèle que le
 juge (Qwen, pas un traducteur neutre) ; 4/300 échecs de parsing JSON
@@ -6518,7 +6518,7 @@ baseline dense), mais la répartition par cluster n'est pas directement
 comparable : les mots-clés générés, la taille des clusters (41/56/111/92
 contre 175/25/46/54) et le contenu même diffèrent, puisque le jeu de 197
 features R0 n'est pas un sur-ensemble des 68 historiques (sélection
-stratifiée contre magnitude). `RAPPORT_STAGE_ENTREPRISE.tex` doit citer ce
+stratifiée contre magnitude). Le rapport de stage doit citer ce
 résultat comme référence, en conservant la mise en garde déjà présente
 (une seule requête testée, pas de baseline dense/instruction-tuned,
 $n_\text{clusters}$ non sélectionné empiriquement).
@@ -6570,7 +6570,7 @@ partiellement préservée (0,37×) à quasi neutralisée (0,02×) : comme pour
 le correctif d'intention de §68/§69, les affirmations spécifiques par
 intention ne sont pas stables d'une configuration à l'autre, seule la
 conclusion générale (hétérogénéité, absence de mécanisme uniforme) l'est.
-`RAPPORT_STAGE_ENTREPRISE.tex` doit citer les chiffres R0 comme référence
+le rapport de stage doit citer les chiffres R0 comme référence
 et ne plus présenter la répartition K32/layer24 comme le résultat final.
 
 **Limite connue** : un seul seed de classifieur par intention (contrairement

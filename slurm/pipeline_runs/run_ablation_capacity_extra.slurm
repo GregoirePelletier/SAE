@@ -15,7 +15,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 # ── Ablation "capacité de l'extension" (D_EXTRA/K_EXTRA) ────────────────────────
-# Piste explicitement listée comme non testée dans report/04_limites_et_perspectives.md
+# Piste explicitement listée comme non testée dans les perspectives du rapport de stage
 # ("Capacité architecturale de l'extension... non testée dans cette investigation").
 # Après les ablations volume (§12/RESULTS_TESTS.md), largeur core (§17) et époques
 # (run_ablation_epochs_only.slurm), teste le dernier levier simple restant : la

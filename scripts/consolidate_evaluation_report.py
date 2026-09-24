@@ -1,6 +1,6 @@
 """
 scripts/consolidate_evaluation_report.py — Assemble tous les artefacts d'évaluation
-d'un run (cf. docs/evaluation_protocol.md) en un seul rapport markdown + un résumé
+d'un run (cf. docs/archive/evaluation_protocol.md) en un seul rapport markdown + un résumé
 JSON, pour éviter d'ouvrir séparément les ~15 fichiers produits par les différents
 scripts de diagnostic de ce projet.
 

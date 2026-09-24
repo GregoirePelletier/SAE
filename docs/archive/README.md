@@ -1,12 +1,15 @@
-# Archive documentaire
+# Archive
 
-Documents conservés tels quels pour la traçabilité, **non maintenus** : ne pas les lire comme
-l'état actuel du projet (voir `docs/RESULTS_STATUS.md`). Exclus du contrôle `scripts/check_docs.py`.
+Documents conservés pour mémoire. Ils ne sont plus mis à jour et ne décrivent pas l'état actuel
+du projet (voir `docs/RESULTS_STATUS.md`). Ils sont exclus de `scripts/check_docs.py`.
 
-| Chemin | Contenu | À savoir |
-|---|---|---|
-| `audits/AUDIT_SAE_2026-08.md` | audit interne d'août 2026 (items A/B/N) | cité par le rapport de stage (hors dépôt) et des commentaires de code |
-| `audits/audit_2026_08_*.json` | sorties de l'audit d'équivalence de troncature de couche | lues par la page « Audit méthodologique (archive) » du dashboard |
-| `audit_externe_2026-09/` | audit externe du commit `2f6fc24` (bilan, passation, reprise priorisée, checklist de réception) | antérieur au correctif de filiation parent et au correctif E04 ; son fichier `SOURCES.md` n'a jamais été livré (liens morts) ; son constat « E05 aléatoire non restitué » est dépassé |
-| `CLAUDE_long_2026-09.md` | ancienne version longue de `CLAUDE.md` | diagnostics de run, seeds, cache : détail encore utile |
-| `references/PDF_APPENDICES_EXTRACT.md` | extraction des annexes du papier interp_embed | cité par `src/analysis/*` pour les prompts/formules |
+| Chemin | Contenu |
+|---|---|
+| `experiments.md` | index des expériences d'avant la soutenance, par question de recherche |
+| `evaluation_protocol.md` | configuration de référence utilisée avant la soutenance |
+| `archived_runs_manifest.md` | dossiers de résultats supprimés du disque et recettes qui les reproduisent |
+| `CLAUDE_long_2026-09.md` | ancienne version, plus détaillée, de `CLAUDE.md` (diagnostics d'un run, graines, cache) |
+| `audits/AUDIT_SAE_2026-08.md` | audit interne d'août 2026, cité par des commentaires du code |
+| `audits/audit_2026_08_*.json` | sorties d'un de ces audits, lues par la page « Audit méthodologique » du dashboard |
+| `audit_externe_2026-09/` | audit externe du 22 septembre 2026 (bilan, passation, reprise, grille de réception) ; antérieur à la correction du découpage des données, son fichier `SOURCES.md` n'a jamais été fourni |
+| `references/PDF_APPENDICES_EXTRACT.md` | annexes du papier *Interpretable Embeddings with Sparse Autoencoders*, citées par `src/analysis/` |

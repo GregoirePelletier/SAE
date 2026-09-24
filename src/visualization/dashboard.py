@@ -1029,7 +1029,7 @@ def page_diagnostics(run_dir: str) -> None:
 
 def page_consolidated_report(run_dir: str) -> None:
     st.header("Rapport consolidé (toutes les méthodes, conditions fixées)")
-    st.caption("cf. docs/evaluation_protocol.md — scripts/consolidate_evaluation_report.py")
+    st.caption("cf. docs/archive/evaluation_protocol.md — scripts/consolidate_evaluation_report.py")
     report_path = os.path.join(REPO_ROOT, run_dir, "EVALUATION_REPORT.md")
     if os.path.exists(report_path):
         with open(report_path, encoding="utf-8") as f:
@@ -1359,16 +1359,13 @@ PRE_PARENT_FIX_RUNS = {
 def show_run_status_warning(run_dir: str) -> None:
     if run_dir in PRE_PARENT_FIX_RUNS:
         st.warning(
-            "Statut : résultats antérieurs au correctif de filiation des emails parents. La "
-            "séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes ; consultable "
-            "comme historique, pas une validation hors apprentissage. Rejeu nécessaire. "
-            "Évaluations humaines non réalisées. Détail : docs/RESULTS_STATUS.md."
+            "Première exécution de la campagne, avec un découpage erroné des variantes augmentées : "
+            "ces résultats ne sont pas des évaluations hors apprentissage. Voir docs/RESULTS_STATUS.md."
         )
     elif run_dir.startswith("results_post_stage_"):
         st.warning(
-            "Run post-soutenance dont le statut n'est pas validé par ce dashboard (rejeu "
-            "éventuellement partiel) : vérifier commit, manifeste, checkpoint FIT et statut de "
-            "fin des jobs avant de citer un chiffre (docs/RESULTS_STATUS.md)."
+            "Rejeu de la campagne avec le découpage corrigé, peut-être incomplet : vérifier dans "
+            "docs/RESULTS_STATUS.md quelles expériences sont terminées avant de citer un chiffre."
         )
 
 
@@ -1381,7 +1378,8 @@ def main() -> None:
     if not run_dirs:
         st.error(f"Aucun dossier results_*/ trouvé sous {REPO_ROOT}.")
         return
-    default_idx = run_dirs.index("results_v10_emails_main") if "results_v10_emails_main" in run_dirs else 0
+    preferred = ("results_post_stage_e01_fit_1b_layer13_k5_v2", "results_post_stage_e01_fit_1b_layer13_k5")
+    default_idx = next((run_dirs.index(r) for r in preferred if r in run_dirs), 0)
     run_dir = st.sidebar.selectbox("Run", run_dirs, index=default_idx)
     show_run_status_warning(run_dir)
 

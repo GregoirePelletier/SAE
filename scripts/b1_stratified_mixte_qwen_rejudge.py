@@ -13,7 +13,7 @@ juge change.
 L'arme "originaux+filler" (§81, `results_v26_validation_layer24_v12_originals_
 filler_matched_n150_h100/`) N'A PAS pu être rejugée de la même façon : ses
 fragments token-level ont été supprimés par le nettoyage disque de cette
-session (`docs/archived_runs_manifest.md`, seul `results_v10_emails_main/`
+session (`docs/archive/archived_runs_manifest.md`, seul `results_v10_emails_main/`
 gardé complet) -- rejuger cette arme demanderait une extraction complète
 fraîche, pas "quelques minutes de GPU" comme prévu par N4. Ce script mesure
 donc seulement si Qwen est systématiquement plus/moins généreux que Gemma sur

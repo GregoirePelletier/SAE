@@ -20,7 +20,7 @@ SAE_ROOT="${SAE_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 # Neuronpedia). Volume 25M tokens (calibrage timing/mémoire déjà établi,
 # job 44994 : 382 Go RSS réel sur --mem=500G, mêmes réglages de corpus/filler
 # ici). Remplace l'ancienne ablation K_EXTRA=5 (results_v13_ablation_k_extra5*,
-# archivée -- antérieure au correctif juge B.3/B.5/B.6/B.11, docs/archived_runs_manifest.md)
+# archivée -- antérieure au correctif juge B.3/B.5/B.6/B.11, docs/archive/archived_runs_manifest.md)
 # avec le code et le protocole actuels, à n=150 (pleine puissance).
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1

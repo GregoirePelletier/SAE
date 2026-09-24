@@ -14,7 +14,7 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
-# ── bge-m3 comme backbone Pipeline 2 (perspective #10, report/04, jamais fait) ──
+# ── bge-m3 comme backbone Pipeline 2 (perspective du rapport de stage, jamais faite) ──
 # bge-m3 est déjà utilisé pour la similarité de labels (§15.2, RESULTS_TESTS.md --
 # pooling [CLS], bien supérieur à F2LLM/pooling dernier-token sur des labels
 # courts) mais jamais câblé comme backbone d'ENTRAÎNEMENT du PhraseLevelSAE

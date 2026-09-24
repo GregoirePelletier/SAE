@@ -1,7 +1,8 @@
 # E06 — Corrélations entre propriétés, confirmées hors découverte (1B/layer13/K5)
 
-> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
-(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
+> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
+> apprentissage. Le rejeu avec le découpage corrigé est en cours.
 
 Découverte NPMI par-parent sur FIT+DEV (2605 parents), catalogue des 197
 features interprétables d'E02 (CORE+EXTRA). 142/197 features exclues

@@ -1,7 +1,8 @@
 # E07 — Clustering ciblé par axe, comparé aux alternatives (1B/layer13/K5)
 
-> **Statut : résultats antérieurs au correctif de filiation des emails parents. La séparation FIT/DEV/CONFIRM n'était pas effective pour les variantes. Ces résultats et checkpoints restent consultables comme historique, mais ne constituent pas une validation hors apprentissage. Un rejeu avec le manifeste corrigé est nécessaire. Les évaluations humaines n'ont pas été réalisées.**
-(Détail et impact : `docs/RESULTS_STATUS.md`, section Corpus.)
+> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
+> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
+> apprentissage. Le rejeu avec le découpage corrigé est en cours.
 
 3 axes fixes sur 400 parents CONFIRM échantillonnés (1 email représentatif
 chacun, graine 42) : `type_probleme`, `action_attendue`, `registre_urgence`.
