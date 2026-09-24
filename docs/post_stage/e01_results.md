@@ -124,3 +124,29 @@ particulier.
 - Pooling/longueur : `results_post_stage_e01_fit_1b_layer13_k5/e01_pooling_and_length_analysis.json`.
 - Scripts : `scripts/post_stage/e01_compare_representations.py`,
   `scripts/post_stage/e01_pooling_and_length_analysis.py`.
+
+## Rejeu sous le manifeste corrigé (partiel — `results_post_stage_e01_fit_1b_layer13_k5_v2/`)
+
+Jobs 50662 (référence FIT, h100-bis), 50663 (sondes), 50664 (pooling), lancés après le correctif de
+filiation : FIT = 26 112 documents (2 084 parents + 24 028 variantes du manifeste corrigé), DEV =
+6 471 ; nouveau checkpoint FIT (pas les poids de la section précédente). Mêmes protocole et sonde
+(14 classes d'axes d'augmentation). Référence E01 **provisoire** (rejeu partiel, split corrigé vérifié par les effectifs FIT/DEV) ;
+l'historique ci-dessus n'est pas effacé.
+
+| Représentation | Accuracy DEV (rejeu) | Historique |
+|---|---:|---:|
+| CORE | 90,05 % | 88,68 % |
+| FULL | 90,11 % | 88,80 % |
+| TFIDF | 91,67 % | 87,94 % |
+| DENSE (bge-m3) | 78,83 % | 77,05 % |
+
+- FULL − CORE : +0,06 point, IC [-0,29 ; +0,42] (521 groupes), McNemar p=0,81 : toujours pas de gain
+  de l'extension sur cette sonde.
+- FULL − DENSE : +11,28 points, IC [+10,35 ; +12,25] (p_fdr≈4e-101), même lecture (surtout CORE).
+- **FULL − TFIDF : −1,56 point, IC [-2,26 ; -0,87], p_fdr=1,5e-4** : sous le manifeste corrigé TF-IDF
+  dépasse FULL, alors que l'écart historique (+0,86, p_fdr=0,056) n'était pas significatif. Ce
+  changement de sens est à signaler.
+- Pooling : moyenne des 3 plus fortes activations vs max-pooling non significative (CORE −0,23 pt,
+  IC [-0,77 ; +0,36] ; FULL −0,06 pt, IC [-0,62 ; +0,52]). Baseline « longueur seule » : 18,9 %.
+
+**Reste à faire** : encodage CONFIRM (job 50939) puis E03/E04/E06/E07 (50940-50943) et analyses E05 (50944-50945) en cours de soumission au moment de cette rédaction ; relire les statuts `sacct` avant de citer ; évaluations humaines non réalisées.

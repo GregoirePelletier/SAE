@@ -71,15 +71,23 @@ qu'un rejeu (GPU, non lancé ici, autorisation requise) n'a pas été fait avec
 existants ne sont pas réutilisables comme « FIT-only ». Le sens des
 conclusions n'est pas préjugé — seule leur validité méthodologique l'est.
 
-## Rejeu sous le manifeste corrigé — partiel, non validé
+## Rejeu sous le manifeste corrigé — partiel, en cours
 
-Soumis sous `RUN_SUFFIX=_v2` (dossiers `results_post_stage_*_v2`, anciens résultats
-intacts). Statuts Slurm observés : référence FIT, sondes E01, pooling, registre E02 et
-2 des 4 entraînements E05 (seed44, randinit46) terminés ; seed43 et randinit45 en échec
-(mémoire GPU : chargement du juge sur A100 40 Go) ; encodage CONFIRM en échec (garde de
-clé de cache sur `SAVE_DIR/cache`, cf. `docs/HANDOVER.md`) ; E03/E04/E06/E07 et les
-analyses E05 non exécutés. Aucun résultat du rejeu n'est analysé ni rattaché ici :
-les statuts des sections ci-dessous restent ceux de l'historique.
+Soumis sous `RUN_SUFFIX=_v2` (dossiers `results_post_stage_*_v2`, anciens résultats intacts).
+
+| Étape | Statut (à relire dans `sacct`) |
+|---|---|
+| Référence FIT, sondes E01, pooling, registre E02 | terminés (jobs 50662-50665) — résultats dans `e01_results.md`, `e02_results.md` |
+| E05 : entraînements seed44, randinit46 | terminés (50668, 50669) ; FVE étendue 0,905 / 0,906, features EXTRA mortes 5,8 % / 1,5 % ; analyse de stabilité non faite |
+| E05 : seed43, randinit45 | échec initial (chargement du juge sur A100 40 Go) ; relancés sur H100 (50937, 50938) avec leurs checkpoints déjà entraînés |
+| Encodage CONFIRM | échec initial (garde de clé de cache, dossier FIT réutilisé) ; relancé dans un dossier d'évaluation distinct `..._v2_eval` (50939, recette `EVAL_SUFFIX`) |
+| E03, E04, E06, E07, analyses E05 | en attente de l'encodage CONFIRM / des entraînements (50940-50945) |
+
+**Reste à faire** : attendre ces jobs, puis relire et consigner E03, E04, E06, E07 et la stabilité E05
+sous le manifeste corrigé ; toutes les évaluations humaines (E02, E03, E04, E06, E07, E08). Tant que
+ce n'est pas fait, les sections E03-E07 ci-dessous décrivent l'historique (ancien split).
+Premiers résultats du rejeu : E01 (FULL − CORE toujours non établi ; TF-IDF désormais au-dessus de
+FULL, −1,56 pt) et E02 (207/300).
 
 ## E01 — Représentations comparables (FIT→DEV)
 

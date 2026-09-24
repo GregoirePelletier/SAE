@@ -43,3 +43,13 @@ entraînement ni la même sélection de features candidates.
   (local uniquement, contient des extraits de mails synthétiques —
   autorisés dans ce cadre mais non versionnés, `results_*/` gitignored).
 - Script : `scripts/post_stage/e02_feature_registry.py`.
+
+## Rejeu sous le manifeste corrigé (partiel — `results_post_stage_e01_fit_1b_layer13_k5_v2/e02_feature_registry.json`)
+
+Job 50665 (h100-bis, juge Qwen3.8-27B), sur le nouveau checkpoint FIT du rejeu, mêmes paramètres
+(150 CORE + 150 EXTRA) : **207 interprétables (69,0 %)**, 93 `unclear` (31,0 %), 0 support
+insuffisant — dont 76 CORE / 131 EXTRA interprétables (historique : 197 = 77 / 120). Écart de 10
+features sur 300, obtenu sur un autre checkpoint et un autre échantillon de features : ne pas le
+lire comme une amélioration. Toujours pas le même run que R0 historique (12B).
+Vérification humaine (60-100 features) **non réalisée**. Reste à faire : les étapes qui consomment ce
+registre (E03, E04, E06, E07) attendent l'encodage CONFIRM.
