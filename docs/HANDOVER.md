@@ -30,9 +30,8 @@ travail restant).
 
 **Documentation de référence** : `docs/architecture.md` (architecture et scripts),
 `docs/ops.md` (cluster, réseau, environnement), `docs/references.md` (bibliographie et écarts aux
-papiers), `docs/INTERP_EMBED_COVERAGE.md` (correspondance avec le code interp_embed),
-`docs/post_stage/PLAN_E00-E09.md` (plan de la campagne, cité « plan §N » dans le code et les
-comptes rendus).
+papiers), `docs/post_stage/PLAN_E00-E09.md` (plan de la campagne, cité « plan §N » dans le code
+et les comptes rendus).
 
 **Outils pour Claude Code** : `CLAUDE.md` (règles du projet) et `.claude/settings.json` (relance
 des tests après chaque modification d'un fichier Python). Sans effet si l'on n'utilise pas cet outil.
@@ -55,7 +54,7 @@ Runs disponibles sur le cluster d'origine :
 | Dossier | Contenu |
 |---|---|
 | `results_post_stage_e01_fit_1b_layer13_k5_v2/` | rejeu avec le split corrigé : E01, E02, E05 |
-| `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` | rejeu : encodage de CONFIRM, puis E03, E04, E06, E07 (en cours) |
+| `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` | rejeu : encodage de CONFIRM, E03, E04, E06, E07 |
 | `results_post_stage_e01_fit_1b_layer13_k5/` | première exécution de E01 à E07 (split erroné, historique) |
 | `results_post_stage_e05_{seed43,seed44,randinit45,randinit46}_v2/` | entraînements de E05 |
 

@@ -1,25 +1,29 @@
-# SAE — Résultats des tests & état des jobs Slurm
+# Journal des expériences (avant la soutenance)
 
-_Cluster : partitions `a100` (dgx-a100, 8×GPU), `h100` / `h100-bis`
-(dgx-h100{,-bis}, 8×GPU chacun)._
+Journal numéroté des expériences menées pendant le stage, avant la campagne post-soutenance
+(celle-ci est décrite dans `docs/post_stage/`, et l'état actuel des résultats dans
+`docs/RESULTS_STATUS.md`). Chaque section suit le même plan : question, écart à la configuration
+de référence, méthode statistique, effectif, résultat, conclusion, limites.
 
-Fichier append-only : les identifiants `§N` sont cités depuis le rapport et
-ne sont jamais renumérotés (`§35` n'existe pas — aucun contenu n'a été
-retiré à cette position, cf. note à cet endroit). Chaque nouvelle section
-suit le format : Question / Écart à la configuration de référence
-(`docs/archive/evaluation_protocol.md`) / Méthode statistique / n / Résultat /
-Conclusion / Limite connue.
+À savoir pour le lire :
+
+- Les numéros §N sont cités par le rapport de stage et ne sont jamais renumérotés (il n'y a pas
+  de §35). Le fichier n'a été complété qu'en ajoutant des sections : une conclusion ancienne peut
+  être remise en cause par une section plus récente, qui la cite.
+- Les taux d'interprétabilité antérieurs à §113 reposent sur un protocole corrigé depuis ; la
+  valeur de référence est celle de §119 (65,7 %).
+- Les dossiers `results_v*` cités sont les identifiants des runs ; ils ne sont pas dans le dépôt
+  et la plupart ont été supprimés du disque (`docs/archive/archived_runs_manifest.md`).
 
 ## Index
 
-Date : non renseigné quand la section elle-même ne la mentionne pas (aucune
-n'est datée en prose dans ce fichier).
+Les sections ne sont pas datées.
 
 | § | Question posée | n | Résultat | Statut |
 |---|---|---|---|---|
 | 0 | Augmentation + baseline à l'échelle complète, tiennent-elles dans le budget de calcul ? | 43 423 textes | 8 shards parallèles, ~7h27 mur | confirmé |
 | 1-3 | Audit initial : pipeline smoketest, tests unitaires | 8/8 tests | validés, inchangés | confirmé |
-| 4-9 | Incidents d'infrastructure (scripts `.slurm`, OOM, budget de temps) | — | — | infra, voir `docs/ops_journal.md` |
+| 4-9 | Incidents d'infrastructure (scripts `.slurm`, OOM, budget de temps) | — | — | infra, voir `docs/ops.md` |
 | 10 | Run à l'échelle complète du pipeline principal | — | voir section | confirmé |
 | 11 | Bilan général de la session d'audit initiale | — | voir section | infra |
 | 12 | Le taux de détection de l'intrus est-il limité par le volume ou par le corpus ? | 10 puis 150 | domaine : 20%→45,3% ; volume : sans effet | confirmé |
@@ -30,7 +34,7 @@ n'est datée en prose dans ce fichier).
 | 17 | Ablation de mise à l'échelle : largeur SAE core, époques, N_FEATURES_TO_LABEL | 600 | 65k > 16k en couverture | confirmé |
 | 18 | `FrozenCoreResidualSAE` est-elle une implémentation de SAE Boost ? | — | architecture identique | confirmé |
 | 19 | Sanity check décodeur aléatoire (Korznikov et al. 2026) | 150 | 45,3% vs 29,3%, significatif ; classification résiste moins | confirmé, nuancé |
-| 20 | Incident disque (lien symbolique) | — | — | infra, voir `docs/ops_journal.md` |
+| 20 | Incident disque (lien symbolique) | — | — | infra, voir `docs/ops.md` |
 | 21 | Ablation de variance de seed | 150 vs 150 | 45,3% vs 47,3%, non significatif ; 28,2% recouvrement labels | confirmé |
 | 22 | Biais multilingue du juge (FR vs EN traduit) | 150 | 46,9% vs 45,5%, non significatif ; 38,6% instabilité individuelle | confirmé |
 | 23 | Ablation volume à grande échelle (~100-120M tokens) | 150 | pas d'effet significatif au volume testé | confirmé |
@@ -57,7 +61,7 @@ n'est datée en prose dans ce fichier).
 | 44 | Revue externe multi-perspective (avocat du diable) | — | Major Revision, 2 CRITICAL adjugés | confirmé |
 | 45 | Réplication multi-seed `K_EXTRA=5` | 450 (3 seeds) | direction confirmée, significativité non atteinte | confirmé |
 | 46 | Test confirmatoire C1 : effet domaine à n apparié | 150 vs 150 | 45,3% vs 30,0%, z=2,74, p≈0,006 | confirmé |
-| 47 | Échecs d'infrastructure sur 5 jobs | — | — | infra, voir `docs/ops_journal.md` |
+| 47 | Échecs d'infrastructure sur 5 jobs | — | — | infra, voir `docs/ops.md` |
 | 48 | Test C2 gratuit : origine des exemples positifs vs interprétabilité | 150 | pas de corrélation | confirmé |
 | 49 | Bug hook attn_out/mlp_out : mauvais chemin d'attribut | — | corrigé | confirmé |
 | 50 | C2 (suite) : re-jugement faisable, contrôle core | 150 | faisabilité 100% | confirmé |
@@ -70,7 +74,7 @@ n'est datée en prose dans ce fichier).
 
 ## 0. Corpus complet — augmentation parallélisée (8 shards) + baseline
 
-**Vérification du biais de formatage (`docs/ops_journal.md` §6) avant le run
+**Vérification du biais de formatage (ancien journal d'exploitation, §6) avant le run
 complet** : confirmé sur l'échantillon test (0,03% des mails originaux ont
 "Objet :" vs 25,6% des augmentés) → prompt système corrigé
 (`src/data/augmentation.py`, contrainte explicite : interdiction d'ajouter
@@ -233,29 +237,29 @@ Aucune modification nécessaire côté code testé.
 
 ## 4. Bugs trouvés dans les 3 autres `.slurm` (jamais fonctionnels tels quels)
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §4.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §4).
 
 ## 5. Budget de temps de l'augmentation complète
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §5.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §5).
 
 ## 6. OOM CUDA dans `slurm/baseline_diffing/run_baseline.slurm`
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §6. Observation
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §6). Observation
 méthodologique retenue : première mise en évidence du biais de formatage
 résiduel ("Objet :"/"Subject :"), mesuré et corrigé par la suite (§14.1).
 
 ## 7. Suivi des jobs (session d'audit initiale)
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §7.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §7).
 
 ## 8. Correctifs de code de cette passe
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §8.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §8).
 
 ## 9. Suivi (session d'audit initiale)
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §9.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §9).
 
 ---
 
@@ -619,7 +623,7 @@ Gemma-3 (une dimension atteint une magnitude ~74752 contre une moyenne ~53).
 
 ## 15. Relecture du papier de référence (interp_embed) : 4 corrections concrètes
 
-Suite à une relecture détaillée de `pdf/InterpretableSAE_Embeddings.pdf` (Jiang, Sun
+Suite à une relecture détaillée de *Interpretable Embeddings with Sparse Autoencoders* (Jiang, Sun
 et al. 2025), comparaison ligne à ligne avec notre code. Quatre écarts concrets
 trouvés et corrigés, au-delà de la comparaison de formule déjà faite pour SAELens
 (§13/docs/references.md).
@@ -1086,9 +1090,9 @@ ordre de grandeur (aucune conclusion de changement, les deux mesures restant tr�
 supérieures au hasard) : cohérent avec le fait qu'elle mesure une propriété causale
 du classifieur indépendante du volume de labels disponibles.
 
-## 18. Relecture littérature (session pdf/) : `FrozenCoreResidualSAE` est une implémentation de SAE Boost
+## 18. Relecture littérature : `FrozenCoreResidualSAE` est une implémentation de SAE Boost
 
-Lecture de `pdf/teacholdsaes.pdf` (*Teach Old SAEs New Domain Tricks with Boosting*,
+Lecture du papier (*Teach Old SAEs New Domain Tricks with Boosting*,
 Koriagin et al., COLM 2025) — quasi certainement la référence "SAE Boost" du cadrage
 initial du projet, marquée "non fait" dans `docs/references.md` jusqu'ici.
 
@@ -1152,7 +1156,7 @@ projet. Piste de poursuite.
 
 ## 19. Sanity check (Korznikov et al. 2026) : le taux d'interprétabilité bat-il un décodeur aléatoire ?
 
-Lecture de `pdf/sanitychecks.pdf` (*Sanity Checks for Sparse Autoencoders: Do SAEs
+Lecture du papier (*Sanity Checks for Sparse Autoencoders: Do SAEs
 Beat Random Baselines?*, Korznikov et al., 2026, preprint). Résultat central du
 papier : sur des SAE conventionnels (BatchTopK, JumpReLU, ReLU), une baseline
 **"Frozen Decoder"** (décodeur figé à une initialisation aléatoire, jamais
@@ -1234,7 +1238,7 @@ des preuves plus solides de features significatives.
 
 ## 20. Suppression accidentelle d'un lien symbolique lors d'un nettoyage disque
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §20.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §20).
 
 ## 21. Ablation de variance de seed (Unstable Features, Reproducible Subspaces)
 
@@ -2498,7 +2502,7 @@ corpus emails reste net et maintenant statistiquement fondé (45,3% vs 30,0%,
 
 ## 47. Échecs d'infrastructure sur 5 jobs
 
-Incident d'infrastructure, détail : `docs/ops_journal.md` §47.
+Incident d'infrastructure (journal d'exploitation retiré du dépôt au commit d4ca0d9, §47).
 
 ## 48. Test C2 (gratuit, CPU) : l'origine des exemples positifs ne prédit pas l'interprétabilité
 
@@ -2746,7 +2750,7 @@ balayage consolidées — K_EXTRA, D_EXTRA, volume, layer, hook-point, échelle
 du modèle — remplaçant les tables texte dispersées de ce journal) ; nouvel
 onglet dashboard "Diagnostics d'entraînement" (`src/visualization/dashboard.py`)
 lisant ces figures pré-générées, cohérent avec la philosophie du dashboard
-(lecture d'artefacts disque uniquement) ; `docs/sae_diagnostics_playbook.md`
+(lecture d'artefacts disque uniquement) ; l'ancien guide de diagnostic (retiré au commit d4ca0d9)
 (checklist ordonnée : convergence → fidélité → capacité → interprétabilité →
 significativité → indépendance du juge), référencé depuis `CLAUDE.md`.
 
@@ -5437,7 +5441,7 @@ avec `intent_urgency_probe.py` historique) ; un seul split train/test
 
 ## 105. C1b — sanity check décodeur figé, init `cov` (schéma principal de Korznikov et al.)
 
-**Question** : lecture de `pdf/sanitychecks.pdf` (Korznikov et al. 2026) après
+**Question** : lecture de *Sanity Checks for Sparse Autoencoders* (Korznikov et al. 2026) après
 C1 (§98) : leur baseline Frozen Decoder est testée sous deux schémas d'init,
 `iso` (Gaussien isotrope normalisé, ce que C1 utilise) et `cov` (Gaussien de
 covariance réelle, puis normalisé) --- et c'est **`cov`** qu'ils utilisent

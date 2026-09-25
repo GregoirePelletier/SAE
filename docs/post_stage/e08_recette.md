@@ -1,57 +1,44 @@
-# E08 — Recette du mini-pilote analyste
+# E08 : mini-pilote avec des analystes
 
-Ce document couvre uniquement la **recette technique** (plan §13,
-5-7h d'ingénierie) : l'outil que des participants utiliseraient en séance.
-**Les sessions elles-mêmes (2-3 participants réels dont Grégoire, 20 min
-chacune) n'ont pas eu lieu** — elles nécessitent de vraies personnes
-disponibles, ne peuvent pas être simulées, et restent la partie bloquante
-de E08.
+But : faire utiliser l'outil par 2 ou 3 personnes pendant une vingtaine de minutes chacune, pour
+savoir s'il aide à retrouver des emails et à formuler des pistes. **Aucune séance n'a eu lieu.**
+Seul l'outil a été préparé.
 
-## Ce qui est construit
+## L'outil
 
-Page `Mini-pilote analyste (E08)` dans `src/visualization/dashboard.py`
-(`page_pilot_e08`), lit exclusivement des artefacts déjà figés sur disque :
+Page « Mini-pilote analyste (E08) » du dashboard (`page_pilot_e08` dans
+`src/visualization/dashboard.py`). Elle ne charge aucun modèle et affiche des résultats déjà
+calculés :
 
-- `e01_representation_comparison.json` (repère CORE/FULL)
-- `e03_property_retrieval.json` (tâche 1 : retrouver des emails selon une
-  propriété — 12 requêtes, 5 méthodes, top-10 documents avec extrait de
-  texte et pertinence jugée par Qwen)
-- `e04_diffing.json` (tâche 2 : comparer deux sous-populations pour
-  proposer des thèmes — 8 hypothèses, taux vérifiés, IC, FDR-BH)
+- tâche 1, retrouver des emails selon une propriété : les 12 requêtes d'E03, les 10 premiers
+  emails de chaque méthode avec un extrait et le jugement de pertinence du modèle juge ;
+- tâche 2, comparer deux populations : les 8 hypothèses d'E04 avec leurs taux et leur
+  significativité ;
+- un rappel des résultats d'E01 (CORE et FULL).
 
-Aucun modèle chargé, aucun GPU, aucun réseau externe au chargement de la
-page (conforme à la recette minimale du plan). Message explicite (pas de
-repli silencieux) si un artefact attendu est absent du run sélectionné.
+La page lit ces fichiers dans le run sélectionné ou dans son dossier d'évaluation (`<run>_eval`) ;
+si l'un manque, elle l'indique et la tâche correspondante n'est pas proposée.
 
-**Catalogue de thèmes** : formulaire d'enregistrement d'une « piste »
-(titre, question, populations, propriété, exemples, contre-exemples,
-méthode, statut, commentaire humain, participant), exporté vers
-`docs/post_stage/e08_pilot_leads.json` (append-only, y compris les pistes
-rejetées). Vide tant qu'aucune session réelle n'a eu lieu.
+Un formulaire permet d'enregistrer une « piste » : titre, question, populations comparées,
+propriété, exemples, contre-exemples, méthode, statut (retenue, rejetée, à creuser), commentaire
+et participant. Les pistes rejetées sont gardées. Elles sont écrites dans
+`$SAE_DASHBOARD_STATE_DIR/e08_pilot_leads.json` (par défaut `local_data/dashboard_state/`), hors
+Git. `docs/post_stage/e08_pilot_leads.json` est un modèle vide ; s'il contient des pistes, elles
+sont recopiées une fois vers l'emplacement local. Deux personnes qui enregistrent en même temps
+peuvent écraser la piste de l'autre.
 
-Changement en amont nécessaire pour la tâche 1 : `e03_property_retrieval.py`
-ne persistait que des métriques agrégées (P@10), pas les documents retrouvés
-— un participant ne peut pas juger une piste sans voir de vrais candidats.
-Ajout de `top_documents` (extrait de texte + pertinence par document,
-mêmes rankings/jugements, aucun changement de protocole) et rerun (job
-49058, h100).
+## Ce qu'il reste à faire
 
-## Ce qui reste à faire (bloquant, hors portée de cette session)
-
-- Recruter 2-3 participants disponibles (le plan nomme explicitement
-  Grégoire + collègues, à défaut un panel « utilisateurs de recherche »
-  sans le qualifier de métier).
-- Mener les sessions (20 min, ordre contrebalancé référence/SAE, cf. plan
-  §13 format).
-- Relecture aveugle des pistes collectées, mesure des indicateurs du plan
-  (nombre de pistes documentées/jugées pertinentes, nouveauté, temps
-  jusqu'à première piste, erreurs d'interface, confiance calibrée).
-- Décision finale (poursuivre un pilote réel / garder l'exploration /
-  privilégier la baseline / arrêter) — nécessite les données de session,
-  ne peut pas être anticipée ici.
+- Trouver 2 ou 3 participants. Si ce sont des chercheurs et non des analystes métier, le dire
+  dans le compte rendu.
+- Mener les séances en alternant l'ordre entre recherche classique et exploration par les
+  features (plan §13).
+- Relire les pistes sans savoir de quelle méthode elles viennent, et mesurer : nombre de pistes
+  jugées pertinentes, nouveauté par rapport aux catégories connues, temps avant la première piste,
+  difficultés d'interface.
+- Décider de la suite : pilote sur données réelles, outil d'exploration seulement, ou arrêt.
 
 ## Fichiers
 
-- `src/visualization/dashboard.py::page_pilot_e08`
-- `docs/post_stage/e08_pilot_leads.json` (catalogue, vide pour l'instant)
-- Job SLURM : 49058 (E03 rerun avec `top_documents`)
+- `src/visualization/dashboard.py` (`page_pilot_e08`).
+- `docs/post_stage/e08_pilot_leads.json` (modèle vide).

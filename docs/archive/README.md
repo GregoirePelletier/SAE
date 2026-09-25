@@ -12,4 +12,5 @@ du projet (voir `docs/RESULTS_STATUS.md`). Ils sont exclus de `scripts/check_doc
 | `audits/AUDIT_SAE_2026-08.md` | audit interne d'août 2026, cité par des commentaires du code |
 | `audits/audit_2026_08_*.json` | sorties d'un de ces audits, lues par la page « Audit méthodologique » du dashboard |
 | `audit_externe_2026-09/` | audit externe du 22 septembre 2026 (bilan, passation, reprise, grille de réception) ; antérieur à la correction du découpage des données, son fichier `SOURCES.md` n'a jamais été fourni |
+| `INTERP_EMBED_COVERAGE.md` | correspondance, fonction par fonction, entre ce dépôt, le code interp_embed et son papier (inventaire de travail) |
 | `references/PDF_APPENDICES_EXTRACT.md` | annexes du papier *Interpretable Embeddings with Sparse Autoencoders*, citées par `src/analysis/` |

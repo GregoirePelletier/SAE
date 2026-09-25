@@ -1,111 +1,70 @@
-# E06 — Corrélations entre propriétés, confirmées hors découverte (1B/layer13/K5)
+# E06 : associations entre propriétés (Gemma-3-1B, couche 13, K_EXTRA=5)
 
-> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
-> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
-> apprentissage. Le rejeu avec le découpage corrigé est en cours.
+Question : les features permettent-elles de repérer des propriétés qui apparaissent souvent
+ensemble dans les emails, et ces associations se confirment-elles sur d'autres emails ?
 
-Découverte NPMI par-parent sur FIT+DEV (2605 parents), catalogue des 197
-features interprétables d'E02 (CORE+EXTRA). 142/197 features exclues
-(bande de fréquence [0,01 ; 0,5] — sans plafond haut, des features
-quasi-universelles cooccurrent trivialement à NPMI≈1 avec tout le reste,
-cf. Erreurs). 1246 paires candidates (support conjoint ≥10 parents, hors
-paires à label strictement identique). 8 paires gelées **avant lecture de
-CONFIRM**, classées par |NPMI| de découverte.
+## Protocole
 
-Vérification : chaque propriété atomique jugée individuellement par Qwen
-sur 350 parents CONFIRM (échantillon déterministe, graine 42, 13 propriétés
-uniques × 350 = 4550 appels), cooccurrence calculée **sur ces jugements**,
-pas sur les activations SAE brutes.
+- Découverte sur FIT et DEV : pour chaque paire de features nommées en E02, cooccurrence dans
+  les emails d'origine, mesurée par l'information mutuelle ponctuelle normalisée (NPMI, de −1 à
+  1). Les features actives dans moins de 1 % ou plus de 50 % des emails sont écartées (une feature
+  présente partout est associée à tout), ainsi que les paires de même nom ou quasi synonymes.
+- Les 8 paires au NPMI le plus fort (en valeur absolue) sont figées avant toute lecture de CONFIRM.
+- Vérification sur 350 emails d'origine de CONFIRM (graine 42) : le modèle juge dit, pour chaque
+  email, si chacune des propriétés est présente ; la cooccurrence est recalculée sur ces jugements,
+  et non sur les activations. Une association est retenue si l'intervalle bootstrap du NPMI exclut
+  0 et si le test de Fisher reste significatif après correction de Benjamini-Hochberg.
 
-## Résultat par paire (CONFIRM, n=350 parents, FDR-BH sur 7 paires testables)
+## Résultats avec le découpage corrigé
 
-| Paire | n_a / n_b / n_ab | NPMI CONFIRM (IC) | Statut |
+Dossier `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` (job 50942), 1 951 paires candidates.
+Les paires diffèrent de la première exécution, puisque le checkpoint et le catalogue de features
+ont changé.
+
+| Paire | Nombre d'emails (A / B / les deux) | NPMI sur CONFIRM | Retenue |
 |---|---:|---|---|
-| Coordonnées bancaires × IBAN bancaire | 134/82/82 | 0,66 [0,59 ; 0,73] | **établi** |
-| Identification SIREN × Numéro SIREN | 23/24/23 | 0,98 [0,95 ; 1,00] | **établi** (quasi-doublon, cf. limites) |
-| Formule de politesse × Facture de clôture | 241/26/26 | 0,14 [0,11 ; 0,18] | **établi** (faible, peu surprenant) |
-| Dysfonctionnement électrique × Réfrigérateur | 109/13/13 | 0,35 [0,29 ; 0,42] | **établi** |
-| Liens d'usurpation × Injection d'URL | 3/6/1 | 0,51 (IC non calculé) | `insufficient_support` |
-| Transmission d'informations × Tâches quotidiennes | 181/23/9 | −0,08 [−0,22 ; +0,05] | non établi |
-| Tâches quotidiennes × Facture de clôture | 23/26/**0** | non défini (p_AB=0) | non établi (fisher p=0,40) |
-| Négation de changement × Transmission d'informations | 14/181/7 | −0,01 [−0,17 ; +0,11] | non établi (fisher p=1,00) |
+| Contestation de facture × Augmentation de facture | 102 / 91 / 91 | 0,92 [0,87 ; 0,96] | oui |
+| Raccordement énergie × Fournisseur précédent | 66 / 33 / 32 | 0,68 [0,60 ; 0,77] | oui |
+| Fournisseur précédent × « Raccordement à » | 33 / 62 / 30 | 0,67 [0,57 ; 0,75] | oui |
+| Travail à domicile × Heure de coupure | 61 / 31 / 19 | 0,43 [0,29 ; 0,55] | oui |
+| Consommation stable × Contestation de facture | 9 / 102 / 9 | 0,34 [0,27 ; 0,40] | oui |
+| Raccordement énergie × « Électricité et/ou » | 66 / 34 / 0 | non défini | non |
+| Date de l'incident × Date de fin | 25 / 8 / 0 | non défini | non |
+| Champs nom et prénom × Coordonnées client | 0 / 219 / 0 | — | support insuffisant |
 
-## Lecture d'ensemble
+5 paires sur 8 sont retenues. Toutes n'apportent pas la même information :
 
-**4/8 paires "établies" (IC bootstrap excluant zéro, survivent FDR-BH), 3/8
-non établies, 1/8 `insufficient_support`** (n_a=3 — statut correctement
-appliqué plutôt que de citer l'odds ratio brut de 34,2, qui aurait l'air
-spectaculaire sur une table quasi vide).
+- *Contestation × augmentation de facture* et les deux paires autour du raccordement sont en
+  grande partie attendues (une hausse de facture motive une contestation ; un raccordement se fait
+  souvent en quittant un autre fournisseur). « Raccordement à » est très probablement la même
+  notion que « Raccordement énergie ».
+- *Travail à domicile × heure de coupure* et *consommation stable × contestation* sont les pistes
+  les plus intéressantes : les clients qui travaillent chez eux précisent l'heure de la coupure,
+  et une partie des contestations s'appuie sur une consommation jugée stable. Ce sont des
+  observations sur un corpus synthétique, pas des constats sur la clientèle réelle.
+- *Raccordement énergie × « Électricité et/ou »* n'apparaissent jamais ensemble alors que
+  chacune est fréquente (test de Fisher significatif, p = 0,001) : c'est une exclusion, que la
+  règle fondée sur le NPMI ne retient pas.
 
-Parmi les 4 paires établies, **toutes ne sont pas également informatives** —
-à ne pas aplatir en "4 corrélations découvertes" :
+## Première exécution (découpage erroné, historique)
 
-1. **Réfrigérateur × dysfonctionnement électrique (NPMI=0,35) est la seule
-   association vraiment actionnable** : spécifique, non triviale, et
-   business-pertinente (suggère que les plaintes "réfrigérateur" de ce
-   corpus sont systématiquement encadrées comme un problème électrique,
-   pas un problème mécanique/thermique — pourrait informer un routage par
-   type d'appareil).
-2. **SIREN-identification × SIREN-numéro (NPMI=0,98) est quasi-certainement
-   un doublon de concept**, pas une découverte — deux directions SAE
-   distinctes convergeant sur le même signal (feature splitting), comme les
-   5 features "Numéro de téléphone" trouvées lors du filtrage (cf.
-   Erreurs). Le filtre label+description ne l'a pas exclu car les deux
-   libellés diffèrent lexicalement ; un NPMI aussi proche de 1 sur une paire
-   gelée devrait se lire comme un signal de redondance du dictionnaire,
-   pas comme une association métier.
-3. **Bancaire × IBAN (NPMI=0,66) est largement définitionnel** (un IBAN
-   *est* une coordonnée bancaire) — confirme que le protocole fonctionne
-   correctement (l'association attendue ressort bien), mais n'apprend rien
-   de nouveau sur le corpus.
-4. **Politesse × facture de clôture (NPMI=0,14, le plus faible des
-   "établis")** : les formules de politesse sont quasi-ubiquitaires
-   (n_a=241/350) — l'association mesure surtout que les factures de
-   clôture ne dérogent pas à cette norme, peu surprenant.
+Dossier `results_post_stage_e01_fit_1b_layer13_k5/` (job 49077), 1 246 paires candidates. 4 paires
+sur 8 retenues : coordonnées bancaires × IBAN (NPMI 0,66), identification SIREN × numéro SIREN
+(0,98, un même concept en double), formule de politesse × facture de clôture (0,14) et
+dysfonctionnement électrique × réfrigérateur (0,35), la seule association alors jugée
+intéressante ; 3 non retenues, 1 sans support suffisant.
 
-**Le cas p_AB=0 (tâches quotidiennes × facture de clôture) est géré comme
-prévu** : NPMI non défini plutôt qu'une valeur fabriquée à la borne, et le
-test de Fisher (p=0,40) montre que ce zéro n'est pas surprenant à ces
-effectifs (n_a=23, n_b=26 sur 350) — pas une "anti-corrélation parfaite".
+## Limites
 
-## Écart au protocole du plan
-
-**Les 8 paires gelées impliquent toutes au moins une feature CORE (0 paire
-EXTRA-seule)** — le plan demandait un budget candidat équilibré CORE/FULL ;
-la sélection ici classe uniquement par |NPMI| de découverte sans forcer
-cet équilibre. Non corrigé dans cette passe (aurait nécessité un nouveau
-rerun) — à corriger si E06 est repris.
-
-## Erreurs trouvées et corrigées avant le coût GPU
-
-- **Features "sink"** : un premier passage (job 49074, annulé) gelait des
-  paires à NPMI=1,00 impliquant des features quasi-universelles (ex.
-  "Prénoms clients", présente dans ~100% des emails) — cooccurrence
-  triviale, pas un signal. Corrigé par une bande de fréquence [0,01 ; 0,5]
-  (même convention que `cooccurrence_graph`, `src/analysis/cooccurrence.py`).
-- **Doublon de label exact** : un deuxième passage (job 49076, annulé)
-  gelait 'Numéro de téléphone' × 'Numéro de téléphone' comme paire n°1 — 5
-  features EXTRA distinctes du catalogue portent ce même libellé (feature
-  splitting). Corrigé par une exclusion des paires à label strictement
-  identique, en amont du filtre Jaccard label+description.
-
-## Limites connues
-
-- Filtre quasi-synonymes par recouvrement lexical (Jaccard label+
-  description), pas par embedding dense — n'a pas empêché la paire
-  SIREN/SIREN ci-dessus (NPMI=0,98), à lire comme un doublon malgré son
-  statut "établi".
-- Baseline de cooccurrence lexicale FIT/DEV (plan : "souhaitable") non
-  calculée, faute de budget de session.
-- Audit humain stratifié 40-80 emails (plan §11) non fait — nécessite
-  Grégoire, reste en attente.
-- Un seul email représentatif par parent CONFIRM échantillonné (pas toutes
-  les variantes augmentées) — cohérent avec le calcul par parent, mais
-  réduit le signal disponible par rapport à une agrégation multi-variantes.
-- Budget candidat CORE/FULL non équilibré (cf. section précédente).
+- Aucun audit humain des associations (le plan en prévoit un sur 40 à 80 emails).
+- Aucune paire n'associe deux features EXTRA : le classement par NPMI ne force pas l'équilibre
+  entre CORE et EXTRA demandé par le plan.
+- Le filtre des quasi-synonymes compare les noms mot à mot ; il laisse passer des doublons
+  (« Raccordement énergie » et « Raccordement à »). Certains noms de features sont tronqués.
+- Pas de comparaison avec des cooccurrences de mots calculées sur les mêmes emails.
+- Un seul email par email d'origine est jugé (pas ses variantes).
 
 ## Fichiers
 
-- `results_post_stage_e01_fit_1b_layer13_k5/e06_correlations.json`
-- Script : `scripts/post_stage/e06_correlations.py`
-- Job SLURM : 49077 (h100, 1 GPU, COMPLETED 00:34:10)
+- Script : `scripts/post_stage/e06_correlations.py` ; recette `08_*`.
+- Résultat : `e06_correlations.json` dans le dossier de résultats.

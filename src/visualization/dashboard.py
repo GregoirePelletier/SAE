@@ -629,6 +629,18 @@ def _append_lead(lead: dict) -> None:
     os.replace(tmp, _E08_LEADS_PATH)
 
 
+def post_stage_json_path(run_dir: str, name: str) -> str:
+    """Chemin d'un résultat post-soutenance. L'encodage de CONFIRM et E03, E04, E06, E07 écrivent
+    dans le dossier d'évaluation `<run>_eval` (même checkpoint, voir docs/HANDOVER.md) : on cherche
+    d'abord dans le run choisi, puis dans ce dossier jumeau, jamais dans un autre run."""
+    primary = os.path.join(REPO_ROOT, run_dir, name)
+    if os.path.exists(primary):
+        return primary
+    twin = run_dir[: -len("_eval")] if run_dir.endswith("_eval") else run_dir + "_eval"
+    candidate = os.path.join(REPO_ROOT, twin, name)
+    return candidate if os.path.exists(candidate) else primary
+
+
 def page_pilot_e08(run_dir: str) -> None:
     st.header("Mini-pilote analyste (E08)")
     st.caption(
@@ -638,18 +650,17 @@ def page_pilot_e08(run_dir: str) -> None:
         "réels (dont Grégoire) restent à mener, ne sont pas simulées ici."
     )
 
-    e01 = load_json(os.path.join(REPO_ROOT, run_dir, "e01_representation_comparison.json"))
-    e03 = load_json(os.path.join(REPO_ROOT, run_dir, "e03_property_retrieval.json"))
-    e04 = load_json(os.path.join(REPO_ROOT, run_dir, "e04_diffing.json"))
+    e01 = load_json(post_stage_json_path(run_dir, "e01_representation_comparison.json"))
+    e03 = load_json(post_stage_json_path(run_dir, "e03_property_retrieval.json"))
+    e04 = load_json(post_stage_json_path(run_dir, "e04_diffing.json"))
     missing = [name for name, d in
                (("e01_representation_comparison.json", e01),
                 ("e03_property_retrieval.json", e03),
                 ("e04_diffing.json", e04)) if d is None]
     if missing:
         st.warning(
-            f"Artefacts absents de {run_dir} : {', '.join(missing)}. Les tâches correspondantes "
-            "ci-dessous resteront indisponibles pour ce run -- pas de repli silencieux sur un "
-            "autre run ou une donnée simulée."
+            f"Fichiers absents de {run_dir} (et de son dossier d'évaluation) : {', '.join(missing)}. "
+            "Les tâches correspondantes ne sont pas disponibles pour ce run."
         )
 
     st.divider()
@@ -757,14 +768,14 @@ def page_pilot_e08(run_dir: str) -> None:
 def page_stability_e05(run_dir: str) -> None:
     st.header("Stabilité inter-graines des features EXTRA (E05)")
     files = [f for f in ("e05_stability_random_init.json", "e05_stability.json")
-             if os.path.exists(os.path.join(REPO_ROOT, run_dir, f))]
+             if os.path.exists(post_stage_json_path(run_dir, f))]
     if not files:
         st.info("Aucun e05_stability*.json dans ce run.")
         return
     fname = st.selectbox("Analyse", files, format_func=lambda f: {
         "e05_stability_random_init.json": "4 runs : 2 init PCA + 2 init aléatoire (avec témoin d'indépendance à l'init)",
         "e05_stability.json": "3 runs, toutes init PCA (graines 42/43/44)"}[f])
-    d = load_json(os.path.join(REPO_ROOT, run_dir, fname))
+    d = load_json(post_stage_json_path(run_dir, fname))
     st.warning(d["init_caveat"])
     fb = d.get("found_across_runs_reference_side")
     if fb:
@@ -825,7 +836,7 @@ def page_stability_e05(run_dir: str) -> None:
 
 def page_clustering_e07(run_dir: str) -> None:
     st.header("Regrouper selon une question (E07)")
-    d = load_json(os.path.join(REPO_ROOT, run_dir, "e07_clustering.json"))
+    d = load_json(post_stage_json_path(run_dir, "e07_clustering.json"))
     if d is None:
         st.info("e07_clustering.json absent de ce run.")
         return
@@ -871,7 +882,7 @@ def page_clustering_e07(run_dir: str) -> None:
 
 def page_correlations_e06(run_dir: str) -> None:
     st.header("Associations de propriétés (E06)")
-    d = load_json(os.path.join(REPO_ROOT, run_dir, "e06_correlations.json"))
+    d = load_json(post_stage_json_path(run_dir, "e06_correlations.json"))
     if d is None:
         st.info("e06_correlations.json absent de ce run.")
         return
@@ -1364,8 +1375,8 @@ def show_run_status_warning(run_dir: str) -> None:
         )
     elif run_dir.startswith("results_post_stage_"):
         st.warning(
-            "Rejeu de la campagne avec le découpage corrigé, peut-être incomplet : vérifier dans "
-            "docs/RESULTS_STATUS.md quelles expériences sont terminées avant de citer un chiffre."
+            "Rejeu de la campagne avec le découpage corrigé. État et limites des résultats : "
+            "docs/RESULTS_STATUS.md."
         )
 
 

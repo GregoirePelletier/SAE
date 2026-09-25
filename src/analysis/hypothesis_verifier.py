@@ -20,7 +20,7 @@ légèrement du PDF (6 instructions au lieu de 7 -- l'instruction 7, sur les
 hypothèses formulées comme des phrases et les mentions "assistant"/"user",
 est absente du code des auteurs -- et "document" vs "response text" dans la
 consigne de tâche ; micro-écart déjà repéré dans
-`docs/INTERP_EMBED_COVERAGE.md`).
+`docs/archive/INTERP_EMBED_COVERAGE.md`).
 """
 
 from typing import Optional

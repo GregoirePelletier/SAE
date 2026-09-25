@@ -10,8 +10,8 @@ regrouper des emails.
 3 474 emails d'origine et leurs variantes générées (émotion, urgence, registre, orthographe). Les
 données, les modèles et les résultats ne sont pas dans ce dépôt.
 
-**État.** Prototype non validé par des utilisateurs. Une partie des résultats de la campagne
-post-soutenance est en cours de recalcul après la correction d'une erreur dans le découpage des
+**État.** Prototype non validé par des utilisateurs. Les résultats de la campagne
+post-soutenance ont été recalculés après la correction d'une erreur dans le découpage des
 données. Tout est détaillé dans [`docs/RESULTS_STATUS.md`](docs/RESULTS_STATUS.md).
 
 **Pour démarrer** : lire ce fichier, puis [`docs/HANDOVER.md`](docs/HANDOVER.md) (organisation du

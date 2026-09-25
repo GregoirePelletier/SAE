@@ -1,112 +1,69 @@
-# E07 — Clustering ciblé par axe, comparé aux alternatives (1B/layer13/K5)
+# E07 : regrouper les emails selon une question (Gemma-3-1B, couche 13, K_EXTRA=5)
 
-> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
-> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
-> apprentissage. Le rejeu avec le découpage corrigé est en cours.
+Question : peut-on regrouper les mêmes emails de façons différentes selon la question posée
+(type de problème, action attendue, ton), là où un regroupement classique donne toujours la même
+partition ?
 
-3 axes fixes sur 400 parents CONFIRM échantillonnés (1 email représentatif
-chacun, graine 42) : `type_probleme`, `action_attendue`, `registre_urgence`.
-CORE et FULL restreints au même budget de 40 features par similarité
-label↔requête (`select_latents_by_similarity`), SpectralClustering sur
-affinité Jaccard. DENSE (bge-m3, documents entiers, aucune troncature —
-0% de troncation à max_length=2048) et TFIDF : KMeans cosine sur les mêmes
-400 documents. k=4 fixé pour toutes les méthodes/tous les axes.
+## Protocole
 
-## Résultat principal : le contrôle de l'axe fonctionne, mais seulement pour CORE/FULL
+- 400 emails d'origine de CONFIRM (un email par origine, graine 42), 4 groupes par méthode.
+- Trois axes, chacun décrit par une phrase : `type_probleme` (facturation, coupure, résiliation…),
+  `action_attendue` (remboursement, explication, intervention…), `registre_urgence` (calme,
+  urgent, en colère, neutre).
+- CORE et FULL : on garde les 40 features dont le nom est le plus proche de la phrase de l'axe,
+  puis on regroupe les emails selon ces seules features (clustering spectral, similarité de
+  Jaccard). Dense (bge-m3, emails entiers) et TF-IDF : k-moyennes, sans lien avec l'axe.
+- Contrôles : le modèle juge nomme chaque groupe, puis doit réattribuer des emails aux groupes à
+  partir de ces noms (proportion de réattributions correctes) ; compacité des groupes dans l'espace
+  bge-m3 comparée à des groupes tirés au hasard (score z, négatif = plus compact que le hasard).
 
-**DENSE et TFIDF produisent EXACTEMENT les mêmes clusters (mêmes tailles,
-mêmes libellés LLM, même accuracy, même conductance) sur les 3 axes** —
-attendu structurellement (ni l'un ni l'autre n'a de mécanisme de sélection
-par axe dans ce protocole), mais la conséquence pratique doit être dite
-clairement : **un utilisateur qui demande un regroupement par
-`action_attendue` ou `registre_urgence` avec ces deux baselines obtient la
-même partition que pour `type_probleme`** — les deux se re-regroupent
-systématiquement autour de la structure "type de problème" (facturation,
-coupure, activation, résiliation), qui domine apparemment la représentation
-dense/lexicale de ce corpus indépendamment de la question posée.
+## Résultats avec le découpage corrigé
 
-**CORE et FULL, à l'inverse, produisent des partitions numériquement
-différentes sur les 3 axes** (tailles de cluster différentes, features
-sélectionnées différentes) — le mécanisme de contrôle par axe fonctionne
-bien mécaniquement. C'est la question centrale du plan (§12 : "la question
-est le contrôle de l'axe de regroupement") et la réponse est positive sur ce
-point précis : **c'est une capacité que CORE/FULL ont et que DENSE/TFIDF
-n'ont pas par construction.**
+Dossier `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` (job 50943).
 
-## Mais le contenu sémantique ne suit pas l'axe demandé pour 2/3 axes
+Dense et TF-IDF produisent exactement la même partition pour les trois axes, puisqu'ils ne
+tiennent pas compte de la question. Leurs groupes sont nets (réattribution de 0,95 à 1,0 pour
+dense, de 0,35 à 1,0 pour TF-IDF) et suivent le type de problème (litiges de facture, mises en
+service, résiliations, coupures). Ces deux partitions sont identiques à celles de la première
+exécution : les emails d'origine de CONFIRM n'ont pas changé.
 
-| Axe | FULL reflète bien l'axe ? | Accuracy de réassignation FULL (par cluster) |
+CORE et FULL produisent bien des partitions différentes selon l'axe, mais leur contenu ne suit
+pas la question posée :
+
+| Axe | Ce que décrivent les groupes FULL | Réattribution FULL (par groupe) |
 |---|---|---|
-| `type_probleme` | **Oui** — libellés authentiquement typés par problème (facturation, résiliation/activation, coupures) | 0,72 – 0,97 |
-| `action_attendue` | Partiel — libellés encore dominés par le type de problème, pas par l'action demandée | 0,12 – 0,96 (un cluster à 0,12) |
-| `registre_urgence` | Faible — un seul cluster ("informel/mixte") touche vaguement au registre, les 3 autres restent thématiques | 0,02 – 0,53 (deux clusters <0,3) |
+| `type_probleme` | en partie le type de problème (coupures, résiliation et déménagement, litiges de facture), mêlé à la langue et au ton | 0,45 ; 0,96 ; 0,11 ; 0,80 |
+| `action_attendue` | surtout la langue et le degré de formalité, pas l'action demandée | 0,72 ; 0,18 ; 0,18 ; 0,72 |
+| `registre_urgence` | le type de demande (mise en service, facture, résiliation), pas le ton | 0,82 ; 0,78 ; 0,00 ; 0,13 |
 
-Lecture : la sélection de features par similarité change bien selon l'axe
-(40 features différentes à chaque fois), et le clustering qui en résulte
-change aussi — mais le catalogue interprétable disponible (77 CORE / 197
-FULL sur ce run) semble dominé par des directions de type "problème", pas
-par des directions d'action ou de registre/tonalité, même quand la requête
-demande explicitement ces axes. Une accuracy de réassignation proche de 0
-sur un cluster (ex. FULL/`registre_urgence` cluster 3, 0,015 ; CORE/`registre_urgence`
-cluster 3, 0,0) signale un libellé essentiellement non reproductible —
-ne pas le citer comme un thème établi.
+Les groupes CORE ont des réattributions plus faibles (de 0,00 à 0,54) et, pour l'axe
+`registre_urgence`, ne sont pas plus compacts que des groupes tirés au hasard (score z de −2,4
+à +1,1). Les groupes FULL sont plus compacts que le hasard sur les trois axes (z de −3 à −26).
 
-## CORE vs FULL
+## Conclusion
 
-Sur `type_probleme`, FULL bat nettement CORE en accuracy de réassignation
-(0,72–0,97 contre 0,04–0,79) — cohérent avec E03 (l'extension apporte un
-catalogue plus riche pour le retrieval par propriété). Sur les deux autres
-axes, l'écart n'est **pas** univoque (CORE et FULL ont chacun des clusters
-à accuracy très basse) — ne pas généraliser le gain de `type_probleme` aux
-deux autres axes.
+Choisir des features selon la question change bien le regroupement, ce que les méthodes
+classiques ne permettent pas. Mais avec le catalogue de features actuel, le regroupement obtenu
+ne correspond pas à l'axe demandé, y compris pour le type de problème, qui fonctionnait dans la
+première exécution. Le regroupement ciblé n'est donc pas démontré ; un catalogue de features plus
+large ou nommé autrement serait nécessaire avant de le proposer comme fonctionnalité.
 
-## Conductance en espace DENSE (diagnostique, pas une preuve de supériorité)
+## Première exécution (découpage erroné, historique)
 
-Tous les z-scores sont fortement négatifs (clusters plus compacts qu'un
-tirage aléatoire de même taille, dans l'espace bge-m3) — y compris pour
-CORE/FULL, formés dans un espace Jaccard totalement différent : signal
-rassurant que leurs clusters correspondent à une vraie structure documentaire,
-pas une partition arbitraire. DENSE lui-même est mécaniquement le plus
-compact dans son propre espace (z jusqu'à -41, contre -3 à -37 pour
-CORE/FULL) — à lire comme un artefact de circularité (DENSE optimise
-directement dans l'espace où on le mesure), pas une preuve de supériorité.
+Dossier `results_post_stage_e01_fit_1b_layer13_k5/` (job 49087). Même constat mécanique (CORE et
+FULL changent de partition selon l'axe). FULL suivait bien le type de problème (réattributions de
+0,72 à 0,97), partiellement l'action attendue (0,12 à 0,96) et pas le ton (0,02 à 0,53).
 
-## Couverture ("hors axe / sans signal")
+## Limites
 
-3-4 documents sur 400 (coverage ≥0,99) exclus car leur vecteur restreint
-aux 40 features de l'axe est nul — couverture large, pas un problème pour
-ce run.
-
-## Écart trouvé et corrigé avant le résultat final
-
-Un premier run (job 49084, `top_k_features=150`) donnait des
-`cluster_sizes` CORE **strictement identiques sur les 3 axes** — le
-catalogue CORE interprétable (77 features) est plus petit que 150, donc
-`select_latents_by_similarity` renvoyait le catalogue ENTIER quel que soit
-l'axe, rendant la restriction inopérante pour CORE (seul FULL, avec 197
-candidats, était réellement restreint). Corrigé (`TOP_K_FEATURES=40`,
-job 49087) — vérifié que les tailles de cluster diffèrent bien désormais
-sur les 3 axes pour CORE et FULL.
-
-## Limites connues
-
-- **Audit humain aveugle de paires intra/inter-cluster (20-30 par axe,
-  plan §12.3) non fait** — nécessite Grégoire, reste en attente. Les
-  accuracies de réassignation LLM ci-dessus sont un diagnostic secondaire,
-  pas une validation humaine.
-- TFIDF/DENSE ajustés directement sur l'échantillon CONFIRM (piste
-  exploratoire), pas de baseline FIT-only.
-- k=4 fixé a priori pour toutes les méthodes — pertinent pour comparer
-  à budget égal, mais pourrait masquer qu'un axe se prête mieux à un
-  nombre de groupes différent.
-- Catalogue interprétable restreint (77 CORE / 197 FULL au total sur ce
-  run) — la difficulté à faire ressortir les axes `action_attendue`/
-  `registre_urgence` peut refléter la taille du catalogue autant que le
-  choix de méthode.
+- Aucun audit humain des groupes (le plan prévoit un contrôle en aveugle de 20 à 30 paires
+  d'emails par axe) : la réattribution par le modèle juge n'est qu'un contrôle secondaire.
+- Nombre de groupes fixé à 4 pour toutes les méthodes et tous les axes.
+- TF-IDF et dense sont ajustés sur l'échantillon de CONFIRM lui-même.
+- Les résultats dépendent fortement des noms de features disponibles (76 CORE et 207 FULL
+  interprétables) : un axe mal représenté dans le catalogue ne peut pas être isolé.
 
 ## Fichiers
 
-- `results_post_stage_e01_fit_1b_layer13_k5/e07_clustering.json`
-- Script : `scripts/post_stage/e07_clustering.py`
-- Job SLURM : 49087 (h100, 1 GPU, COMPLETED 00:10:41 ; job 49084 avec
-  `top_k_features=150` avait le bug de restriction inopérante ci-dessus)
+- Script : `scripts/post_stage/e07_clustering.py` ; recette `09_*`.
+- Résultat : `e07_clustering.json` dans le dossier de résultats.

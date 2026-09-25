@@ -1,86 +1,90 @@
-# E03 — Retrieval par propriété sur CONFIRM (1B/layer13/K5)
+# E03 : retrouver des emails selon une propriété (Gemma-3-1B, couche 13, K_EXTRA=5)
 
-> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
-> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
-> apprentissage. Le rejeu avec le découpage corrigé est en cours.
+Question : les features du SAE permettent-elles de retrouver des emails qui ont une propriété
+donnée, et font-elles mieux qu'un moteur de recherche classique ?
 
-12 requêtes (6 propriétés × formulation lexicale/paraphrase), CONFIRM de
-l'ancien manifeste (10 865 documents ; sa séparation d'avec l'entraînement
-n'était pas effective pour les variantes, cf. statut ci-dessus). Pertinence jugée par Qwen (0/1/2) sur
-l'union des top-10 de chaque méthode — **simplification assumée** : pas de
-double-annotation humaine (plan §8.3), à calibrer dès que possible.
+## Protocole
 
-## P@10 strict (relevance==2) par requête
+- Collection : les emails de CONFIRM (10 840 documents dans le rejeu).
+- 12 requêtes : 6 propriétés (relances répétées, menace de résiliation, incident collectif,
+  explication d'un montant, coupures répétées, urgence implicite), chacune formulée une fois avec
+  les mots attendus (« lexicale ») et une fois autrement (« paraphrase »).
+- 5 méthodes :
+  - CORE et FULL : on choisit les features dont le nom est le plus proche de la requête, puis on
+    classe les emails selon l'activation de ces features. CORE ne dispose que des features CORE
+    jugées interprétables en E02 (76), FULL de toutes (207).
+  - Dense : similarité avec la requête dans l'espace bge-m3.
+  - TF-IDF et BM25 : recherche lexicale, indexée directement sur CONFIRM.
+- Pertinence : les 10 premiers résultats de chaque méthode sont jugés par Qwen3.8-27B (0, 1 ou 2).
+  La mesure est P@10 : la part des 10 premiers résultats jugée pleinement pertinente (score 2).
+  Tous les top-10 étant jugés, cette mesure ne demande pas de juger le reste de la collection.
+- Comparaisons : moyenne sur les 6 propriétés, intervalle de confiance bootstrap sur ces 6
+  familles de requêtes.
 
-| Propriété | Formulation | CORE | FULL | DENSE | TFIDF | BM25 |
+## Résultats avec le découpage corrigé
+
+Dossier `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` (job 50940), checkpoint FIT du rejeu
+et registre E02 du rejeu.
+
+| Propriété | Formulation | CORE | FULL | Dense | TF-IDF | BM25 |
 |---|---|---:|---:|---:|---:|---:|
-| relances_repetees | lexicale | 0,30 | 0,90 | 1,00 | 1,00 | 1,00 |
-| relances_repetees | paraphrase | 0,20 | 0,90 | 1,00 | 0,70 | 1,00 |
-| menace_resiliation | lexicale | 0,20 | 0,10 | 0,50 | 1,00 | 0,90 |
-| menace_resiliation | paraphrase | 0,20 | 0,10 | 0,00 | 0,00 | 0,00 |
-| incident_collectif | lexicale | 0,00 | 0,00 | 0,10 | 0,00 | 0,10 |
-| incident_collectif | paraphrase | 0,00 | 0,00 | 0,30 | 0,70 | 0,60 |
-| explication_montant | lexicale | 0,20 | 0,80 | 0,70 | 0,20 | 0,10 |
-| explication_montant | paraphrase | 0,40 | 0,70 | 1,00 | 0,90 | 1,00 |
-| coupure_repetee | lexicale | 0,00 | 0,30 | 0,80 | 0,40 | 0,30 |
-| coupure_repetee | paraphrase | 0,00 | 0,20 | 0,50 | 0,40 | 0,80 |
-| urgence_implicite | lexicale | 0,70 | 1,00 | 1,00 | 0,80 | 1,00 |
-| urgence_implicite | paraphrase | 0,70 | 0,90 | 0,90 | 0,80 | 1,00 |
+| relances répétées | lexicale | 0,5 | 1,0 | 1,0 | 1,0 | 1,0 |
+| relances répétées | paraphrase | 0,2 | 1,0 | 1,0 | 1,0 | 0,8 |
+| menace de résiliation | lexicale | 0,1 | 0,7 | 0,4 | 0,6 | 0,5 |
+| menace de résiliation | paraphrase | 0,3 | 0,6 | 0,1 | 0,1 | 0,0 |
+| incident collectif | lexicale | 0,1 | 0,0 | 0,0 | 0,2 | 0,2 |
+| incident collectif | paraphrase | 0,0 | 0,0 | 0,6 | 0,5 | 0,2 |
+| explication d'un montant | lexicale | 0,4 | 0,5 | 0,7 | 0,2 | 0,0 |
+| explication d'un montant | paraphrase | 0,2 | 0,6 | 0,7 | 1,0 | 1,0 |
+| coupures répétées | lexicale | 0,0 | 0,2 | 0,5 | 0,2 | 0,2 |
+| coupures répétées | paraphrase | 0,0 | 0,1 | 0,5 | 0,2 | 0,2 |
+| urgence implicite | lexicale | 1,0 | 0,8 | 1,0 | 0,9 | 1,0 |
+| urgence implicite | paraphrase | 1,0 | 0,4 | 0,7 | 0,7 | 1,0 |
+| **Moyenne** | | **31,7 %** | **49,2 %** | **60,0 %** | **55,0 %** | **50,8 %** |
 
-## Comparaisons par famille (moyenne lexicale+paraphrase, IC bootstrap n=6)
+Écarts de FULL avec les autres méthodes (points de P@10, intervalle à 95 %) :
 
-**FULL − CORE : +25 points, IC [+5,8 ; +45].** N'inclut pas zéro — c'est le
-**premier écart favorable à l'extension** de la campagne historique (IC
-bootstrap par famille, n=6 ; contraste avec E01, où FULL≈CORE sur la sonde des
-axes d'augmentation). CORE seul n'a que 77
-labels utilisables contre 197 pour FULL (catalogue GemmaScope-2 générique,
-peu de directions correspondant à des propriétés métier comme "menace de
-résiliation" ou "relance répétée") — cohérent avec l'hypothèse du plan
-(§6.5/§9) : l'extension apporte un catalogue de features propre au domaine
-que le cœur seul n'a pas, visible ici parce que le retrieval par propriété
-dépend directement du nombre de latents pertinents disponibles, contrairement
-à une sonde de classification qui peut réussir avec un signal diffus.
+- FULL − CORE : +17,5, IC [−9,2 ; +45,0] ;
+- FULL − dense : −10,8, IC [−28,3 ; +11,7] ;
+- FULL − TF-IDF : −5,8, IC [−20,0 ; +10,9] ;
+- FULL − BM25 : −1,7, IC [−20,0 ; +19,2].
 
-**FULL − DENSE : -15,8 points, IC [-26,7 ; -6,7].** N'inclut pas zéro dans
-l'autre sens : l'écart en faveur de bge-m3 est statistiquement distinct de zéro sur cet échantillon. **FULL −
-BM25 : -15,8 points, IC [-30,0 ; +2,5]** (borne haute tout juste positive,
-proche de zéro mais pas établi). **FULL − TFIDF : -8,3 points, IC [-26,7 ;
-+10,0]**, croise zéro, non établi.
+Aucun de ces écarts n'est significatif avec 6 familles de requêtes. FULL fait mieux que CORE en
+moyenne, surtout sur les relances et la menace de résiliation, mais nettement moins bien sur
+l'urgence implicite ; la méthode dense reste la meilleure en moyenne.
 
-## Lecture d'ensemble
+L'incident collectif est presque introuvable avec les features (0 ou 0,1), alors que les méthodes
+dense et lexicales en trouvent en paraphrase (0,2 à 0,6) : c'est une limite du catalogue de
+features, pas une absence de la propriété dans le corpus.
 
-Résultat à deux faces, à ne pas aplatir en un seul verdict :
+## Conclusion
 
-1. **FULL dépasse CORE sur cet échantillon historique** (+25 points, IC
-   n'incluant pas zéro à n=6 familles) — le seul écart de ce type dans la
-   campagne, à revalider après rejeu sous le manifeste corrigé.
-2. **FULL n'est pas encore compétitif avec un moteur dense/lexical classique**
-   pour le classement pur — DENSE et BM25 restent (au moins) aussi bons,
-   souvent meilleurs. Conforme à l'attente déjà écrite dans le plan (§8.5) :
-   "le résultat acceptable peut être la conservation d'un moteur dense/lexical
-   pour le classement et du SAE pour expliquer les thèmes."
+Les features SAE permettent de retrouver des emails pour certaines propriétés, mais ne battent pas
+un moteur dense ou lexical en moyenne. Le seul avantage net observé dans la première exécution
+(FULL au-dessus de CORE) n'est plus significatif avec le découpage corrigé. Si l'outil est
+poursuivi, l'usage raisonnable est un moteur dense ou lexical pour classer les emails, et les
+features pour décrire ce qui les distingue.
 
-Pour `incident_collectif`, CORE et FULL sont à 0,00 sur les deux formulations,
-mais DENSE/TFIDF/BM25 ne sont pas nuls en paraphrase (0,30 / 0,70 / 0,60) : c'est
-un échec des features SAE sur cette propriété, pas une preuve qu'elle est absente
-du corpus. `menace_resiliation` (paraphrase) tombe à 0 pour DENSE/TFIDF/BM25 --
-paraphrase possiblement trop éloignée du vocabulaire du corpus, à vérifier avant
-réutilisation.
+## Première exécution (découpage erroné, historique)
 
-## Limites connues
+Dossier `results_post_stage_e01_fit_1b_layer13_k5/` (10 865 documents). Moyennes de P@10 :
+CORE 25,0 %, FULL 50,0 %, dense 65,0 %, TF-IDF 58,3 %, BM25 65,0 %. Deux écarts étaient
+significatifs : FULL − CORE (+25,0 points, IC [+5,8 ; +44,2]) et FULL − dense (−15,0 points,
+IC [−24,2 ; −6,7]). Une partie des variantes de CONFIRM avait servi à l'entraînement : ces chiffres
+ne sont pas comparables au rejeu.
 
-- n=6 familles : les IC sont larges, lus comme une indication de
-  variabilité, pas un test définitif (le plan le dit explicitement, §8.5).
-- Jugements de pertinence 100% modèle (Qwen), pas de calibration humaine.
-- p90 de normalisation et TFIDF ajustés directement sur CONFIRM (piste
-  exploratoire d'indexation, §4.5) — pas la piste stricte FIT-only utilisée
-  pour E01.
-- Union jugée par requête (36-46 documents) : tous les top-10 de chaque
-  méthode sont jugés, ce qui suffit pour P@10 (pas besoin de juger tout le
-  corpus). Les documents jamais retournés ne sont pas jugés : un rappel ou une
-  MAP demanderait un jugement exhaustif, hors budget ici.
+## Limites
+
+- Jugements faits par le modèle juge, sans vérification humaine.
+- 6 familles de requêtes seulement : les intervalles sont larges.
+- Le top-10 n'est pas dédupliqué par email d'origine : plusieurs variantes d'un même email peuvent
+  compter comme plusieurs résultats.
+- TF-IDF, BM25 et la normalisation des scores SAE sont ajustés sur CONFIRM lui-même (indexation de
+  la collection recherchée), contrairement au protocole d'E01.
+- CORE dispose de moins de features nommées que FULL (76 contre 207) : l'écart FULL − CORE mêle
+  l'apport des directions EXTRA et celui d'un catalogue plus grand.
 
 ## Fichiers
 
-- `results_post_stage_e01_fit_1b_layer13_k5/e03_property_retrieval.json`
-- Script : `scripts/post_stage/e03_property_retrieval.py`
+- Script : `scripts/post_stage/e03_property_retrieval.py` ; recettes `06_*` et `06b_*`.
+- Résultat : `e03_property_retrieval.json` (contient des extraits d'emails, hors Git).

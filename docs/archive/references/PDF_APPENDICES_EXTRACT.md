@@ -1,6 +1,6 @@
 # Extraction structurée des Appendices A–M — "Interpretable Embeddings with Sparse Autoencoders" (arXiv:2512.10092v2)
 
-Source : `/home/h21486/SAE/docs/_paper_pages_raw.txt` (extraction pypdf brute de `/home/h21486/SAE/pdf/InterpretableSAE_Embeddings.pdf`), lignes 979 à 3587 (fin de fichier). Chaque section ci-dessous indique la plage de lignes source et la page PDF correspondante (numérotée d'après les marqueurs `===== PAGE N =====` du fichier).
+Source : extraction automatique (pypdf) du PDF du papier. Les plages de lignes citées plus bas renvoient à ce fichier d'extraction brute, qui n'est pas conservé ; les numéros de page PDF restent valables.
 
 Convention : les blocs de code/prompt sont reproduits **verbatim** (copié-collé direct de l'extraction), y compris les artefacts de rendu PDF quand ils ne changent aucun mot (guillemets courbes `’`, espaces parasites autour de `**`, etc.). Je n'ai corrigé que la césure de mots visiblement fusionnés dans les titres de section (ex. `ADDITIONALRELATEDWORK` → `ADDITIONAL RELATED WORK`). Aucun mot, formule ou valeur numérique n'a été modifié. Toute portion illisible ou ambiguë est signalée inline avec `[EXTRACTION INCERTAINE]` et listée aussi dans la section finale.
 

@@ -1,113 +1,68 @@
-# E04 — Diffing structuré urgence__panique vs urgence__calme (1B/layer13/K5)
+# E04 : comparer deux populations d'emails (Gemma-3-1B, couche 13, K_EXTRA=5)
 
-> Ce document décrit la première exécution, faite avec un découpage erroné des variantes
-> augmentées (voir `docs/RESULTS_STATUS.md`) : ce ne sont pas des évaluations hors
-> apprentissage. Le rejeu avec le découpage corrigé est en cours.
+Question : à partir des features qui distinguent deux groupes d'emails, peut-on formuler des
+hypothèses lisibles sur ce qui les différencie, puis les vérifier sur d'autres emails ?
 
-Contraste `urgence__panique` (cible) vs `urgence__calme`. Découverte des
-features candidates sur FIT (`corpus_diff_stats`, 8733 features actives dans
-A∪B, top 200 au-dessus du seuil 0,03), génération de 8 hypothèses structurées
-par Qwen **gelées avant toute lecture de CONFIRM**, vérification sur CONFIRM
-(non utilisé pendant la découverte, selon l'ancien manifeste) — le juge ne voit ni le groupe ni la
-méthode d'origine du document.
+## Protocole
 
-CONFIRM sous-échantillonné à 150 documents par groupe
-(`--max-confirm-per-group=150`, graine 42) sur 849 A / 826 B disponibles,
-pour tenir dans la fenêtre SLURM (job 48945 avait timeout à 3h sur
-8×1675=13 400 appels ; job 48957, 8×300=2400 appels, COMPLETED en 1h00).
+- Contraste : variantes générées avec un ton paniqué (`urgence__panique`, groupe cible) contre
+  un ton calme (`urgence__calme`).
+- Découverte sur FIT : pour chaque feature, fréquence d'activation dans chaque groupe
+  (`corpus_diff_stats`), puis sélection des 200 features dont l'écart de fréquence dépasse 3 points.
+- Génération : Qwen3.8-27B reçoit ces features (nom et écart de fréquence) et propose 8 hypothèses,
+  en indiquant pour chacune le groupe qu'elle décrit. Les hypothèses sont figées avant toute
+  lecture de CONFIRM.
+- Vérification sur CONFIRM : 150 emails par groupe tirés au hasard (graine 42). Pour chaque
+  email, le juge dit si l'hypothèse s'applique, sans connaître le groupe. Test de différence de
+  proportions, correction de Benjamini-Hochberg sur les 8 tests.
 
-## Résultat par hypothèse (CONFIRM, IC Wilson, FDR-BH sur 8 tests)
+## Résultats avec le découpage corrigé
 
-| # | Hypothèse (résumé) | rate_in (panique) | rate_out (calme) | diff | IC diff exclut 0 ? | p (FDR-BH) |
-|---|---|---:|---:|---:|:---:|---:|
-| 1 | Urgence temporelle explicite | 1,000 | 0,000 | +1,00 | oui | 9e-67 |
-| 2 | Colère / frustration agressive | 0,507 | 0,000 | +0,51 | oui | 8e-24 |
-| 3 | Langage impératif, résolution concrète | 0,980 | 0,000 | +0,98 | oui | 2e-64 |
-| 4 | Lien causal problème→conséquence | 0,813 | 0,033 | +0,78 | oui | 2e-42 |
-| 5 | **Structure procédurale formelle** | 0,473 | 0,987 | **-0,51** | oui (sens inverse) | 2e-23 |
-| 6 | Exclamations positives / énergie | 0,013 | 0,000 | +0,01 | **non** (p=0,156) | 0,156 |
-| 7 | Patterns linguistiques de criticité | 1,000 | 0,000 | +1,00 | oui | 9e-67 |
-| 8 | Fréquence de marqueurs de détresse | 1,000 | 0,000 | +1,00 | oui | 9e-67 |
+Dossier `results_post_stage_e01_fit_1b_layer13_k5_v2_eval/` (job 50941). Découverte sur 2 025
+emails paniqués et 1 988 calmes de FIT ; vérification sur 150 + 150 emails de CONFIRM (sur 850 et
+825 disponibles).
 
-`verification_rate=1,0` (les 8 hypothèses dépassent |diff|>0,01) et
-`coverage=1,0` (chaque document `panique` de CONFIRM est couvert par au
-moins une hypothèse validée dans le bon sens) — **mais ces deux métriques ne
-distinguent pas le sens de la différence**, elles comptent l'hypothèse 5
-comme "valide" alors qu'elle est vérifiée dans le sens opposé à celui généré.
-Ne pas citer `verification_rate=1,0`/`coverage=1,0` sans cette précision.
+| # | Hypothèse (résumé) | Groupe décrit | Paniqué | Calme | Écart | p corrigé |
+|---|---|---|---:|---:|---:|---:|
+| 1 | Marqueurs explicites d'urgence temporelle | paniqué | 150/150 | 0/150 | +1,00 | 10⁻⁶⁶ |
+| 2 | Insistance sur les conséquences négatives du problème | paniqué | 52/150 | 0/150 | +0,35 | 10⁻¹⁵ |
+| 3 | Expressions émotionnelles de détresse | paniqué | 121/150 | 0/150 | +0,81 | 10⁻⁴⁵ |
+| 4 | Message centré sur la résolution d'un litige | paniqué | 72/150 | 4/150 | +0,45 | 10⁻¹⁹ |
+| 5 | Absence d'urgence et de détresse | calme | 0/150 | 114/150 | −0,76 | 10⁻⁴¹ |
+| 6 | Formules typiques d'une communication à fort enjeu | paniqué | 150/150 | 0/150 | +1,00 | 10⁻⁶⁶ |
+| 7 | Termes administratifs formulés de façon pressante | paniqué | 25/150 | 0/150 | +0,17 | 10⁻⁷ |
+| 8 | Message plus informatif, moins chargé émotionnellement | calme | 0/150 | 99/150 | −0,66 | 10⁻³⁴ |
 
-## Lecture d'ensemble
+Les 8 hypothèses sont confirmées, toutes dans le sens annoncé (les deux hypothèses sur le groupe
+calme ont logiquement un écart négatif). Plusieurs écarts sont totaux (150 contre 0) : les
+variantes sont générées à partir de consignes de ton, et le contraste repose sur des marqueurs
+presque systématiques. Ce test montre que la chaîne découverte → hypothèses → vérification
+fonctionne ; il ne montre pas qu'elle trouverait des différences subtiles sur des emails réels.
 
-1. **6 des 8 hypothèses sont confirmées dans le sens attendu, avec un effet
-   massif et robuste** (|diff| ≥ 0,51, IC serrés n'incluant pas zéro, tous
-   survivent la correction FDR-BH). Le contraste `panique`/`calme` de ce
-   corpus est très largement séparable sur des propriétés textuelles
-   explicites (urgence temporelle, impératif, lien causal, marqueurs de
-   détresse) — cohérent avec un corpus augmenté généré par template, où ces
-   marqueurs sont probablement quasi déterministes plutôt qu'une
-   généralisation fine à documenter comme telle.
-2. **L'hypothèse 5 ("structure procédurale formelle") est vérifiée mais dans
-   le sens INVERSE de sa génération** : Qwen l'avait proposée comme trait du
-   groupe `panique` (diff=+0,04 sur FIT au stade découverte) mais sur
-   CONFIRM c'est le groupe `calme` qui l'exhibe massivement plus (98,7% vs
-   47,3%). Lecture la plus probable : le ton calme du corpus s'exprime via
-   une communication procédurale/formelle, et le stade découverte (magnitude
-   de diff sur les features SAE, pas encore de jugement sémantique) a mal
-   orienté le signe de cette hypothèse précise avant vérification — un
-   exemple concret de pourquoi la vérification sur CONFIRM (non utilisée
-   pendant la découverte) est nécessaire et pas une formalité : une
-   hypothèse peut être un signal réel tout en étant générée avec le mauvais
-   sens.
-3. **L'hypothèse 6 ("exclamations positives") ne survit pas** — seule des 8 à
-   ne pas passer le seuil FDR-BH (p=0,156, rate quasi nulle des deux côtés :
-   1,3% vs 0%). Cohérent avec son diff de découverte déjà le plus faible
-   (+0,04, confiance 0,70 la plus basse du lot) — le stade découverte avait
-   déjà signalé cette hypothèse comme la moins fiable du groupe.
+Les résumés `verification_rate` et `coverage` valent tous deux 1,0. Ils ne tiennent pas compte du
+sens de l'écart ; le tableau ci-dessus est la lecture à retenir.
 
-## Limites connues
+## Première exécution (découpage erroné, historique)
 
-- Corpus augmenté/synthétique (`urgence__panique`/`urgence__calme` sont des
-  labels de génération, pas des catégories organiques) — la séparabilité
-  quasi parfaite de 6/8 hypothèses reflète probablement des marqueurs de
-  template plutôt qu'une propriété qui généraliserait à un corpus réel non
-  labellisé de cette façon.
-- Vérification 100% Qwen (juge découplé de l'extracteur Gemma, politique
-  juge Qwen-partout — cf. `RESULTS_TESTS.md` §119, `docs/archive/CLAUDE_long_2026-09.md` point 6
-  "Indépendance du juge"), aucune calibration humaine — audit humain des
-  résultats de diffing (plan §9.2 point 5) toujours en attente, nécessite
-  Grégoire.
-- `verification_rate`/`coverage` (App K.1) ne distinguent pas le sens de la
-  différence — un lecteur pressé pourrait citer "8/8 hypothèses vérifiées"
-  en passant sous silence l'inversion de sens de l'hypothèse 5 ; toujours
-  lire le tableau par hypothèse, pas seulement le résumé agrégé.
-- Le champ `percentage_difference` produit par `scripts/post_stage/
-  e04_diffing.py` (stade découverte uniquement, ne nourrit aucun chiffre de
-  vérification CONFIRM ci-dessus) recevait un `log_odds_ratio`
-  (`src/analysis/cooccurrence.py::corpus_diff_stats`) au lieu d'un écart de
-  fréquence borné entre -1 et 1, alors que le prompt du générateur
-  d'hypothèses promet explicitement cette borne
-  (`diff_hypothesis_generator.py::DIFF_HYPOTHESIS_PROMPT`). **Corrigé** (
-  `build_feature_diff_blocks` utilise désormais `freq_diff = freq_A -
-  freq_B`, déjà calculé par `select_top_diff_features_by_frequency`, testé
-  par `tests/post_stage/test_e04_diffing_feature_blocks.py`). N'affecte que
-  la description des features envoyée au générateur d'hypothèses au stade
-  découverte — ne change rétroactivement aucun compte de présence
-  `verification_rate`/`coverage` déjà mesuré sur CONFIRM ci-dessus pour les
-  8 hypothèses de ce run (générées avant ce correctif). Un nouveau run de
-  `e04_diffing.py` peut générer des hypothèses différentes (signal de
-  découverte désormais correctement borné) — à rejouer si une nouvelle
-  campagne de diffing est lancée, pas nécessaire pour relire les résultats
-  déjà gelés ci-dessus.
-- CONFIRM sous-échantillonné à 150/groupe (contrainte de fenêtre SLURM, pas
-  un choix méthodologique a priori) — dans la fourchette basse de la cible
-  du plan (§9.1 : "150-200 par groupe"), pas en dessous.
-- Une seule paire de labels testée (`urgence__panique`/`urgence__calme`) —
-  le plan prévoit d'autres contrastes (§9), non couverts ici faute de
-  budget de session pour les prioriser tous.
+Dossier `results_post_stage_e01_fit_1b_layer13_k5/` (job 48957). Le générateur recevait alors un
+log-odds à la place de l'écart de fréquence qui lui est décrit (erreur corrigée depuis dans
+`e04_diffing.py`, test `tests/post_stage/test_e04_diffing_feature_blocks.py`), et toutes les
+hypothèses visaient le groupe paniqué. Résultat : 6 hypothèses sur 8 confirmées dans le sens
+annoncé, une confirmée dans le sens inverse (une « structure procédurale formelle » attribuée au
+groupe paniqué s'est révélée caractéristique du groupe calme : 47 % contre 99 %), une non
+significative (exclamations positives, 1 % contre 0 %).
+
+## Limites
+
+- Corpus synthétique : les groupes sont des consignes de génération, pas des catégories
+  observées sur des emails réels.
+- Vérification entièrement faite par le modèle juge, sans contrôle humain.
+- Les deux groupes contiennent des variantes des mêmes emails d'origine ; le test de proportions
+  les traite comme indépendantes, et le JSON ne conserve pas la liste des emails tirés.
+- Un seul contraste testé ; le prompt de génération est rédigé pour ce contraste et doit être
+  adapté pour un autre.
 
 ## Fichiers
 
-- `results_post_stage_e01_fit_1b_layer13_k5/e04_diffing.json`
-- Script : `scripts/post_stage/e04_diffing.py`
-- Job SLURM : 48957 (h100, 1 GPU, COMPLETED 01:00:30 ; job 48945, a100 2×GPU,
-  TIMEOUT à 3h, avait motivé le sous-échantillonnage)
+- Script : `scripts/post_stage/e04_diffing.py` ; recettes `07_*` et `07b_*`.
+- Résultat : `e04_diffing.json` dans le dossier de résultats.

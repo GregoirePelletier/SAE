@@ -185,11 +185,11 @@ document.
   **Reste à faire, volontairement pas fait dans cette passe** (effort disproportionné au
   risque d'erreur pour une passe de nettoyage) : `docs/PDF_APPENDICES_EXTRACT.md` — réduction
   risquée sans casser les citations précises par numéro de ligne que
-  `docs/INTERP_EMBED_COVERAGE.md` (travail original de qualité) fait vers ce fichier ; 104
+  `docs/archive/INTERP_EMBED_COVERAGE.md` (travail original de qualité) fait vers ce fichier ; 104
   `.slurm` à consolider en template + `.env` — refactor large, casserait potentiellement des
   noms de fichiers cités nommément dans `RESULTS_TESTS.md`.
 - **`pytest tests/ -q` ne passe qu'à un test près.** `scripts/check_docs.py` sort en 1 avec
-  17 violations de première personne du singulier (`docs/INTERP_EMBED_COVERAGE.md`,
+  17 violations de première personne du singulier (`docs/archive/INTERP_EMBED_COVERAGE.md`,
   `docs/PDF_APPENDICES_EXTRACT.md`) — réécriture de prose, pas de code. Tout le reste
   (mocks périmés, désynchronisations commentaire↔code, garde-fou placeholder incomplet,
   clé de cache P2, R1-R6) est corrigé.
@@ -758,7 +758,7 @@ script dès que sa section est écrite, ce que cette session a commencé à fair
 scripts qu'elle a elle-même utilisés).
 
 **N12 🟢 CORRIGÉ — `check_docs.py` vert** (`python scripts/check_docs.py` →
-"Aucune violation trouvée"). Décision tranchée : `docs/INTERP_EMBED_COVERAGE.md` et
+"Aucune violation trouvée"). Décision tranchée : `docs/archive/INTERP_EMBED_COVERAGE.md` et
 `docs/PDF_APPENDICES_EXTRACT.md` **exclus explicitement** du contrôle "première
 personne" (`FIRST_PERSON_EXCLUDED_FILES`, justification en commentaire dans
 `check_docs.py`) — ce sont des analyses comparatives à la première personne par nature
